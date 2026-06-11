@@ -8,7 +8,7 @@ import {
   type Secrets,
   type Settings
 } from '@shared/types'
-import { applySeedEndpoints, type SeedFile } from './seed'
+import { applySeedEndpoints, parseSeed, type SeedFile } from './seed'
 
 /**
  * Plain settings live as JSON in userData. API keys are stored separately, encrypted
@@ -105,7 +105,10 @@ export class SettingsStore {
     if (resourcesPath) candidates.push(join(resourcesPath, 'secrets.local.json'))
     for (const p of candidates) {
       try {
-        if (existsSync(p)) return JSON.parse(readFileSync(p, 'utf8')) as SeedFile
+        if (existsSync(p)) {
+          const seed = parseSeed(readFileSync(p, 'utf8'))
+          if (Object.keys(seed).length) return seed
+        }
       } catch {
         /* try next candidate */
       }

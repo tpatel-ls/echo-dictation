@@ -1,10 +1,26 @@
 import { describe, it, expect } from 'vitest'
-import { applySeedEndpoints } from '../src/main/store/seed'
+import { applySeedEndpoints, parseSeed } from '../src/main/store/seed'
 import { DEFAULT_SETTINGS, type Settings } from '@shared/types'
 
 function settings(overrides: Partial<Settings> = {}): Settings {
   return { ...DEFAULT_SETTINGS, ...overrides } // defaults ship with empty endpoint URLs
 }
+
+describe('parseSeed', () => {
+  it('parses plain JSON', () => {
+    expect(parseSeed('{"whisperBaseUrl":"https://w/v1"}')).toEqual({ whisperBaseUrl: 'https://w/v1' })
+  })
+
+  it('tolerates a UTF-8 BOM (Notepad / PowerShell write these)', () => {
+    expect(parseSeed('\uFEFF' + '{"whisperBaseUrl":"https://w/v1"}')).toEqual({
+      whisperBaseUrl: 'https://w/v1'
+    })
+  })
+
+  it('returns empty seed for invalid JSON', () => {
+    expect(parseSeed('not json')).toEqual({})
+  })
+})
 
 describe('applySeedEndpoints', () => {
   it('fills an empty whisperBaseUrl from the seed', () => {
