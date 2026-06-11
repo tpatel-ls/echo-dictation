@@ -8,11 +8,13 @@ import {
   type Secrets,
   type Settings
 } from '@shared/types'
+import { applySeedEndpoints, type SeedFile } from './seed'
 
 /**
  * Plain settings live as JSON in userData. API keys are stored separately, encrypted
- * via Electron's safeStorage (OS keychain). On first run, keys are seeded from a
- * gitignored `secrets.local.json` at the project root if present (dev convenience).
+ * via Electron's safeStorage (OS keychain). A gitignored `secrets.local.json` (project
+ * root in dev, bundled resources when packaged) seeds keys on first run and fills any
+ * endpoint URLs the user hasn't set — one file makes a fresh install fully working.
  */
 export class SettingsStore {
   private readonly settingsPath: string
@@ -27,6 +29,11 @@ export class SettingsStore {
     this.secretsPath = join(dir, 'secrets.bin')
     this.settings = this.loadSettings()
     this.secrets = this.loadSecrets()
+    const seeded = applySeedEndpoints(this.settings, this.loadSeed())
+    if (seeded) {
+      this.settings = seeded
+      writeFileSync(this.settingsPath, JSON.stringify(this.settings, null, 2))
+    }
   }
 
   getSettings(): Settings {
@@ -81,21 +88,24 @@ export class SettingsStore {
     }
     const seed = this.loadSeed()
     if (seed.whisperApiKey || seed.claudeApiKey) {
-      const merged = { ...EMPTY_SECRETS, ...seed }
+      const merged: Secrets = {
+        whisperApiKey: seed.whisperApiKey ?? '',
+        claudeApiKey: seed.claudeApiKey ?? ''
+      }
       this.persistSecrets(merged)
       return merged
     }
     return { ...EMPTY_SECRETS }
   }
 
-  private loadSeed(): Partial<Secrets> {
+  private loadSeed(): SeedFile {
     // dev: project root; packaged: bundled into resources via electron-builder.
     const resourcesPath = (process as unknown as { resourcesPath?: string }).resourcesPath
     const candidates = [join(app.getAppPath(), 'secrets.local.json')]
     if (resourcesPath) candidates.push(join(resourcesPath, 'secrets.local.json'))
     for (const p of candidates) {
       try {
-        if (existsSync(p)) return JSON.parse(readFileSync(p, 'utf8')) as Partial<Secrets>
+        if (existsSync(p)) return JSON.parse(readFileSync(p, 'utf8')) as SeedFile
       } catch {
         /* try next candidate */
       }

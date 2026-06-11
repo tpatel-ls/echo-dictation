@@ -30,8 +30,9 @@ endpoints — either:
   `https://your-whisper-host/v1`), API key, and optionally a Claude-compatible base URL +
   key for cleanup, **or**
 - **`secrets.local.json`** at the project root (gitignored — see
-  `secrets.local.json.example`): keys are seeded from it on first run, so a packaged
-  personal build works out of the box.
+  `secrets.local.json.example`): keys *and endpoint URLs* are seeded from it, so a fresh
+  install or packaged personal build works out of the box with zero clicks. Seeded URLs
+  only fill empty settings — anything you set in the UI wins.
 
 Either way, keys are stored **encrypted** via the OS credential store (Electron
 `safeStorage`) — never in plain text, never in version control.
