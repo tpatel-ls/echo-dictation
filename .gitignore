@@ -1,0 +1,12 @@
+node_modules/
+out/
+dist/
+*.log
+.DS_Store
+.vite/
+secrets.local.json
+
+# design scratch
+.playwright-mcp/
+/overlay-*.png
+/echo-*.png

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Echo — light minimal preview</title>
+    <style>
+      :root {
+        --bg: #f6f7f9;
+        --surface: #ffffff;
+        --border: #e7e9ee;
+        --ink: #1a1d24;
+        --muted: #717784;
+        --accent: #4f46e5;
+        --accent-soft: #eef0fe;
+        --good: #16a34a;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { height: 100%; }
+      body {
+        font-family: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
+        background: var(--bg); color: var(--ink); overflow: hidden;
+        -webkit-font-smoothing: antialiased;
+      }
+      .app { display: flex; height: 100vh; }
+
+      /* ── sidebar ── */
+      .side { width: 220px; flex: none; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 14px 12px; }
+      .brand { display: flex; align-items: center; gap: 9px; padding: 8px 8px 16px; }
+      .mark { width: 26px; height: 26px; border-radius: 8px; background: var(--accent); display: flex; align-items: center; justify-content: center; }
+      .mark svg { width: 15px; height: 15px; color: #fff; }
+      .brand b { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+      .nav { display: flex; flex-direction: column; gap: 2px; }
+      .nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; font-size: 13.5px; color: var(--muted); text-decoration: none; }
+      .nav a.on { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+      .nav a svg { width: 16px; height: 16px; }
+      .tip { margin-top: auto; padding: 12px 8px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+      .kbd { padding: 1px 6px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--ink); font-size: 11px; }
+
+      /* ── main ── */
+      .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+      .head { padding: 22px 28px 16px; border-bottom: 1px solid var(--border); }
+      .headrow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+      h1 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; }
+      .stats { display: flex; gap: 18px; font-size: 12.5px; color: var(--muted); }
+      .stats span { display: flex; align-items: center; gap: 6px; }
+      .stats svg { width: 14px; height: 14px; }
+      .search { position: relative; }
+      .search svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--muted); }
+      .search input { width: 100%; padding: 9px 12px 9px 34px; border: 1px solid var(--border); border-radius: 9px; font-size: 13.5px; background: var(--surface); outline: none; color: var(--ink); }
+      .search input::placeholder { color: var(--muted); }
+
+      .list { flex: 1; overflow: auto; padding: 16px 28px; }
+      .rows { display: flex; flex-direction: column; gap: 10px; max-width: 720px; }
+      .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+      .meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-bottom: 7px; flex-wrap: wrap; }
+      .badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 10.5px; font-weight: 500; }
+      .badge svg { width: 10px; height: 10px; }
+      .body { font-size: 13.5px; line-height: 1.55; color: #2b2f38; }
+      .acts { display: flex; gap: 4px; margin-top: 11px; }
+      .act { display: flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 7px; font-size: 12px; color: var(--muted); background: transparent; border: none; cursor: pointer; }
+      .act svg { width: 14px; height: 14px; }
+      .act:hover { background: var(--bg); color: var(--ink); }
+
+      /* ── overlay pill (light glass) ── */
+      .stage { position: absolute; left: 220px; right: 0; bottom: 26px; display: flex; justify-content: center; pointer-events: none; }
+      .pill {
+        display: flex; align-items: center; gap: 13px; height: 50px; padding: 0 19px; border-radius: 25px;
+        background: rgba(255,255,255,0.86);
+        backdrop-filter: blur(20px) saturate(150%); -webkit-backdrop-filter: blur(20px) saturate(150%);
+        border: 1px solid rgba(26,29,36,0.07);
+        box-shadow: 0 12px 34px -10px rgba(26,29,46,0.22), 0 3px 10px -3px rgba(26,29,46,0.12), inset 0 1px 0 rgba(255,255,255,0.9);
+      }
+      .rec { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.14); animation: dot 2.1s ease-in-out infinite; }
+      .wave { display: flex; align-items: center; gap: 2.5px; height: 28px; }
+      .wave i { width: 3px; border-radius: 3px; background: linear-gradient(180deg, #6366f1, #4f46e5); }
+      .time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+      @keyframes dot { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="side">
+        <div class="brand">
+          <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 2v20M7 6v12M17 6v12M2 10v4M22 10v4"/></svg></span>
+          <b>Echo</b>
+        </div>
+        <nav class="nav">
+          <a class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 14l3-3 3 3 5-5"/></svg>History</a>
+          <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M8 16V9M13 16V5M18 16v-4"/></svg>Stats</a>
+          <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7 7 0 0 0-1.7-1L14.5 2h-5l-.3 2.5a7 7 0 0 0-1.7 1l-2.4-1-2 3.5L3.1 11a7 7 0 0 0 0 2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 1.7 1l.3 2.5h5l.3-2.5a7 7 0 0 0 1.7-1l2.4 1 2-3.5-2-1.5a7 7 0 0 0 .1-1z"/></svg>Settings</a>
+          <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 2h6M12 2v6l4 8a2 2 0 0 1-2 3H10a2 2 0 0 1-2-3l4-8"/></svg>Diagnostics</a>
+        </nav>
+        <div class="tip">Hold <span class="kbd">Right Ctrl</span> anywhere to dictate.</div>
+      </aside>
+
+      <main class="main">
+        <header class="head">
+          <div class="headrow">
+            <h1>History</h1>
+            <div class="stats">
+              <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>1,240 words today</span>
+              <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>8m saved</span>
+              <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2s5 4 5 9a5 5 0 0 1-10 0c0-2 1-3 1-3s4 2 4-6z"/></svg>3-day streak</span>
+            </div>
+          </div>
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/></svg>
+            <input placeholder="Search transcripts…" />
+          </div>
+        </header>
+        <div class="list">
+          <div class="rows">
+            <div class="card">
+              <div class="meta"><span>2:14p</span>·<span>VS Code</span>·<span>42 words</span>·<span>1.2s</span><span class="badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2l2 6 6 .5-4.5 4 1.5 6-5-3.2-5 3.2 1.5-6L4 8.5 10 8z"/></svg>cleaned</span></div>
+              <div class="body">Let's refactor the auth module before we ship the release, and make sure the token refresh path is covered by tests.</div>
+              <div class="acts"><button class="act">copy</button><button class="act">re-insert</button><button class="act">clean up</button><button class="act">delete</button></div>
+            </div>
+            <div class="card">
+              <div class="meta"><span>2:09p</span>·<span>Slack</span>·<span>18 words</span>·<span>0.9s</span></div>
+              <div class="body">Sounds good, I'll send over the updated figures by end of day and loop in the design team.</div>
+              <div class="acts"><button class="act">copy</button><button class="act">re-insert</button><button class="act">clean up</button><button class="act">delete</button></div>
+            </div>
+            <div class="card">
+              <div class="meta"><span>1:51p</span>·<span>Chrome</span>·<span>7 words</span>·<span>0.6s</span></div>
+              <div class="body">Remind me to book the flights tomorrow.</div>
+              <div class="acts"><button class="act">copy</button><button class="act">re-insert</button><button class="act">clean up</button><button class="act">delete</button></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div class="stage">
+      <div class="pill">
+        <span class="rec"></span>
+        <div class="wave" id="wave"></div>
+        <span class="time">0:04</span>
+      </div>
+    </div>
+
+    <script>
+      const N = 23
+      const el = document.getElementById('wave')
+      const bars = []
+      for (let i = 0; i < N; i++) { const b = document.createElement('i'); el.appendChild(b); bars.push(b) }
+      let t = 0; const sm = new Array(N).fill(4)
+      function frame() {
+        t += 0.055
+        for (let i = 0; i < N; i++) {
+          const c = 1 - Math.abs(i - (N - 1) / 2) / ((N - 1) / 2)
+          const env = Math.pow(0.4 + c * 0.6, 1.3)
+          const v = (Math.sin(t * 2.1 + i * 0.55) * 0.5 + 0.5) * (Math.sin(t * 0.9 + i * 0.25) * 0.4 + 0.6)
+          sm[i] += (4 + v * env * 24 - sm[i]) * 0.35
+          bars[i].style.height = sm[i].toFixed(1) + 'px'
+        }
+        requestAnimationFrame(frame)
+      }
+      frame()
+    </script>
+  </body>
+</html>

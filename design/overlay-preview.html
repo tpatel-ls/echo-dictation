@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Echo overlay — design preview</title>
+    <style>
+      :root { --ink: #f1f3fa; --muted: #99a0b3; --accent: #828dff; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { height: 100%; }
+      body {
+        font-family: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
+        background: #090b10; color: var(--ink); overflow: hidden;
+      }
+      .desktop {
+        position: fixed; inset: 0;
+        background:
+          radial-gradient(110% 70% at 14% 10%, #1c2b54 0%, transparent 46%),
+          radial-gradient(110% 80% at 86% 14%, #3a2356 0%, transparent 50%),
+          radial-gradient(60% 50% at 50% 52%, rgba(120,140,200,0.18) 0%, transparent 60%),
+          #090b10;
+      }
+      .mock {
+        position: absolute; border-radius: 14px; overflow: hidden;
+        border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.4); padding: 16px 18px;
+      }
+      .mock-a { left: 5%; top: 12%; width: 36%; height: 56%; }
+      .mock-b { right: 5%; top: 16%; width: 38%; height: 64%;
+        background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.01)); }
+      .ln { height: 9px; border-radius: 5px; margin: 9px 0;
+        background: linear-gradient(90deg, rgba(255,255,255,0.16), rgba(255,255,255,0.04)); }
+      .ln.s { width: 60%; } .ln.m { width: 82%; } .ln.l { width: 96%; }
+      .ln.accent { background: linear-gradient(90deg, #828dff, rgba(130,141,255,0.1)); width: 44%; }
+      .ln.green { background: linear-gradient(90deg, #3ecf8e, rgba(62,207,142,0.1)); width: 52%; }
+
+      .stage {
+        position: fixed; inset: 0; zoom: 2.0;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px;
+      }
+      .state { display: flex; flex-direction: column; align-items: center; gap: 11px; }
+      .label { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+
+      /* ── crisp dark frosted glass ── */
+      .capsule {
+        position: relative; display: flex; align-items: center; gap: 14px;
+        height: 56px; padding: 0 21px; border-radius: 28px;
+        background: linear-gradient(180deg, rgba(28,30,40,0.80), rgba(13,14,20,0.88));
+        backdrop-filter: blur(28px) saturate(155%);
+        -webkit-backdrop-filter: blur(28px) saturate(155%);
+        box-shadow:
+          0 24px 50px -14px rgba(0,0,0,0.74),
+          0 6px 18px -6px rgba(0,0,0,0.55),
+          0 0 0 1px rgba(255,255,255,0.07),
+          inset 0 1.4px 0 rgba(255,255,255,0.20),
+          inset 0 -1px 1px rgba(0,0,0,0.4);
+      }
+      .capsule::before {
+        content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+        background: linear-gradient(180deg, rgba(255,255,255,0.09), transparent 40%);
+        -webkit-mask: linear-gradient(#000, transparent 50%);
+        mask: linear-gradient(#000, transparent 50%);
+      }
+      .glow {
+        position: absolute; left: 50%; bottom: -10px; transform: translateX(-50%); z-index: -1;
+        width: 70%; height: 36px; border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(130,141,255,0.5), transparent);
+        filter: blur(16px); opacity: 0;
+      }
+      .listening .glow { opacity: 0.85; animation: breathe 4s ease-in-out infinite; }
+      .transcribing .glow { opacity: 0.55; }
+
+      .rec {
+        width: 8px; height: 8px; border-radius: 50%; flex: none;
+        background: #ff5d70; box-shadow: 0 0 9px rgba(255,93,112,0.8);
+        animation: dotBreathe 2.1s ease-in-out infinite;
+      }
+      .wave { position: relative; display: flex; align-items: center; gap: 2.5px; height: 30px; }
+      .wave i {
+        display: block; width: 3px; height: 4px; border-radius: 3px;
+        background: linear-gradient(180deg, #fdfdff, #aeb6ee);
+        box-shadow: 0 0 7px rgba(160,170,235,0.3); will-change: height;
+      }
+      .transcribing .wave i { background: linear-gradient(180deg, #aab2e0, #7882c8); box-shadow: none; opacity: 0.85; }
+      .sweep { display: none; }
+      .time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 28px; text-align: right; }
+      .check {
+        width: 22px; height: 22px; border-radius: 50%; flex: none;
+        display: flex; align-items: center; justify-content: center;
+        background: radial-gradient(circle at 50% 35%, rgba(78,227,160,0.30), rgba(62,207,142,0.12));
+        color: #4ee3a0; box-shadow: 0 0 0 1px rgba(62,207,142,0.22), 0 0 16px rgba(62,207,142,0.22);
+      }
+      .check svg { width: 13px; height: 13px; }
+      .inserted-text { font-size: 13px; color: rgba(241,243,250,0.9); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      @keyframes breathe { 0%,100% { opacity: 0.45; } 50% { opacity: 0.95; } }
+      @keyframes dotBreathe { 0%,100% { opacity: 0.55; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }
+      @keyframes sweep { 0% { background-position: -60% 0; } 100% { background-position: 160% 0; } }
+    </style>
+  </head>
+  <body>
+    <div class="desktop">
+      <div class="mock mock-a">
+        <div class="ln l"></div><div class="ln accent"></div><div class="ln m"></div>
+        <div class="ln s"></div><div class="ln l"></div><div class="ln green"></div><div class="ln m"></div>
+      </div>
+      <div class="mock mock-b">
+        <div class="ln m"></div><div class="ln l"></div><div class="ln s"></div><div class="ln l"></div>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="state">
+        <span class="label">Listening</span>
+        <div class="capsule listening">
+          <span class="glow"></span><span class="rec"></span>
+          <div class="wave" id="wave-listen"></div><span class="time">0:04</span>
+        </div>
+      </div>
+      <div class="state">
+        <span class="label">Transcribing</span>
+        <div class="capsule transcribing">
+          <span class="glow"></span>
+          <div class="wave" id="wave-flow"><span class="sweep"></span></div>
+        </div>
+      </div>
+      <div class="state">
+        <span class="label">Inserted</span>
+        <div class="capsule">
+          <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+          <span class="inserted-text">send him the report by Friday</span>
+        </div>
+      </div>
+    </div>
+    <script>
+      const BARS = 23
+      function build(id) {
+        const el = document.getElementById(id)
+        const sweep = el.querySelector('.sweep')
+        const bars = []
+        for (let i = 0; i < BARS; i++) { const b = document.createElement('i'); el.insertBefore(b, sweep); bars.push(b) }
+        return bars
+      }
+      const listen = build('wave-listen'), flow = build('wave-flow')
+      let t = 0; const sm = new Array(BARS).fill(4)
+      function frame() {
+        t += 0.055
+        for (let i = 0; i < BARS; i++) {
+          const c = 1 - Math.abs(i - (BARS - 1) / 2) / ((BARS - 1) / 2)
+          const env = Math.pow(0.4 + c * 0.6, 1.3)
+          const v = (Math.sin(t * 2.1 + i * 0.55) * 0.5 + 0.5) * (Math.sin(t * 0.9 + i * 0.25) * 0.4 + 0.6)
+          sm[i] += (4 + v * env * 26 - sm[i]) * 0.35
+          listen[i].style.height = sm[i].toFixed(1) + 'px'
+        }
+        for (let i = 0; i < BARS; i++) flow[i].style.height = (4 + (Math.sin(t * 2.6 - i * 0.4) * 0.5 + 0.5) * 7).toFixed(1) + 'px'
+        requestAnimationFrame(frame)
+      }
+      frame()
+    </script>
+  </body>
+</html>

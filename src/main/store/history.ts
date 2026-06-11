@@ -1,0 +1,177 @@
+import type { Database, SqlValue } from 'sql.js'
+import type { ListOpts, NewTranscript, Stats, Transcript, TranscriptStatus } from '@shared/types'
+import { estimatedSecondsSaved, wordCount } from '@shared/format'
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS transcripts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at INTEGER NOT NULL,
+  raw_text TEXT NOT NULL,
+  cleaned_text TEXT,
+  duration_ms INTEGER NOT NULL,
+  word_count INTEGER NOT NULL,
+  latency_ms INTEGER NOT NULL,
+  app_context TEXT NOT NULL,
+  model TEXT NOT NULL,
+  status TEXT NOT NULL,
+  audio_path TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_transcripts_created ON transcripts(created_at DESC, id DESC);
+`
+
+const DAY_MS = 86_400_000
+
+/** Pure SQL history store over a sql.js Database. No filesystem — testable in memory. */
+export class HistoryStore {
+  constructor(
+    private db: Database,
+    private onChange: () => void = () => {}
+  ) {
+    this.db.run(SCHEMA)
+  }
+
+  insert(t: NewTranscript): Transcript {
+    this.db.run(
+      `INSERT INTO transcripts
+       (created_at, raw_text, cleaned_text, duration_ms, word_count, latency_ms, app_context, model, status, audio_path)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [
+        t.created_at,
+        t.raw_text,
+        t.cleaned_text,
+        t.duration_ms,
+        t.word_count,
+        t.latency_ms,
+        t.app_context,
+        t.model,
+        t.status,
+        t.audio_path
+      ]
+    )
+    const id = this.scalar('SELECT last_insert_rowid()', [])
+    this.onChange()
+    return { id, ...t }
+  }
+
+  get(id: number): Transcript | null {
+    return this.query('SELECT * FROM transcripts WHERE id = ?', [id])[0] ?? null
+  }
+
+  list(opts: ListOpts): Transcript[] {
+    return this.query('SELECT * FROM transcripts ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?', [
+      opts.limit,
+      opts.offset
+    ])
+  }
+
+  search(q: string, opts: ListOpts): Transcript[] {
+    const like = `%${q}%`
+    return this.query(
+      `SELECT * FROM transcripts
+       WHERE raw_text LIKE ? OR cleaned_text LIKE ?
+       ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+      [like, like, opts.limit, opts.offset]
+    )
+  }
+
+  /**
+   * Apply a user edit to the text the dashboard displays: cleaned_text when present,
+   * raw_text otherwise. Keeps word_count in sync with what was actually kept.
+   */
+  updateEdited(id: number, text: string): Transcript | null {
+    const cur = this.get(id)
+    if (!cur) return null
+    const column = cur.cleaned_text !== null ? 'cleaned_text' : 'raw_text'
+    this.db.run(`UPDATE transcripts SET ${column} = ?, word_count = ? WHERE id = ?`, [
+      text,
+      wordCount(text),
+      id
+    ])
+    this.onChange()
+    return this.get(id)
+  }
+
+  updateCleaned(id: number, cleaned: string): Transcript | null {
+    this.db.run('UPDATE transcripts SET cleaned_text = ? WHERE id = ?', [cleaned, id])
+    this.onChange()
+    return this.get(id)
+  }
+
+  delete(id: number): void {
+    this.db.run('DELETE FROM transcripts WHERE id = ?', [id])
+    this.onChange()
+  }
+
+  stats(now: number): Stats {
+    const startToday = startOfDay(now)
+    return {
+      totalTranscripts: this.scalar(`SELECT COUNT(*) FROM transcripts WHERE status='ok'`, []),
+      totalWords: this.scalar(`SELECT COALESCE(SUM(word_count),0) FROM transcripts WHERE status='ok'`, []),
+      todayCount: this.scalar(`SELECT COUNT(*) FROM transcripts WHERE status='ok' AND created_at >= ?`, [
+        startToday
+      ]),
+      todayWords: this.scalar(
+        `SELECT COALESCE(SUM(word_count),0) FROM transcripts WHERE status='ok' AND created_at >= ?`,
+        [startToday]
+      ),
+      estSecondsSaved: estimatedSecondsSaved(
+        this.scalar(`SELECT COALESCE(SUM(word_count),0) FROM transcripts WHERE status='ok'`, [])
+      ),
+      streakDays: this.streak(now)
+    }
+  }
+
+  private streak(now: number): number {
+    const stmt = this.db.prepare(`SELECT created_at FROM transcripts WHERE status='ok' ORDER BY created_at DESC`)
+    const days = new Set<number>()
+    while (stmt.step()) days.add(startOfDay(stmt.get()[0] as number))
+    stmt.free()
+    let streak = 0
+    let cursor = startOfDay(now)
+    while (days.has(cursor)) {
+      streak++
+      cursor -= DAY_MS
+    }
+    return streak
+  }
+
+  private query(sql: string, params: SqlValue[]): Transcript[] {
+    const stmt = this.db.prepare(sql)
+    stmt.bind(params)
+    const rows: Transcript[] = []
+    while (stmt.step()) rows.push(toTranscript(stmt.getAsObject()))
+    stmt.free()
+    return rows
+  }
+
+  private scalar(sql: string, params: SqlValue[]): number {
+    const stmt = this.db.prepare(sql)
+    stmt.bind(params)
+    let v = 0
+    if (stmt.step()) v = (stmt.get()[0] as number) ?? 0
+    stmt.free()
+    return v
+  }
+}
+
+function toTranscript(o: Record<string, SqlValue>): Transcript {
+  return {
+    id: o.id as number,
+    created_at: o.created_at as number,
+    raw_text: o.raw_text as string,
+    cleaned_text: (o.cleaned_text as string | null) ?? null,
+    duration_ms: o.duration_ms as number,
+    word_count: o.word_count as number,
+    latency_ms: o.latency_ms as number,
+    app_context: o.app_context as string,
+    model: o.model as string,
+    status: o.status as TranscriptStatus,
+    audio_path: (o.audio_path as string | null) ?? null
+  }
+}
+
+function startOfDay(ts: number): number {
+  const d = new Date(ts)
+  d.setHours(0, 0, 0, 0)
+  return d.getTime()
+}

@@ -1,0 +1,36 @@
+appId: com.tanay.echo
+productName: Echo
+# uiohook-napi / nut.js ship prebuilt N-API binaries (ABI-stable) and sql.js is WASM,
+# so nothing needs recompiling — skip the node-gyp rebuild (no Visual Studio required).
+npmRebuild: false
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+asarUnpack:
+  - '**/node_modules/sql.js/**'
+  - '**/node_modules/uiohook-napi/**'
+  - '**/node_modules/@nut-tree-fork/**'
+extraResources:
+  - from: node_modules/sql.js/dist/sql-wasm.wasm
+    to: sql-wasm/sql-wasm.wasm
+  # Seeds API keys on first run so the packaged app works out of the box (personal
+  # build). Remove this + secrets.local.json to require entering keys in Settings.
+  - from: secrets.local.json
+    to: secrets.local.json
+win:
+  # Skip signing + rcedit editing — both need the winCodeSign toolchain, whose macOS
+  # symlinks can't unpack without symlink privilege on this machine. The exe keeps the
+  # default Electron icon but is fully functional.
+  signAndEditExecutable: false
+  target:
+    - nsis
+  artifactName: ${productName}-${version}-setup.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Echo
