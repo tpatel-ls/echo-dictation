@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { MaskedSecrets, Settings as SettingsType } from '@shared/types'
+import { triggerLabel, triggerOptions } from '@shared/trigger'
 import { api } from '../lib/api'
 import { Field, TextInput, Select } from '../components/Field'
 import { Toggle } from '../components/Toggle'
@@ -45,17 +46,16 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
           <Section title="Dictation">
             <Field
               label="Trigger key"
-              hint="Hold this key anywhere to dictate. Right Ctrl keeps your normal Ctrl shortcuts free."
+              hint={
+                api.platform === 'darwin'
+                  ? 'Hold this key anywhere to dictate. Right ⌘ keeps your normal shortcuts free.'
+                  : 'Hold this key anywhere to dictate. Right Ctrl keeps your normal Ctrl shortcuts free.'
+              }
             >
               <Select
                 value={s.triggerKey}
                 onChange={(v) => void patch({ triggerKey: v })}
-                options={[
-                  { value: 'RightControl', label: 'Right Ctrl' },
-                  { value: 'LeftControl', label: 'Left Ctrl' },
-                  { value: 'CapsLock', label: 'Caps Lock' },
-                  { value: 'F8', label: 'F8' }
-                ]}
+                options={triggerOptions(api.platform).map((k) => ({ value: k, label: triggerLabel(k) }))}
               />
             </Field>
             <Field label="Minimum hold" hint="Ignore taps shorter than this — avoids accidental triggers.">

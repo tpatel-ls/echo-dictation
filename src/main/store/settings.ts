@@ -5,9 +5,11 @@ import {
   DEFAULT_SETTINGS,
   EMPTY_SECRETS,
   type MaskedSecrets,
+  type OSPlatform,
   type Secrets,
   type Settings
 } from '@shared/types'
+import { defaultTriggerKey } from '@shared/trigger'
 import { applySeedEndpoints, parseSeed, type SeedFile } from './seed'
 
 /**
@@ -71,7 +73,9 @@ export class SettingsStore {
     } catch {
       /* fall through to defaults */
     }
-    return { ...DEFAULT_SETTINGS }
+    // Fresh install: the default trigger key depends on the keyboard. macOS has no
+    // Right Ctrl, so a Windows default of RightControl would be undictatable there.
+    return { ...DEFAULT_SETTINGS, triggerKey: defaultTriggerKey(process.platform as OSPlatform) }
   }
 
   private loadSecrets(): Secrets {

@@ -6,6 +6,7 @@ import { DictationController } from './dictation'
 import { HotkeyListener } from './hotkey/listener'
 import { registerIpc } from './ipc'
 import { createTray } from './tray'
+import { showMacOnboardingIfNeeded } from './permissions'
 import { IPC, type Settings } from '@shared/types'
 
 // Keep the always-on app alive through stray errors — one unhandled exception must
@@ -84,6 +85,10 @@ async function main(): Promise<void> {
   } catch (e) {
     console.error('Global hotkey listener failed to start:', e)
   }
+
+  // macOS only: starting the key hook above triggers the Input Monitoring prompt; this
+  // fires the Accessibility + Microphone prompts and guides the user to the right panes.
+  void showMacOnboardingIfNeeded()
 
   const onSettingsChanged = (s: Settings): void => {
     listener.update({ minHoldMs: s.minHoldMs, cancelOnOtherKey: s.cancelOnOtherKey }, s.triggerKey)

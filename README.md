@@ -1,9 +1,14 @@
 # Echo
 
-A Wispr-Flow-style push-to-talk dictation app for Windows. **Hold Right Ctrl** anywhere
-in Windows to dictate; release to insert the transcribed text at your cursor. A floating
-pill appears at the center-bottom of the screen while you talk, and a dashboard keeps a
-searchable history of everything you've dictated.
+A Wispr-Flow-style push-to-talk dictation app for **Windows & macOS**. **Hold a key**
+(Right Ctrl on Windows, Right ⌘ on macOS) anywhere to dictate; release to insert the
+transcribed text at your cursor. A floating pill appears at the center-bottom of the
+screen while you talk, and a dashboard keeps a searchable history of everything you've
+dictated.
+
+> **Phones (iOS / Android):** Echo is a desktop app, but it talks to a plain Whisper
+> endpoint — so a voice keyboard on your phone can share the *same* self-hosted node. See
+> [Dictating on your phone](#dictating-on-your-phone-ios--android).
 
 Bring your own speech-to-text: Echo talks to **any OpenAI-compatible Whisper endpoint** —
 a self-hosted node (faster-whisper-server, speaches, LocalAI…) or OpenAI itself. Optional
@@ -43,10 +48,10 @@ Hold **Right Ctrl**, speak, release — your words appear wherever your cursor i
 
 | Action | Result |
 |---|---|
-| **Hold Right Ctrl** | Pill appears, mic records (Left Ctrl stays normal for shortcuts) |
+| **Hold the trigger key** (Right Ctrl / Right ⌘) | Pill appears, mic records (other keys stay normal for shortcuts) |
 | **Release** | Audio → Whisper → dictionary fixes → text pasted at your cursor → history |
-| Tap Right Ctrl (<200ms) | Ignored (accidental tap) |
-| Press another key while holding | Cancels — treated as a Ctrl+key shortcut |
+| Tap it (<200ms) | Ignored (accidental tap) |
+| Press another key while holding | Cancels — treated as a normal shortcut |
 
 Open the dashboard from the tray icon to browse/search history, manage your dictionary,
 see stats, change settings, or run diagnostics. Each transcript can be copied, re-inserted,
@@ -88,8 +93,9 @@ All in **Settings** (dashboard):
   pre-opens it so the first key-press has zero acquisition latency.
 - **Keep audio recordings** — save each dictation's WAV so you can replay it from History
   (off by default). Deleting a transcript also deletes its audio file.
-- **Trigger key** (Right Ctrl / Left Ctrl / Caps Lock / F8), **min hold**, **launch at
-  login**, **overlay offset**.
+- **Trigger key** — Windows: Right Ctrl / Left Ctrl / Caps Lock / F8 · macOS: Right ⌘ /
+  Right ⌥ / Left ⌘ / Caps Lock / F8. Plus **min hold**, **launch at login**, **overlay
+  offset**.
 
 ## Architecture
 
@@ -116,11 +122,11 @@ src/
   window is re-focused before pasting — so text always lands in the right place.
 - **Insert** = set clipboard → re-focus target → Ctrl+V (`nut.js`) → restore your previous
   clipboard.
-- **History + dictionary** live in `sql.js` (SQLite in WASM) at
-  `%APPDATA%/echo/history.sqlite`, persisted atomically. No native compilation anywhere —
-  `npm install` needs no build tools.
+- **History + dictionary** live in `sql.js` (SQLite in WASM), persisted atomically at
+  `%APPDATA%\echo\history.sqlite` (Windows) or `~/Library/Application Support/echo/history.sqlite`
+  (macOS). No native compilation anywhere — `npm install` needs no build tools.
 
-## Install & run always-on (autostart at boot)
+## Install & run always-on — Windows (autostart at boot)
 
 ```bash
 npm run pack
@@ -148,6 +154,71 @@ enable **Windows Developer Mode** (Settings → System → For developers) or ru
 **Administrator** terminal. `npm run pack` (above) avoids this entirely. The exe is
 unsigned.
 
+## Install & run always-on — macOS
+
+macOS apps must be built **on a Mac** — electron-builder can't cross-compile them from
+Windows. On any Mac (a spare Mac mini on your network is perfect):
+
+```bash
+git clone <your-repo-url> echo && cd echo
+cp secrets.local.json.example secrets.local.json   # add your Whisper key + URL
+npm install
+npm run pack:mac     # → dist/mac*/Echo.app   (or `npm run dist:mac` for a .dmg)
+```
+
+Drag **Echo.app** to `/Applications` and open it. It runs as a **menu-bar app** (top-right
+of the screen — no Dock icon), exactly like the Windows tray app.
+
+**First launch — grant three permissions.** Echo triggers the prompts automatically; switch
+each one on in **System Settings → Privacy & Security**, then **quit Echo from the menu bar
+and reopen it** (macOS only honors a new key-tap permission on a fresh launch):
+
+| Permission | Why Echo needs it |
+|---|---|
+| **Accessibility** | paste transcribed text into other apps |
+| **Input Monitoring** | detect your hold-to-talk key anywhere |
+| **Microphone** | hear you |
+
+If the hotkey does nothing, it's almost always Input Monitoring — check the **Diagnostics**
+page, which shows the live permission state.
+
+**Gatekeeper:** the build is unsigned (no Apple Developer account required), so the first
+time, **right-click Echo.app → Open** to get past “Apple cannot check it for malware.” Just
+once.
+
+**Trigger key:** macOS defaults to **Right ⌘** (Apple keyboards have no Right Ctrl). Change
+it in **Settings → Trigger key** — Right ⌘, Right ⌥, Left ⌘, Caps Lock, or F8. Launch-at-
+login and everything else behave just like Windows.
+
+## Dictating on your phone (Android / iOS)
+
+Echo itself is desktop-only, but its entire backend is just an **OpenAI-compatible Whisper
+endpoint** — so a voice keyboard on your phone can use the very same self-hosted node:
+
+1. **Reach your node from the phone.** Install **Tailscale**, sign into your tailnet, and
+   `https://your-whisper-host/v1` becomes reachable on mobile data.
+2. **Install a Whisper voice keyboard:**
+   - **Android** — [whisper-to-input](https://github.com/j3soon/whisper-to-input) (open
+     source). In its settings, set the endpoint to your node's `/v1` URL and paste your API
+     key, then enable it under *System → Languages & input → On-screen keyboard*. Tap the
+     mic on the keyboard to dictate into any app.
+   - **iOS** — Apple sandboxes third-party keyboards tightly; the practical route is an
+     **Apple Shortcut** that records audio and POSTs it to your node's
+     `/v1/audio/transcriptions`, then pastes the result.
+3. **Carry your spellings over.** On the **Dictionary** page, click **Export** and open the
+   JSON — paste its `prompt` value into the keyboard's *prompt / initial-prompt* field (if
+   it has one). Your phone now shares Echo's *bias* ("prefer Bryan, not Brian"). The
+   deterministic find-and-replace layer stays desktop-only.
+
+> **Echo ↔ Echo (Windows ↔ Mac):** your whole dictionary lives in `history.sqlite`. Copy it
+> between machines — Windows `%APPDATA%\echo\` ↔ macOS `~/Library/Application Support/echo/`
+> — and both installs share the same learned corrections instantly.
+
+**Full parity (advanced).** To get the find-and-replace corrections on *every* device, front
+your Whisper node with a tiny proxy that injects the bias prompt and applies the dictionary
+server-side (it can reuse `src/shared/dictionary.ts` directly), then point every client at
+the proxy instead of the node. Worth it only if you dictate from several devices daily.
+
 ## Scripts
 
 | Command | Does |
@@ -158,6 +229,8 @@ unsigned.
 | `npm run build` | Bundle main/preload/renderers |
 | `npm run pack` | Build standalone `dist/win-unpacked/Echo.exe` (no admin) |
 | `npm run dist` | Build the NSIS installer (needs Developer Mode / admin) |
+| `npm run pack:mac` | Build `Echo.app` — **run on a Mac** |
+| `npm run dist:mac` | Build a macOS `.dmg` — **run on a Mac** |
 | `node scripts/test-whisper.mjs <key> <url>` | Probe a Whisper endpoint from the CLI |
 | `node scripts/make-icons.mjs` | Regenerate app + tray icons |
 | `npx electron scripts/smoke-electron.cjs` | Verify native modules load (no UI) |
@@ -174,7 +247,12 @@ unsigned.
   Check the **Global hotkey** diagnostic.
 - **No transcript / "No speech detected"** — check the **Microphone** diagnostic and
   Windows mic permissions (Settings → Privacy → Microphone → Desktop apps).
-- **Right Ctrl conflicts** — change the trigger key in Settings (Left Ctrl, Caps Lock, F8).
+- **Trigger key conflicts** — change it in Settings (Windows: Right/Left Ctrl, Caps Lock,
+  F8 · macOS: Right ⌘, Right ⌥, Left ⌘, Caps Lock, F8).
+- **macOS: hotkey or paste does nothing** — a privacy permission is missing. Grant
+  **Accessibility**, **Input Monitoring**, and **Microphone** in System Settings → Privacy
+  & Security, then quit Echo from the menu bar and reopen it. The Diagnostics page shows
+  which one is missing.
 
 ## Security notes
 

@@ -2,6 +2,7 @@ import { clipboard } from 'electron'
 import { transcribe } from './transcription/whisper'
 import { cleanup } from './transcription/claude'
 import { floatToWav } from '@shared/wav'
+import { checkMacPermissions, isMac } from './permissions'
 import type { DiagName, DiagResult } from '@shared/types'
 import type { SettingsStore } from './store/settings'
 
@@ -36,14 +37,21 @@ export async function runDiagnostic(
         clipboard.writeText('echo-diagnostic')
         const roundTrip = clipboard.readText() === 'echo-diagnostic'
         clipboard.writeText(prev)
-        return roundTrip
-          ? result(name, true, 'Clipboard read/write OK. Ctrl+V is sent into the focused field when you dictate.', t0)
-          : result(name, false, 'Clipboard round-trip failed.', t0)
+        if (!roundTrip) return result(name, false, 'Clipboard round-trip failed.', t0)
+        // On macOS the synthetic paste keystroke needs Accessibility permission.
+        if (isMac() && !checkMacPermissions().accessibility) {
+          return result(name, false, 'Grant Accessibility (System Settings → Privacy) so Echo can paste.', t0)
+        }
+        const chord = isMac() ? '⌘V' : 'Ctrl+V'
+        return result(name, true, `Clipboard OK. ${chord} is sent into the focused field when you dictate.`, t0)
       }
-      case 'hotkey':
-        return hotkeyRunning
-          ? result(name, true, `Global keyboard hook running. Trigger: ${s.triggerKey}.`, t0)
-          : result(name, false, 'Keyboard hook is not running.', t0)
+      case 'hotkey': {
+        if (!hotkeyRunning) return result(name, false, 'Keyboard hook is not running.', t0)
+        const base = `Global keyboard hook running. Trigger: ${s.triggerKey}.`
+        // On macOS the hook only receives keys once Input Monitoring is granted.
+        const note = isMac() ? ' Requires Input Monitoring permission (quit & reopen after granting).' : ''
+        return result(name, true, base + note, t0)
+      }
       case 'mic':
         return result(name, false, 'Mic is tested directly from this window.', t0)
       default:

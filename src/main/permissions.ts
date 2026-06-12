@@ -1,0 +1,97 @@
+import { systemPreferences, shell, dialog } from 'electron'
+
+/**
+ * macOS privacy onboarding. To dictate into any app, Echo needs three permissions the
+ * OS withholds by default:
+ *   • Accessibility   — to post the synthetic ⌘V that pastes text (nut.js)
+ *   • Input Monitoring — to receive the global hold-to-talk key (uiohook event tap)
+ *   • Microphone       — to hear you
+ * Windows and Linux need none of this (the mic is granted via Chromium's own prompt),
+ * so every function here is a no-op off macOS.
+ */
+
+export type MicStatus = 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown'
+
+export interface MacPermissions {
+  accessibility: boolean
+  microphone: MicStatus
+}
+
+export function isMac(): boolean {
+  return process.platform === 'darwin'
+}
+
+/** Read current macOS privacy status. Off macOS, report everything granted. */
+export function checkMacPermissions(): MacPermissions {
+  if (!isMac()) return { accessibility: true, microphone: 'granted' }
+  return {
+    accessibility: systemPreferences.isTrustedAccessibilityClient(false),
+    microphone: systemPreferences.getMediaAccessStatus('microphone') as MicStatus
+  }
+}
+
+/**
+ * Fire the OS's native permission prompts. `isTrustedAccessibilityClient(true)` shows
+ * Apple's Accessibility dialog when not yet trusted; `askForMediaAccess` shows the mic
+ * prompt. Input Monitoring is triggered separately by starting the key hook. Never
+ * throws — any failure surfaces later in Diagnostics.
+ */
+export async function primeMacPermissions(): Promise<void> {
+  if (!isMac()) return
+  try {
+    await systemPreferences.askForMediaAccess('microphone')
+  } catch {
+    /* ignore */
+  }
+  try {
+    systemPreferences.isTrustedAccessibilityClient(true)
+  } catch {
+    /* ignore */
+  }
+}
+
+export type PrivacyPane = 'Accessibility' | 'ListenEvent' | 'Microphone'
+
+/** Open a specific macOS “Privacy & Security” pane in System Settings. */
+export function openPrivacyPane(pane: PrivacyPane): void {
+  if (!isMac()) return
+  void shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?Privacy_${pane}`)
+}
+
+/** Pure one-line summary of permission state for the Diagnostics page. */
+export function permissionSummary(p: MacPermissions): { ok: boolean; detail: string } {
+  const ok = p.accessibility && p.microphone === 'granted'
+  const detail = `Accessibility: ${p.accessibility ? 'granted' : 'NOT granted'} · Microphone: ${p.microphone}`
+  return { ok, detail }
+}
+
+/**
+ * First-run guide. If Accessibility or Microphone is missing, fire the native prompts
+ * and then show one dialog pointing the user at the exact System Settings panes. Gated
+ * on the checkable permissions, so it stops nagging once those are granted.
+ */
+export async function showMacOnboardingIfNeeded(): Promise<void> {
+  if (!isMac()) return
+  const p = checkMacPermissions()
+  if (p.accessibility && p.microphone === 'granted') return
+
+  await primeMacPermissions()
+
+  const res = await dialog.showMessageBox({
+    type: 'info',
+    title: 'Finish setting up Echo',
+    message: 'Echo needs three macOS permissions to dictate anywhere',
+    detail:
+      'Open each in System Settings → Privacy & Security, switch Echo on, then quit and ' +
+      'reopen Echo from the menu-bar icon (⌘ keys need a restart to take effect):\n\n' +
+      '•  Accessibility — paste text into other apps\n' +
+      '•  Input Monitoring — detect your hold-to-talk key\n' +
+      '•  Microphone — hear you\n\n' +
+      'Echo lives in the menu bar (top-right), not the Dock.',
+    buttons: ['Open Accessibility', 'Open Input Monitoring', 'Later'],
+    defaultId: 0,
+    cancelId: 2
+  })
+  if (res.response === 0) openPrivacyPane('Accessibility')
+  else if (res.response === 1) openPrivacyPane('ListenEvent')
+}

@@ -22,7 +22,18 @@ export type NewTranscript = Omit<Transcript, 'id'>
 
 export type CleanupMode = 'off' | 'auto' | 'on-demand'
 export type MicMode = 'on-demand' | 'warm'
-export type TriggerKey = 'RightControl' | 'LeftControl' | 'CapsLock' | 'F8'
+export type TriggerKey =
+  | 'RightControl'
+  | 'LeftControl'
+  | 'RightCommand' // ⌘ — macOS default
+  | 'LeftCommand'
+  | 'RightOption' // ⌥
+  | 'CapsLock'
+  | 'F8'
+
+/** Host operating system, surfaced to the renderer so the UI can adapt (e.g. which
+ * trigger keys exist on this machine). */
+export type OSPlatform = 'darwin' | 'win32' | 'linux'
 
 export interface Settings {
   triggerKey: TriggerKey
@@ -163,6 +174,7 @@ export const IPC = {
   DICT_UPDATE: 'dict:update',
   DICT_DELETE: 'dict:delete',
   DICT_UNDO_LEARN: 'dict:undoLearn',
+  DICT_EXPORT: 'dict:export',
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   SETTINGS_CHANGED: 'settings:changed',
@@ -185,6 +197,8 @@ export interface MaskedSecrets {
 // ── The contract exposed on `window.api` via the preload bridge ───────────────
 
 export interface EchoApi {
+  /** The host OS, so the renderer can show platform-correct options (trigger keys, etc.). */
+  platform: OSPlatform
   onDictationState(cb: (e: DictationStateEvent) => void): () => void
   onSettingsChanged(cb: (s: Settings) => void): () => void
   sendAudio(buf: ArrayBuffer, meta: AudioMeta): Promise<InsertResult>
@@ -206,6 +220,8 @@ export interface EchoApi {
     update(id: number, patch: { word?: string; misheard?: string[] }): Promise<DictionaryEntry | null>
     remove(id: number): Promise<void>
     undoLearn(items: LearnedCorrection[]): Promise<void>
+    /** Write a portable JSON snapshot via a save dialog; returns the path, or null if cancelled. */
+    export(): Promise<string | null>
   }
   settings: {
     get(): Promise<Settings>

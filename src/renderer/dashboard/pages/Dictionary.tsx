@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
 import type { DictionaryEntry } from '@shared/types'
-import { BookOpen, Plus, Sparkles, Trash2, X } from 'lucide-react'
+import { BookOpen, Download, Plus, Sparkles, Trash2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import type { Notify } from '../types'
 
@@ -52,15 +52,30 @@ export function Dictionary({ notify }: { notify: Notify }): JSX.Element {
     await load()
   }
 
+  const onExport = async (): Promise<void> => {
+    const path = await api.dictionary.export()
+    if (path) notify('Dictionary exported — carry it to your other devices')
+  }
+
   return (
     <div className="flex flex-col h-full">
       <header className="px-7 pt-6 pb-4 border-b border-border">
         <div className="flex items-center justify-between gap-4 mb-1">
           <h1 className="text-lg font-semibold">Dictionary</h1>
           {entries.length > 0 && (
-            <span className="text-xs text-muted">
-              {entries.length} word{entries.length === 1 ? '' : 's'}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted">
+                {entries.length} word{entries.length === 1 ? '' : 's'}
+              </span>
+              <button
+                onClick={() => void onExport()}
+                title="Export as JSON to use on another device"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border text-xs text-muted hover:text-text hover:border-[#d4d7de] transition"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Export
+              </button>
+            </div>
           )}
         </div>
         <p className="text-xs text-muted leading-relaxed max-w-xl">

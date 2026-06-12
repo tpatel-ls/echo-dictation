@@ -1,7 +1,7 @@
 {
   "name": "echo",
   "version": "0.1.0",
-  "description": "Push-to-talk dictation for Windows — hold Right Ctrl to dictate via a self-hosted Whisper node.",
+  "description": "Push-to-talk dictation for Windows & macOS — hold a key to dictate via a self-hosted Whisper node.",
   "author": "Tanay",
   "license": "MIT",
   "main": "./out/main/index.js",
@@ -15,7 +15,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "pack": "electron-vite build && electron-builder --win --dir",
-    "dist": "electron-vite build && electron-builder --win"
+    "dist": "electron-vite build && electron-builder --win",
+    "pack:mac": "electron-vite build && electron-builder --mac --dir",
+    "dist:mac": "electron-vite build && electron-builder --mac"
   },
   "dependencies": {
     "@nut-tree-fork/nut-js": "^4.2.0",

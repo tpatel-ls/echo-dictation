@@ -1,5 +1,6 @@
-import { ipcMain, clipboard } from 'electron'
-import { readFileSync, unlinkSync } from 'node:fs'
+import { ipcMain, clipboard, dialog } from 'electron'
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { serializeDictionary } from '@shared/dict-export'
 import {
   IPC,
   type AudioMeta,
@@ -114,6 +115,16 @@ export function registerIpc(ctx: IpcContext): void {
       if (item.createdEntry) ctx.dictionary.delete(item.entryId)
       else ctx.dictionary.removeAlias(item.entryId, item.from)
     }
+  })
+  ipcMain.handle(IPC.DICT_EXPORT, async (): Promise<string | null> => {
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Export dictionary',
+      defaultPath: 'echo-dictionary.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    })
+    if (canceled || !filePath) return null
+    writeFileSync(filePath, JSON.stringify(serializeDictionary(ctx.dictionary.list()), null, 2))
+    return filePath
   })
 
   // ── Settings + secrets ────────────────────────────────────────────────────────

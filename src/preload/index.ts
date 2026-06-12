@@ -7,11 +7,13 @@ import {
   type LearnedCorrection,
   type ListOpts,
   type EchoApi,
+  type OSPlatform,
   type Secrets,
   type Settings
 } from '@shared/types'
 
 const api: EchoApi = {
+  platform: process.platform as OSPlatform,
   onDictationState(cb) {
     const listener = (_e: IpcRendererEvent, data: DictationStateEvent): void => cb(data)
     ipcRenderer.on(IPC.DICTATION_STATE, listener)
@@ -45,7 +47,8 @@ const api: EchoApi = {
     update: (id: number, patch: { word?: string; misheard?: string[] }) =>
       ipcRenderer.invoke(IPC.DICT_UPDATE, id, patch),
     remove: (id: number) => ipcRenderer.invoke(IPC.DICT_DELETE, id),
-    undoLearn: (items: LearnedCorrection[]) => ipcRenderer.invoke(IPC.DICT_UNDO_LEARN, items)
+    undoLearn: (items: LearnedCorrection[]) => ipcRenderer.invoke(IPC.DICT_UNDO_LEARN, items),
+    export: () => ipcRenderer.invoke(IPC.DICT_EXPORT)
   },
   settings: {
     get: () => ipcRenderer.invoke(IPC.SETTINGS_GET),

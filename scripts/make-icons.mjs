@@ -84,4 +84,6 @@ function draw(size) {
 mkdirSync(join(root, 'build'), { recursive: true })
 writeFileSync(join(root, 'build', 'icon.png'), draw(256))
 writeFileSync(join(root, 'build', 'tray.png'), draw(32))
-console.log('wrote build/icon.png (256) and build/tray.png (32)')
+// macOS needs a ≥512px source for the .icns electron-builder generates at build time.
+writeFileSync(join(root, 'build', 'icon-mac.png'), draw(1024))
+console.log('wrote build/icon.png (256), build/tray.png (32), build/icon-mac.png (1024)')

@@ -5,6 +5,11 @@ import type { TriggerKey } from '@shared/types'
 const KEYCODES: Record<TriggerKey, number> = {
   RightControl: UiohookKey.CtrlRight,
   LeftControl: UiohookKey.Ctrl,
+  // macOS keyboards have no Right Ctrl — the Command (⌘) and Option (⌥) keys are the
+  // natural push-to-talk triggers. uiohook reports Command as Meta.
+  RightCommand: UiohookKey.MetaRight,
+  LeftCommand: UiohookKey.Meta,
+  RightOption: UiohookKey.AltRight,
   CapsLock: UiohookKey.CapsLock,
   F8: UiohookKey.F8
 }

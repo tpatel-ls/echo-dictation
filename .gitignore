@@ -5,6 +5,8 @@ dist/
 .DS_Store
 .vite/
 secrets.local.json
+# personal setup notes (may contain endpoints/keys) — never commit
+*.local.md
 
 # design scratch
 .playwright-mcp/

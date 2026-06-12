@@ -34,3 +34,21 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   shortcutName: Echo
+mac:
+  category: public.app-category.productivity
+  icon: build/icon-mac.png
+  target:
+    - dmg
+    - zip
+  # Personal/unsigned build — no Apple Developer account required. Gatekeeper will ask
+  # you to right-click → Open the first time. To ship a signed build later, set a real
+  # `identity` and uncomment hardenedRuntime + entitlements below.
+  identity: null
+  # hardenedRuntime: true
+  # entitlements: build/entitlements.mac.plist
+  # entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    # Menu-bar app — no persistent Dock icon (matches the Windows tray model).
+    LSUIElement: 1
+    # Shown in the macOS microphone-permission prompt.
+    NSMicrophoneUsageDescription: Echo transcribes your speech using the Whisper endpoint you configure.
