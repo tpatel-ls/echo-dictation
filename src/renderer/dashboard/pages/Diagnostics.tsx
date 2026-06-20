@@ -50,9 +50,13 @@ export function Diagnostics(): JSX.Element {
         <div className="flex flex-col gap-2.5 max-w-2xl">
           {CHECKS.map((c) => {
             const r = results[c.name]
+            const iconTone = r && r !== 'running' ? (r.ok ? 'text-good' : 'text-bad') : 'text-muted'
             return (
-              <div key={c.name} className="bg-surface border border-border rounded-xl p-4 flex items-center gap-4">
-                <c.Icon className="w-5 h-5 text-muted shrink-0" />
+              <div
+                key={c.name}
+                className="bg-surface border border-border rounded-xl p-4 flex items-center gap-4 transition hover:border-[#d4d7de] hover:shadow-card"
+              >
+                <c.Icon className={`w-5 h-5 ${iconTone} shrink-0 transition-colors`} />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm flex items-center gap-2">
                     {c.label}
