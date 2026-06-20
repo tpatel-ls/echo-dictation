@@ -37,12 +37,16 @@ export function Sidebar({
           <button
             key={id}
             onClick={() => onNavigate(id)}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
+            aria-current={page === id ? 'page' : undefined}
+            className={`relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition active:scale-[0.98] ${
               page === id
                 ? 'bg-accent/10 text-accent font-medium'
                 : 'text-muted hover:text-text hover:bg-surface2'
             }`}
           >
+            {page === id && (
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-full bg-accent" />
+            )}
             <Icon className="w-4 h-4" />
             {label}
           </button>
