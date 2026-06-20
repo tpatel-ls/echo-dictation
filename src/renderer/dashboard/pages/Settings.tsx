@@ -155,7 +155,7 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
             <div className="py-4">
               <button
                 onClick={() => void saveKeys()}
-                className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition"
+                className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium shadow-sm hover:bg-accent2 active:scale-[0.98] transition"
               >
                 Save API keys
               </button>

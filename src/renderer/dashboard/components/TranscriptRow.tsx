@@ -116,7 +116,7 @@ export function TranscriptRow({
             <button
               onClick={() => void saveEdit()}
               disabled={saving}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-accent text-white text-xs font-medium hover:bg-accent2 transition disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-accent text-white text-xs font-medium hover:bg-accent2 active:scale-[0.98] transition disabled:opacity-50"
             >
               {saving && <Loader2 className="w-3 h-3 animate-spin" />}
               Save
