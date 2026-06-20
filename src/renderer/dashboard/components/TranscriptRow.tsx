@@ -25,7 +25,12 @@ export function TranscriptRow({
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState(false)
   const display = t.cleaned_text ?? t.raw_text ?? ''
-  const time = new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const created = new Date(t.created_at)
+  const time = created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const isToday = created.toDateString() === new Date().toDateString()
+  const when = isToday
+    ? time
+    : `${created.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`
 
   const handlePolish = async (): Promise<void> => {
     setPolishing(true)
@@ -86,7 +91,7 @@ export function TranscriptRow({
   return (
     <div className="group bg-surface border border-border rounded-xl p-4 hover:border-[#d4d7de] hover:shadow-card transition">
       <div className="flex items-center gap-2 text-xs text-muted mb-2 flex-wrap">
-        <span>{time}</span>
+        <span title={created.toLocaleString()}>{when}</span>
         <span>·</span>
         <span className="truncate max-w-[180px]">{t.app_context}</span>
         <span>·</span>
