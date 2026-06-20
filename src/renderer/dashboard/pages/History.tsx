@@ -146,8 +146,8 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
 
 function Empty({ query }: { query: string }): JSX.Element {
   return (
-    <div className="flex flex-col items-center justify-center h-full text-center text-muted gap-2">
-      <div className="w-12 h-12 rounded-2xl bg-surface2 flex items-center justify-center mb-1">
+    <div className="flex flex-col items-center justify-center h-full text-center text-muted gap-2 animate-fadeup">
+      <div className="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center mb-1">
         <Type className="w-5 h-5" />
       </div>
       {query ? (
