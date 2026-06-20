@@ -17,6 +17,13 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Visible keyboard-focus ring for accessibility (accent = #4f46e5). Pointer
+   focus is unaffected — :focus-visible only matches keyboard navigation. */
+:where(a, button, input, select, textarea, [role='switch'], [tabindex]):focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
