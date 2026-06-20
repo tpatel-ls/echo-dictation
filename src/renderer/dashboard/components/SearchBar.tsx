@@ -1,16 +1,20 @@
+import type { Ref } from 'react'
 import { Search, X } from 'lucide-react'
 
 export function SearchBar({
   value,
-  onChange
+  onChange,
+  inputRef
 }: {
   value: string
   onChange: (v: string) => void
+  inputRef?: Ref<HTMLInputElement>
 }): JSX.Element {
   return (
     <div className="relative">
       <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
       <input
+        ref={inputRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Search transcripts…"

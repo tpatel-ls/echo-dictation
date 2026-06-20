@@ -18,6 +18,7 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
   const [triggerKey, setTriggerKey] = useState<TriggerKey>(() => defaultTriggerKey(api.platform))
   const offset = useRef(0)
   const loading = useRef(false)
+  const searchRef = useRef<HTMLInputElement>(null)
 
   const loadStats = useCallback(async (): Promise<void> => {
     setStats(await api.history.stats())
@@ -56,6 +57,18 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
     return () => {
       off()
     }
+  }, [])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== '/') return
+      const el = document.activeElement as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      e.preventDefault()
+      searchRef.current?.focus()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   useEffect(() => {
@@ -127,7 +140,7 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
             </div>
           )}
         </div>
-        <SearchBar value={query} onChange={setQuery} />
+        <SearchBar value={query} onChange={setQuery} inputRef={searchRef} />
       </header>
 
       <div className="flex-1 overflow-y-auto px-7 py-4" onScroll={onScroll}>
