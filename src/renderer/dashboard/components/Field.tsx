@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { ChevronDown } from 'lucide-react'
 
 export function Field({
   label,
@@ -54,16 +55,19 @@ export function Select<T extends string>({
   onChange: (v: T) => void
 }): JSX.Element {
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value as T)}
-      className="px-3 py-1.5 bg-bg border border-border rounded-lg text-sm outline-none focus:border-accent/60"
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+    <div className="relative inline-flex">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as T)}
+        className="appearance-none pl-3 pr-9 py-1.5 bg-bg border border-border rounded-lg text-sm outline-none focus:border-accent/60 cursor-pointer"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="w-4 h-4 absolute right-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+    </div>
   )
 }
