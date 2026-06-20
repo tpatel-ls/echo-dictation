@@ -1,6 +1,6 @@
 import { useState, type KeyboardEvent } from 'react'
 import type { Transcript } from '@shared/types'
-import { Copy, CornerDownLeft, Pencil, Sparkles, Trash2, Loader2, Play, type LucideIcon } from 'lucide-react'
+import { Copy, CornerDownLeft, Pencil, Sparkles, Trash2, Loader2, Play, Check, type LucideIcon } from 'lucide-react'
 import { api } from '../lib/api'
 
 export function TranscriptRow({
@@ -23,6 +23,7 @@ export function TranscriptRow({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
+  const [copied, setCopied] = useState(false)
   const display = t.cleaned_text ?? t.raw_text ?? ''
   const time = new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
@@ -33,6 +34,12 @@ export function TranscriptRow({
     } finally {
       setPolishing(false)
     }
+  }
+
+  const handleCopy = (): void => {
+    onCopy(t.id)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1300)
   }
 
   const startEdit = (): void => {
@@ -143,7 +150,7 @@ export function TranscriptRow({
           {t.audio_path && (
             <RowBtn Icon={playing ? Loader2 : Play} spin={playing} label="Play" onClick={() => void handlePlay()} />
           )}
-          <RowBtn Icon={Copy} label="Copy" onClick={() => onCopy(t.id)} />
+          <RowBtn Icon={copied ? Check : Copy} label={copied ? 'Copied' : 'Copy'} onClick={handleCopy} />
           <RowBtn Icon={CornerDownLeft} label="Re-insert" onClick={() => onReinsert(t.id)} />
           <RowBtn Icon={Pencil} label="Edit" onClick={startEdit} disabled={t.status !== 'ok' || !display} />
           <RowBtn
