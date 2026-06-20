@@ -63,6 +63,9 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
                 <TextInput
                   type="number"
                   width="w-20"
+                  min={0}
+                  max={2000}
+                  step={50}
                   value={String(s.minHoldMs)}
                   onChange={(v) => void patch({ minHoldMs: clampInt(v, 0, 2000) })}
                 />
@@ -143,6 +146,9 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
                 <TextInput
                   type="number"
                   width="w-20"
+                  min={0}
+                  max={400}
+                  step={10}
                   value={String(s.overlayOffsetBottom)}
                   onChange={(v) => void patch({ overlayOffsetBottom: clampInt(v, 0, 400) })}
                 />

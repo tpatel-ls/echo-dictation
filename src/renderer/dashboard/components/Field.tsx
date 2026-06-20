@@ -26,19 +26,28 @@ export function TextInput({
   onChange,
   placeholder,
   type = 'text',
-  width = 'w-64'
+  width = 'w-64',
+  min,
+  max,
+  step
 }: {
   value: string
   onChange: (v: string) => void
   placeholder?: string
   type?: string
   width?: string
+  min?: number
+  max?: number
+  step?: number
 }): JSX.Element {
   return (
     <input
       type={type}
       value={value}
       placeholder={placeholder}
+      min={min}
+      max={max}
+      step={step}
       onChange={(e) => onChange(e.target.value)}
       className={`${width} px-3 py-1.5 bg-bg border border-border rounded-lg text-sm outline-none focus:border-accent/60 placeholder:text-muted`}
     />
