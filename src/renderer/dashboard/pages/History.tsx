@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type UIEvent } from 'react'
-import type { Stats, Transcript } from '@shared/types'
+import type { Stats, Transcript, TriggerKey } from '@shared/types'
 import { formatDuration } from '@shared/format'
+import { triggerLabel, defaultTriggerKey } from '@shared/trigger'
 import { Flame, Clock, Type } from 'lucide-react'
 import { api } from '../lib/api'
 import { SearchBar } from '../components/SearchBar'
@@ -14,6 +15,7 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
   const [query, setQuery] = useState('')
   const [stats, setStats] = useState<Stats | null>(null)
   const [done, setDone] = useState(false)
+  const [triggerKey, setTriggerKey] = useState<TriggerKey>(() => defaultTriggerKey(api.platform))
   const offset = useRef(0)
   const loading = useRef(false)
 
@@ -47,6 +49,14 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
   useEffect(() => {
     void loadStats()
   }, [loadStats])
+
+  useEffect(() => {
+    void api.settings.get().then((s) => setTriggerKey(s.triggerKey))
+    const off = api.onSettingsChanged((s) => setTriggerKey(s.triggerKey))
+    return () => {
+      off()
+    }
+  }, [])
 
   useEffect(() => {
     const id = setTimeout(() => void reset(query), 180)
@@ -122,7 +132,7 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
 
       <div className="flex-1 overflow-y-auto px-7 py-4" onScroll={onScroll}>
         {items.length === 0 ? (
-          <Empty query={query} />
+          <Empty query={query} keyLabel={triggerLabel(triggerKey)} />
         ) : (
           <div className="flex flex-col gap-2.5 max-w-3xl mx-auto">
             {items.map((t) => (
@@ -144,7 +154,7 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
   )
 }
 
-function Empty({ query }: { query: string }): JSX.Element {
+function Empty({ query, keyLabel }: { query: string; keyLabel: string }): JSX.Element {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center text-muted gap-2 animate-fadeup">
       <div className="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center mb-1">
@@ -157,7 +167,7 @@ function Empty({ query }: { query: string }): JSX.Element {
           <p className="text-sm text-text">No transcripts yet</p>
           <p className="text-xs">
             Hold{' '}
-            <kbd className="px-1.5 py-0.5 rounded bg-surface2 border border-border text-text">Right Ctrl</kbd>{' '}
+            <kbd className="px-1.5 py-0.5 rounded bg-surface2 border border-border text-text">{keyLabel}</kbd>{' '}
             anywhere and start talking.
           </p>
         </>

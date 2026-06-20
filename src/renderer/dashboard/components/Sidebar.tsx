@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import {
   History,
   BookOpen,
@@ -8,6 +9,9 @@ import {
   type LucideIcon
 } from 'lucide-react'
 import type { Page } from '../types'
+import type { TriggerKey } from '@shared/types'
+import { triggerLabel, defaultTriggerKey } from '@shared/trigger'
+import { api } from '../lib/api'
 
 const items: { id: Page; label: string; Icon: LucideIcon }[] = [
   { id: 'history', label: 'History', Icon: History },
@@ -24,6 +28,15 @@ export function Sidebar({
   page: Page
   onNavigate: (p: Page) => void
 }): JSX.Element {
+  const [triggerKey, setTriggerKey] = useState<TriggerKey>(() => defaultTriggerKey(api.platform))
+  useEffect(() => {
+    void api.settings.get().then((s) => setTriggerKey(s.triggerKey))
+    const off = api.onSettingsChanged((s) => setTriggerKey(s.triggerKey))
+    return () => {
+      off()
+    }
+  }, [])
+
   return (
     <aside className="w-56 shrink-0 bg-surface border-r border-border flex flex-col">
       <div className="px-5 py-5 flex items-center gap-2.5">
@@ -55,7 +68,7 @@ export function Sidebar({
       <div className="mt-auto p-4 text-xs text-muted leading-relaxed">
         Hold{' '}
         <kbd className="px-1.5 py-0.5 rounded bg-surface2 border border-border text-text text-[11px]">
-          Right Ctrl
+          {triggerLabel(triggerKey)}
         </kbd>{' '}
         anywhere to dictate.
       </div>
