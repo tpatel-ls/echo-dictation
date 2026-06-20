@@ -172,7 +172,7 @@ function EntryRow({
         <button
           onClick={onDelete}
           title="Delete word"
-          className="ml-auto p-1.5 rounded-md text-muted opacity-0 group-hover:opacity-100 hover:text-bad hover:bg-bad/10 transition"
+          className="ml-auto p-1.5 rounded-md text-muted opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-bad hover:bg-bad/10 transition"
         >
           <Trash2 className="w-3.5 h-3.5" />
         </button>

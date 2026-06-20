@@ -139,7 +139,7 @@ export function TranscriptRow({
       )}
 
       {!editing && (
-        <div className="flex items-center gap-1 mt-3 opacity-0 group-hover:opacity-100 transition">
+        <div className="flex items-center gap-1 mt-3 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition">
           {t.audio_path && (
             <RowBtn Icon={playing ? Loader2 : Play} spin={playing} label="Play" onClick={() => void handlePlay()} />
           )}
