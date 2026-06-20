@@ -176,9 +176,9 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
 
 function Section({ title, children }: { title: string; children: ReactNode }): JSX.Element {
   return (
-    <div className="py-4">
-      <h2 className="text-xs uppercase tracking-wider text-muted mb-1">{title}</h2>
-      {children}
+    <div className="py-3">
+      <h2 className="text-xs uppercase tracking-wider text-muted mb-2 px-1">{title}</h2>
+      <div className="bg-surface border border-border rounded-xl px-4">{children}</div>
     </div>
   )
 }
