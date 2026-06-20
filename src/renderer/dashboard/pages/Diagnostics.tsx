@@ -41,7 +41,7 @@ export function Diagnostics(): JSX.Element {
         <h1 className="text-lg font-semibold">Diagnostics</h1>
         <button
           onClick={runAll}
-          className="px-3 py-1.5 rounded-lg bg-accent text-white text-sm hover:bg-accent/90 transition"
+          className="px-3 py-1.5 rounded-lg bg-accent text-white text-sm font-medium shadow-sm hover:bg-accent2 active:scale-[0.98] transition"
         >
           Run all
         </button>
