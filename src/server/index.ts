@@ -3,8 +3,8 @@ import { openSyncDb } from './db'
 import { createServer } from './http'
 
 // Entry point for the Echo sync service. Reads config from the environment, opens the
-// persistent store, and serves the REST API. Intended to run on the user's tailnet Mac
-// Mini alongside the Whisper/Claude proxy. Thin wiring — the logic is in db.ts/http.ts.
+// persistent store, and serves the REST API. Intended to run on the user's always-on
+// tailnet host (e.g. the GB10 that runs the Whisper node). Thin wiring — logic in db.ts/http.ts.
 
 async function main(): Promise<void> {
   const port = Number(process.env.SYNC_PORT ?? '8787')
