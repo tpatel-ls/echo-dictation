@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cleartext HTTP is fine on the tailnet: Tailscale/WireGuard already encrypts it end-to-end.
+     This lets the phone reach a plain-HTTP self-hosted service (e.g. the sync server on :8787)
+     over Tailscale, while keeping the secure HTTPS-only default for the public internet. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">ts.net</domain>
+        <domain includeSubdomains="true">localhost</domain>
+    </domain-config>
+</network-security-config>
