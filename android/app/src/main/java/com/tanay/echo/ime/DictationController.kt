@@ -118,18 +118,22 @@ class DictationController(context: Context) {
                 onText(finalText)
                 onPhase(DictationPhase.INSERTED, null)
                 val latency = SystemClock.elapsedRealtime() - startedAt
-                withContext(Dispatchers.IO) {
-                    store.recordApplied(applied.appliedIds)
-                    store.addTranscript(
-                        rawText = corrected, // matches desktop: the corrected transcript, not raw Whisper
-                        cleanedText = cleaned,
-                        durationMs = durationMs,
-                        wordCount = wordCount(finalText),
-                        latencyMs = latency,
-                        appContext = appContext,
-                        model = model,
-                        status = "ok"
-                    )
+                // The text is already inserted — a history/DB write failure must not flip the just-shown
+                // ✓ into an error. Persistence is best-effort relative to the insertion that happened.
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        store.recordApplied(applied.appliedIds)
+                        store.addTranscript(
+                            rawText = corrected, // matches desktop: the corrected transcript, not raw Whisper
+                            cleanedText = cleaned,
+                            durationMs = durationMs,
+                            wordCount = wordCount(finalText),
+                            latencyMs = latency,
+                            appContext = appContext,
+                            model = model,
+                            status = "ok"
+                        )
+                    }
                 }
                 triggerSync()
             } catch (e: Exception) {
