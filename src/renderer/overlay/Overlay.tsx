@@ -8,9 +8,7 @@ import { Waveform } from './Waveform'
 export function Overlay(): JSX.Element {
   const [phase, setPhase] = useState<DictationPhase>('idle')
   const [message, setMessage] = useState('')
-  const [elapsed, setElapsed] = useState(0)
   const levelRef = useRef(0)
-  const startedAt = useRef(0)
   const capture = useRef<MicCapture | null>(null)
 
   useEffect(() => {
@@ -35,17 +33,9 @@ export function Overlay(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => {
-    if (phase !== 'listening') return
-    const id = setInterval(() => setElapsed(Date.now() - startedAt.current), 100)
-    return () => clearInterval(id)
-  }, [phase])
-
   async function onState(e: DictationStateEvent): Promise<void> {
     switch (e.phase) {
       case 'listening':
-        startedAt.current = e.startedAt ?? Date.now()
-        setElapsed(0)
         setMessage('')
         setPhase('listening')
         try {
@@ -105,13 +95,7 @@ export function Overlay(): JSX.Element {
     <div className="ov-root">
       <div className={`ov-pill-wrap ${visible ? 'is-visible' : ''}`}>
         <div className={`ov-capsule ov-${phase}`}>
-          {phase === 'listening' && (
-            <>
-              <span className="ov-rec" />
-              <Waveform levelRef={levelRef} mode="live" />
-              <span className="ov-time">{fmtTime(elapsed)}</span>
-            </>
-          )}
+          {phase === 'listening' && <Waveform levelRef={levelRef} mode="live" />}
 
           {phase === 'transcribing' && <Waveform levelRef={levelRef} mode="calm" width={196} />}
 
@@ -130,9 +114,4 @@ export function Overlay(): JSX.Element {
       </div>
     </div>
   )
-}
-
-function fmtTime(ms: number): string {
-  const s = Math.floor(ms / 1000)
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }

@@ -18,7 +18,7 @@ body {
   font-family: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
 }
 
-/* ── Echo overlay pill — light frosted glass ─────────────────────────────────── */
+/* ── Echo overlay pill — minimal violet (Wispr-style) ───────────────────────── */
 
 .ov-root {
   width: 100vw;
@@ -46,64 +46,35 @@ body {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 13px;
-  height: 50px;
-  padding: 0 19px;
-  border-radius: 25px;
-  background: rgba(255, 255, 255, 0.86);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
-  border: 1px solid rgba(26, 29, 36, 0.07);
+  gap: 11px;
+  height: 42px;
+  padding: 0 17px;
+  border-radius: 21px;
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow:
-    0 12px 34px -10px rgba(26, 29, 46, 0.22),
-    0 3px 10px -3px rgba(26, 29, 46, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
-}
-
-.ov-rec {
-  position: relative;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: none;
-  background: #ef4444;
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.14);
-  animation: ovDot 2.1s ease-in-out infinite;
-}
-.ov-rec::after {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  border-radius: 50%;
-  border: 1px solid rgba(239, 68, 68, 0.55);
-  animation: ovRecPulse 2.1s ease-out infinite;
-}
-
-.ov-time {
-  font-size: 12px;
-  color: #717784;
-  font-variant-numeric: tabular-nums;
-  min-width: 30px;
-  text-align: right;
+    0 12px 30px -10px rgba(109, 40, 217, 0.55),
+    0 3px 10px -3px rgba(76, 29, 149, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .ov-check {
-  width: 22px;
-  height: 22px;
+  width: 21px;
+  height: 21px;
   border-radius: 50%;
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #16a34a;
-  background: #dcfce7;
-  box-shadow: 0 0 0 1px rgba(22, 163, 74, 0.18);
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.22);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28);
   animation: ovCheck 0.26s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .ov-text {
   font-size: 13px;
-  color: #1a1d24;
+  color: #ffffff;
   max-width: 210px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -111,26 +82,17 @@ body {
 }
 .ov-msg-muted {
   font-size: 13px;
-  color: #717784;
+  color: rgba(255, 255, 255, 0.72);
 }
 .ov-msg-warn {
   font-size: 13px;
-  color: #d97706;
+  color: #fcd34d;
   max-width: 250px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-@keyframes ovDot {
-  0%,
-  100% {
-    opacity: 0.5;
-  }
-  50% {
-    opacity: 1;
-  }
-}
 @keyframes ovCheck {
   from {
     opacity: 0;
@@ -141,24 +103,10 @@ body {
     transform: scale(1);
   }
 }
-@keyframes ovRecPulse {
-  0% {
-    transform: scale(0.7);
-    opacity: 0.7;
-  }
-  100% {
-    transform: scale(2.4);
-    opacity: 0;
-  }
-}
 
 @media (prefers-reduced-motion: reduce) {
-  .ov-rec,
   .ov-check {
     animation: none;
-  }
-  .ov-rec::after {
-    display: none;
   }
   .ov-pill-wrap {
     transition-duration: 0.01ms;

@@ -51,14 +51,14 @@ export function Waveform({
       ctx.clearRect(0, 0, width, height)
       const grad = ctx.createLinearGradient(0, 0, 0, height)
       if (live) {
-        grad.addColorStop(0, '#6366f1')
-        grad.addColorStop(1, '#4f46e5')
+        grad.addColorStop(0, 'rgba(255,255,255,0.96)')
+        grad.addColorStop(1, 'rgba(255,255,255,0.72)')
       } else {
-        grad.addColorStop(0, '#a5b4fc')
-        grad.addColorStop(1, '#818cf8')
+        grad.addColorStop(0, 'rgba(255,255,255,0.6)')
+        grad.addColorStop(1, 'rgba(255,255,255,0.4)')
       }
       ctx.fillStyle = grad
-      ctx.shadowColor = 'rgba(79,70,229,0.18)'
+      ctx.shadowColor = 'rgba(255,255,255,0.35)'
       ctx.shadowBlur = live ? 4 : 0
 
       for (let i = 0; i < N; i++) {
