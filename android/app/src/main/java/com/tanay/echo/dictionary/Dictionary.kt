@@ -29,13 +29,12 @@ private fun escapeRegex(s: String): String = buildString {
     }
 }
 
-/** Case-insensitive whole-word matcher; multi-word aliases tolerate any whitespace. */
+/** Case-insensitive whole-word matcher; multi-word aliases tolerate any whitespace. The inline
+ * `(?iu)` flags give case-insensitive + unicode-case folding — Kotlin's RegexOption exposes no
+ * UNICODE_CASE, so we set it on the pattern itself (equivalent to the TS `iu` flags). */
 private fun aliasPattern(alias: String): Regex {
     val tokens = alias.trim().split(WHITESPACE).map(::escapeRegex)
-    return Regex(
-        BOUNDARY_BEFORE + tokens.joinToString("\\s+") + BOUNDARY_AFTER,
-        setOf(RegexOption.IGNORE_CASE, RegexOption.UNICODE_CASE)
-    )
+    return Regex("(?iu)" + BOUNDARY_BEFORE + tokens.joinToString("\\s+") + BOUNDARY_AFTER)
 }
 
 private data class AliasOf(val alias: String, val entry: DictionaryEntry)
