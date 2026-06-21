@@ -3,6 +3,7 @@ package com.tanay.echo.settings
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.tanay.echo.BuildConfig
 
 /**
  * App configuration, stored in EncryptedSharedPreferences (keys/tokens are encrypted at rest via
@@ -22,6 +23,10 @@ class EchoSettings(context: Context) {
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
+    }
+
+    init {
+        seedDefaults()
     }
 
     var whisperBaseUrl: String
@@ -68,4 +73,28 @@ class EchoSettings(context: Context) {
     /** Sync is optional; both halves must be present. */
     val isSyncConfigured: Boolean
         get() = syncBaseUrl.isNotEmpty() && syncToken.isNotEmpty()
+
+    /** On first run (or whenever a value is still unset), seed from the build-time defaults baked
+     * in via BuildConfig — a personal pre-configured build. Per-key + idempotent: a value the user
+     * has set is never overwritten, and a default added in a later build seeds on the next launch. */
+    private fun seedDefaults() {
+        val e = prefs.edit()
+        var changed = false
+        fun seed(key: String, value: String) {
+            if (value.isNotEmpty() && !prefs.contains(key)) {
+                e.putString(key, value)
+                changed = true
+            }
+        }
+        seed("whisperBaseUrl", BuildConfig.DEFAULT_WHISPER_BASE_URL)
+        seed("whisperApiKey", BuildConfig.DEFAULT_WHISPER_API_KEY)
+        seed("whisperModel", BuildConfig.DEFAULT_WHISPER_MODEL)
+        seed("claudeBaseUrl", BuildConfig.DEFAULT_CLAUDE_BASE_URL)
+        seed("claudeApiKey", BuildConfig.DEFAULT_CLAUDE_API_KEY)
+        seed("claudeModel", BuildConfig.DEFAULT_CLAUDE_MODEL)
+        seed("syncBaseUrl", BuildConfig.DEFAULT_SYNC_BASE_URL)
+        seed("syncToken", BuildConfig.DEFAULT_SYNC_TOKEN)
+        if (changed) e.commit()
+    }
 }
+

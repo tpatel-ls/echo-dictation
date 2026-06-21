@@ -1,9 +1,21 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.devtools.ksp")
 }
+
+// Optional build-time defaults for endpoints/keys — read from a gitignored file so a personal
+// build can ship pre-configured, while the values never touch git. Mirrors the desktop's
+// secrets.local.json seed. Absent file ⇒ empty defaults ⇒ the app prompts for setup as normal.
+val echoDefaults = Properties().apply {
+    val f = rootProject.file("defaults.local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+fun echoDefault(key: String): String =
+    (echoDefaults.getProperty(key) ?: "").replace("\\", "\\\\").replace("\"", "\\\"")
 
 android {
     namespace = "com.tanay.echo"
@@ -16,6 +28,15 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "DEFAULT_WHISPER_BASE_URL", "\"${echoDefault("whisperBaseUrl")}\"")
+        buildConfigField("String", "DEFAULT_WHISPER_API_KEY", "\"${echoDefault("whisperApiKey")}\"")
+        buildConfigField("String", "DEFAULT_WHISPER_MODEL", "\"${echoDefault("whisperModel")}\"")
+        buildConfigField("String", "DEFAULT_CLAUDE_BASE_URL", "\"${echoDefault("claudeBaseUrl")}\"")
+        buildConfigField("String", "DEFAULT_CLAUDE_API_KEY", "\"${echoDefault("claudeApiKey")}\"")
+        buildConfigField("String", "DEFAULT_CLAUDE_MODEL", "\"${echoDefault("claudeModel")}\"")
+        buildConfigField("String", "DEFAULT_SYNC_BASE_URL", "\"${echoDefault("syncBaseUrl")}\"")
+        buildConfigField("String", "DEFAULT_SYNC_TOKEN", "\"${echoDefault("syncToken")}\"")
     }
 
     buildTypes {
@@ -33,6 +54,7 @@ android {
         jvmTarget = "17"
     }
     buildFeatures {
+        buildConfig = true
         viewBinding = true
     }
 }
