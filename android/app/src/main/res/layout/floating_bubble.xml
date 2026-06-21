@@ -1,37 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Idle: shows only the purple waveform glyph → a lavender squircle.
+     Recording: glyph hidden, white WaveformView + white stop circle → a purple pill. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/bubble_root"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:paddingStart="16dp"
-    android:paddingEnd="16dp"
-    android:paddingTop="13dp"
-    android:paddingBottom="13dp"
+    android:paddingStart="15dp"
+    android:paddingEnd="15dp"
+    android:paddingTop="15dp"
+    android:paddingBottom="15dp"
     android:background="@drawable/bg_bubble_idle"
-    android:elevation="8dp">
+    android:elevation="9dp">
 
     <ImageView
-        android:id="@+id/bubble_mic"
+        android:id="@+id/bubble_idle_icon"
         android:layout_width="26dp"
         android:layout_height="26dp"
-        android:src="@drawable/ic_mic"
-        android:tint="@color/echo_violet"
+        android:src="@drawable/ic_waveform"
         android:contentDescription="@string/cd_mic" />
 
     <com.tanay.echo.floating.WaveformView
         android:id="@+id/bubble_wave"
-        android:layout_width="120dp"
+        android:layout_width="116dp"
         android:layout_height="26dp"
         android:visibility="gone" />
 
     <ImageView
-        android:id="@+id/bubble_check"
+        android:id="@+id/bubble_stop"
         android:layout_width="24dp"
         android:layout_height="24dp"
-        android:layout_marginStart="10dp"
-        android:src="@drawable/ic_check"
+        android:layout_marginStart="12dp"
+        android:src="@drawable/ic_stop_circle"
         android:visibility="gone"
         android:contentDescription="@string/floating_stop" />
 </LinearLayout>
