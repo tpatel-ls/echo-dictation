@@ -25,6 +25,10 @@ class MicRecorder(
     @Volatile private var running = false
     @Volatile private var capturing = false
 
+    /** Live input level (RMS, 0..1) for the waveform + silence detection. Fires on the reader
+     *  thread while capturing — consumers must marshal to their own UI thread. */
+    @Volatile var onLevel: (Float) -> Unit = {}
+
     private val lock = Any()
     private var buffer = ShortArray(sampleRate) // ~1s, grows as needed
     private var size = 0
@@ -70,8 +74,22 @@ class MicRecorder(
         val frame = ShortArray(frameSize)
         while (running) {
             val n = rec.read(frame, 0, frame.size)
-            if (n > 0 && capturing) append(frame, n)
+            if (n > 0 && capturing) {
+                append(frame, n)
+                onLevel(rmsLevel(frame, n))
+            }
         }
+    }
+
+    /** Normalized RMS (0..1) of the first [n] PCM16 samples in [frame]. */
+    private fun rmsLevel(frame: ShortArray, n: Int): Float {
+        if (n <= 0) return 0f
+        var sum = 0.0
+        for (i in 0 until n) {
+            val s = frame[i].toDouble()
+            sum += s * s
+        }
+        return (Math.sqrt(sum / n) / 32768.0).toFloat().coerceIn(0f, 1f)
     }
 
     private fun append(frame: ShortArray, n: Int) {
