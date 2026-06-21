@@ -8,4 +8,8 @@
     <color name="echo_accent">#6C7BFF</color>
     <color name="echo_danger">#FF6B6B</color>
     <color name="echo_ok">#4ADE80</color>
+    <!-- Floating bubble + Wispr-style accents -->
+    <color name="echo_violet">#7C3AED</color>
+    <color name="echo_violet_dark">#6D28D9</color>
+    <color name="echo_lavender">#EDE7FF</color>
 </resources>

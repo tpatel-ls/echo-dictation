@@ -37,4 +37,25 @@
     <string name="grant_mic">Grant microphone</string>
     <string name="mic_granted">Microphone granted ✓</string>
     <string name="mic_already_granted">Microphone already granted</string>
+
+    <!-- Floating mic button -->
+    <string name="section_floating">Floating mic button</string>
+    <string name="floating_enabled">Show the floating mic button</string>
+    <string name="floating_hint">A draggable mic that floats over every app — tap to dictate hands-free (it stops when you tap again or pause), or press and hold to talk. It pastes into whatever field you\'re in, so you can keep your normal keyboard for editing.</string>
+    <string name="floating_perm_overlay">Allow drawing over other apps</string>
+    <string name="floating_perm_overlay_done">Draw over other apps ✓</string>
+    <string name="floating_perm_a11y">Enable Echo accessibility (to paste)</string>
+    <string name="floating_perm_a11y_done">Accessibility enabled ✓</string>
+    <string name="floating_perm_notif">Allow notifications</string>
+    <string name="floating_perm_notif_done">Notifications allowed ✓</string>
+    <string name="floating_a11y_toast">Find “Echo” under Installed apps. If it\'s greyed out, tap ⋮ → Allow restricted settings first (sideloaded apps).</string>
+    <string name="floating_need_perms">Grant draw-over-apps, accessibility, and the microphone first</string>
+    <string name="floating_channel">Floating mic button</string>
+    <string name="floating_notif_title">Echo dictation</string>
+    <string name="floating_notif_text">Tap the floating mic to dictate anywhere</string>
+    <string name="floating_configure">Open Echo to set your Whisper endpoint first</string>
+    <string name="floating_copied">Copied — long-press the field and Paste</string>
+    <string name="floating_error">Dictation failed — check your connection</string>
+    <string name="floating_stop">Stop and insert</string>
+    <string name="a11y_description">Lets Echo paste your dictated text into the field you\'re typing in, when you use the floating mic button. Echo does not otherwise read your screen.</string>
 </resources>

@@ -186,5 +186,46 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/grant_mic" />
+
+        <!-- Floating mic button -->
+        <TextView style="@style/EchoSectionHeader" android:text="@string/section_floating" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/floating_enabled"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/floating_enabled"
+            android:textColor="@color/echo_text" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:text="@string/floating_hint"
+            android:textColor="@color/echo_muted"
+            android:textSize="12sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/floating_overlay"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:text="@string/floating_perm_overlay" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/floating_a11y"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:text="@string/floating_perm_a11y" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/floating_notif"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/floating_perm_notif" />
     </LinearLayout>
 </ScrollView>

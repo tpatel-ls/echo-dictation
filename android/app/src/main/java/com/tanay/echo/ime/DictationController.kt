@@ -34,7 +34,7 @@ class DictationController(context: Context) {
     private val app = context.applicationContext
     private val settings = EchoSettings(app)
     private val store = EchoStore(EchoDatabase.get(app))
-    private val mic = MicRecorder()
+    private val mic = MicRecorder().apply { onLevel = { l -> this@DictationController.onLevel(l) } }
     private val http = OkHttpClient() // pooled keep-alive, shared by Whisper + Claude + sync
     private val whisper = WhisperClient(http)
     private val claude = ClaudeClient(http)
@@ -42,9 +42,12 @@ class DictationController(context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val syncing = AtomicBoolean(false)
 
-    /** Set by the IME view: status pill updates and the text-commit sink. */
+    /** Set by the host (IME or floating button): status pill updates and the text sink. */
     var onPhase: (DictationPhase, String?) -> Unit = { _, _ -> }
     var onText: (String) -> Unit = {}
+
+    /** Live mic level (RMS 0..1) while capturing — for a host that draws a waveform / detects silence. */
+    var onLevel: (Float) -> Unit = {}
 
     val isConfigured: Boolean get() = settings.isTranscriptionConfigured
 

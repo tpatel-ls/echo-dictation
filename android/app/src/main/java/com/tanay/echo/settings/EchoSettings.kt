@@ -58,6 +58,20 @@ class EchoSettings(context: Context) {
         get() = prefs.getBoolean("cleanupEnabled", false)
         set(v) = prefs.edit().putBoolean("cleanupEnabled", v).apply()
 
+    /** Whether the system-wide floating mic button is enabled (starts FloatingButtonService). */
+    var floatingEnabled: Boolean
+        get() = prefs.getBoolean("floatingEnabled", false)
+        set(v) = prefs.edit().putBoolean("floatingEnabled", v).apply()
+
+    /** Last dragged position of the floating bubble, in pixels; -1 ⇒ use the default (top-right). */
+    var floatingX: Int
+        get() = prefs.getInt("floatingX", -1)
+        set(v) = prefs.edit().putInt("floatingX", v).apply()
+
+    var floatingY: Int
+        get() = prefs.getInt("floatingY", -1)
+        set(v) = prefs.edit().putInt("floatingY", v).apply()
+
     var syncBaseUrl: String
         get() = prefs.getString("syncBaseUrl", "") ?: ""
         set(v) = prefs.edit().putString("syncBaseUrl", v.trim()).apply()
