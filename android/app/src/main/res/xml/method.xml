@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Input-method metadata. settingsActivity points the system "Settings" affordance (and
+     the keyboard picker) at our config screen. One keyboard subtype: dictation. -->
+<input-method xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="com.tanay.echo.settings.SettingsActivity"
+    android:supportsSwitchingToNextInputMethod="true">
+    <subtype
+        android:label="@string/subtype_label"
+        android:imeSubtypeMode="keyboard" />
+</input-method>

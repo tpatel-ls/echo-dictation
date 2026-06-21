@@ -1,0 +1,9 @@
+<resources>
+    <!-- Echo is dark-branded (the keyboard draws its own dark view), so the settings screen is
+         fixed-dark too — light text on the dark surface, no DayNight flip to fight. -->
+    <style name="Theme.Echo" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:windowBackground">@color/echo_bg</item>
+        <item name="android:statusBarColor">@color/echo_bg</item>
+        <item name="colorPrimary">@color/echo_accent</item>
+    </style>
+</resources>

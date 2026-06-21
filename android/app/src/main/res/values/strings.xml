@@ -1,0 +1,40 @@
+<resources>
+    <string name="app_name">Echo</string>
+    <string name="ime_label">Echo Voice Keyboard</string>
+    <string name="subtype_label">Echo dictation</string>
+
+    <!-- Keyboard status pill -->
+    <string name="ime_hold_to_speak">Hold to speak</string>
+    <string name="ime_listening">Listening…</string>
+    <string name="ime_transcribing">Transcribing…</string>
+    <string name="ime_inserted">Inserted ✓</string>
+    <string name="ime_empty">Didn\'t catch that</string>
+    <string name="ime_error">Something went wrong</string>
+    <string name="ime_grant_mic">Tap to grant microphone access</string>
+    <string name="ime_configure_first">Open Echo to set your endpoints</string>
+    <string name="cd_mic">Dictate</string>
+    <string name="cd_globe">Switch keyboard</string>
+
+    <!-- Settings screen -->
+    <string name="settings_subtitle">Point Echo at your own endpoints, then enable the keyboard.</string>
+    <string name="section_transcription">Transcription (Whisper)</string>
+    <string name="section_sync">Sync</string>
+    <string name="section_cleanup">AI cleanup (optional)</string>
+    <string name="section_setup">Setup</string>
+    <string name="field_whisper_url">Whisper base URL</string>
+    <string name="field_whisper_key">Whisper API key</string>
+    <string name="field_whisper_model">Whisper model</string>
+    <string name="field_sync_url">Sync service URL</string>
+    <string name="field_sync_token">Sync token</string>
+    <string name="field_cleanup_enabled">Clean up with Claude after dictation</string>
+    <string name="field_cleanup_hint">Off by default — adds latency. Needs a Claude-compatible proxy below.</string>
+    <string name="field_claude_url">Claude base URL</string>
+    <string name="field_claude_key">Claude API key</string>
+    <string name="field_claude_model">Claude model</string>
+    <string name="settings_save">Save</string>
+    <string name="settings_saved">Saved</string>
+    <string name="enable_keyboard">Enable Echo keyboard</string>
+    <string name="grant_mic">Grant microphone</string>
+    <string name="mic_granted">Microphone granted ✓</string>
+    <string name="mic_already_granted">Microphone already granted</string>
+</resources>
