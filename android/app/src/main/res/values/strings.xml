@@ -54,7 +54,9 @@
     <string name="floating_notif_title">Echo dictation</string>
     <string name="floating_notif_text">Tap the floating mic to dictate anywhere</string>
     <string name="floating_configure">Open Echo to set your Whisper endpoint first</string>
-    <string name="floating_copied">Copied — long-press the field and Paste</string>
+    <string name="floating_copied">Dictated text copied — tap a field and paste it</string>
+    <string name="floating_no_a11y">Enable Echo accessibility to auto-paste — text copied for now</string>
+    <string name="floating_overlay_failed">Couldn\'t show the mic — re-grant “draw over other apps”</string>
     <string name="floating_error">Dictation failed — check your connection</string>
     <string name="floating_stop">Stop and insert</string>
     <string name="a11y_description">Lets Echo paste your dictated text into the field you\'re typing in, when you use the floating mic button. Echo does not otherwise read your screen.</string>

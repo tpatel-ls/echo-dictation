@@ -37,7 +37,9 @@ import com.tanay.echo.settings.EchoSettings
  *
  * Tap = hands-free record (stops on a second tap or after a few seconds of silence); press-and-hold
  * = push-to-talk; drag = reposition. Runs as a microphone foreground service so it can capture while
- * another app is in front — started from Settings (a foreground context) per Android 14 rules.
+ * another app is in front — started from Settings (a foreground context) per Android 14 rules. Not
+ * START_STICKY: a microphone overlay can't be silently revived from a background context on Android
+ * 14, so it is re-established from the Settings screen instead (see SettingsActivity.onCreate).
  */
 class FloatingButtonService : Service() {
     private lateinit var windowManager: WindowManager
@@ -76,51 +78,67 @@ class FloatingButtonService : Service() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         settings = EchoSettings(this)
         controller = DictationController(this)
-        controller.onPhase = { phase, _ -> main.post { updateBubble(phase) } }
+        controller.onPhase = { phase, msg -> main.post { updateBubble(phase, msg) } }
         controller.onText = { text -> main.post { deliver(text) } }
         controller.onLevel = { level -> main.post { onLevel(level) } }
-        startInForeground()
-        if (!addBubble()) { stopSelf(); return }
+        if (!startInForeground()) {
+            settings.floatingEnabled = false // don't leave the toggle claiming it's on
+            stopSelf()
+            return
+        }
+        if (!addBubble()) {
+            toast(getString(R.string.floating_overlay_failed))
+            settings.floatingEnabled = false
+            stopSelf()
+            return
+        }
         controller.triggerSync() // pull the latest dictionary so corrections are current
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    // Not sticky: see the class note. A background-context restart of a mic FGS throws on Android 14.
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_NOT_STICKY
 
     override fun onDestroy() {
         main.removeCallbacksAndMessages(null)
-        controller.dispose()
+        if (::controller.isInitialized) controller.dispose()
         if (::bubble.isInitialized) runCatching { windowManager.removeView(bubble) }
         super.onDestroy()
     }
 
     // ── Foreground service ─────────────────────────────────────────────────────────
-    private fun startInForeground() {
-        val channelId = "echo_floating"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val nm = getSystemService(NotificationManager::class.java)
-            if (nm.getNotificationChannel(channelId) == null) {
-                nm.createNotificationChannel(
-                    NotificationChannel(
-                        channelId,
-                        getString(R.string.floating_channel),
-                        NotificationManager.IMPORTANCE_LOW
+    private fun startInForeground(): Boolean {
+        return try {
+            val channelId = "echo_floating"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val nm = getSystemService(NotificationManager::class.java)
+                if (nm.getNotificationChannel(channelId) == null) {
+                    nm.createNotificationChannel(
+                        NotificationChannel(
+                            channelId,
+                            getString(R.string.floating_channel),
+                            NotificationManager.IMPORTANCE_LOW
+                        )
                     )
-                )
+                }
             }
-        }
-        val launch = Intent(this, com.tanay.echo.settings.SettingsActivity::class.java)
-        val tap = PendingIntent.getActivity(this, 0, launch, PendingIntent.FLAG_IMMUTABLE)
-        val notif: Notification = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(R.drawable.ic_mic)
-            .setContentTitle(getString(R.string.floating_notif_title))
-            .setContentText(getString(R.string.floating_notif_text))
-            .setOngoing(true)
-            .setContentIntent(tap)
-            .build()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-        } else {
-            startForeground(NOTIF_ID, notif)
+            val launch = Intent(this, com.tanay.echo.settings.SettingsActivity::class.java)
+            val tap = PendingIntent.getActivity(this, 0, launch, PendingIntent.FLAG_IMMUTABLE)
+            val notif: Notification = NotificationCompat.Builder(this, channelId)
+                .setSmallIcon(R.drawable.ic_mic)
+                .setContentTitle(getString(R.string.floating_notif_title))
+                .setContentText(getString(R.string.floating_notif_text))
+                .setOngoing(true)
+                .setContentIntent(tap)
+                .build()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            } else {
+                startForeground(NOTIF_ID, notif)
+            }
+            true
+        } catch (e: Exception) {
+            // e.g. RECORD_AUDIO revoked between the Settings toggle and start, or an FGS-start rule.
+            false
         }
     }
 
@@ -149,21 +167,26 @@ class FloatingButtonService : Service() {
         lp.gravity = Gravity.TOP or Gravity.START
         val dm = resources.displayMetrics
         val margin = (12 * dm.density).toInt()
-        lp.x = if (settings.floatingX >= 0) settings.floatingX else dm.widthPixels
+        val approxW = (180 * dm.density).toInt() // pre-measure estimate so the seed is on-screen
+        lp.x = if (settings.floatingX >= 0) settings.floatingX
+            else (dm.widthPixels - approxW - margin).coerceAtLeast(0)
         lp.y = if (settings.floatingY >= 0) settings.floatingY else margin + (48 * dm.density).toInt()
 
         bubble.setOnTouchListener { _, ev -> onTouch(ev) }
         try {
             windowManager.addView(bubble, lp)
         } catch (e: Exception) {
-            return false // overlay permission missing/revoked — give up cleanly
+            return false // overlay permission missing/revoked, or inflation failed — caller toasts
         }
-        // Once measured, snap a default-positioned bubble flush to the top-right.
+        // Once measured, clamp to the real screen (default snaps flush to the top-right).
         bubble.post {
-            if (settings.floatingX < 0) {
-                lp.x = (dm.widthPixels - bubble.width - margin).coerceAtLeast(0)
-                runCatching { windowManager.updateViewLayout(bubble, lp) }
+            lp.x = if (settings.floatingX < 0) {
+                (dm.widthPixels - bubble.width - margin).coerceAtLeast(0)
+            } else {
+                lp.x.coerceIn(0, (dm.widthPixels - bubble.width).coerceAtLeast(0))
             }
+            lp.y = lp.y.coerceIn(0, (dm.heightPixels - bubble.height).coerceAtLeast(0))
+            runCatching { windowManager.updateViewLayout(bubble, lp) }
         }
         updateBubble(DictationPhase.IDLE)
         return true
@@ -261,15 +284,20 @@ class FloatingButtonService : Service() {
     }
 
     private fun deliver(text: String) {
-        val pasted = EchoAccessibilityService.instance?.pasteIntoFocusedField(text) ?: run {
-            (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                .setPrimaryClip(ClipData.newPlainText("echo", text))
-            false
+        val svc = EchoAccessibilityService.instance
+        if (svc == null) {
+            copyToClipboard(text)
+            toast(getString(R.string.floating_no_a11y))
+            return
         }
-        if (!pasted) toast(getString(R.string.floating_copied))
+        if (!svc.pasteIntoFocusedField(text)) toast(getString(R.string.floating_copied))
     }
 
-    private fun updateBubble(phase: DictationPhase) {
+    private fun copyToClipboard(text: String) =
+        (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+            .setPrimaryClip(ClipData.newPlainText("echo", text))
+
+    private fun updateBubble(phase: DictationPhase, msg: String? = null) {
         when (phase) {
             DictationPhase.IDLE, DictationPhase.EMPTY, DictationPhase.ERROR -> {
                 transcribing = false
@@ -277,7 +305,7 @@ class FloatingButtonService : Service() {
                 micIcon.visibility = View.VISIBLE
                 waveform.visibility = View.GONE; waveform.stop()
                 checkIcon.visibility = View.GONE
-                if (phase == DictationPhase.ERROR) toast(getString(R.string.floating_error))
+                if (phase == DictationPhase.ERROR) toast(msg ?: getString(R.string.floating_error))
             }
             DictationPhase.LISTENING -> {
                 bubble.setBackgroundResource(R.drawable.bg_bubble_recording)

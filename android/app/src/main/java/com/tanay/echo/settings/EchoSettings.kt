@@ -95,7 +95,10 @@ class EchoSettings(context: Context) {
         val e = prefs.edit()
         var changed = false
         fun seed(key: String, value: String) {
-            if (value.isNotEmpty() && !prefs.contains(key)) {
+            // Fill a baked default when the user hasn't set a real value yet — covers a fresh install
+            // AND an upgrade where an earlier build wrote an empty string (e.g. syncToken before it had
+            // a value). A non-empty user-set value is never overwritten.
+            if (value.isNotEmpty() && prefs.getString(key, "").isNullOrEmpty()) {
                 e.putString(key, value)
                 changed = true
             }

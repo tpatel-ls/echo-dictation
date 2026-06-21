@@ -72,6 +72,11 @@ class SettingsActivity : AppCompatActivity() {
 
         load()
 
+        // Re-establish the bubble if it was enabled but isn't running (after a reboot or memory kill).
+        if (settings.floatingEnabled && Settings.canDrawOverlays(this) && a11yEnabled() && hasMic()) {
+            FloatingButtonService.start(this)
+        }
+
         findViewById<MaterialButton>(R.id.save).setOnClickListener { save() }
         findViewById<MaterialButton>(R.id.enable_keyboard).setOnClickListener {
             startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
