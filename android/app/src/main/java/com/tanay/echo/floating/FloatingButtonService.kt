@@ -35,11 +35,11 @@ import com.tanay.echo.settings.EchoSettings
  * the app underneath keeps its text-field focus) and reuses the IME's DictationController, routing
  * transcribed text through the accessibility service to paste into whatever field is focused.
  *
- * Tap = hands-free record (stops on a second tap or after a few seconds of silence); press-and-hold
- * = push-to-talk; drag = reposition. Runs as a microphone foreground service so it can capture while
- * another app is in front — started from Settings (a foreground context) per Android 14 rules. Not
- * START_STICKY: a microphone overlay can't be silently revived from a background context on Android
- * 14, so it is re-established from the Settings screen instead (see SettingsActivity.onCreate).
+ * Visible only while a soft keyboard is up (the accessibility service reports show/hide). Anchored
+ * to the screen's right edge so the wide recording pill grows leftward and never runs off-screen.
+ * Tap = hands-free record (stops on a 2nd tap or after silence); press-and-hold = push-to-talk;
+ * drag = reposition. Runs as a microphone foreground service so it can capture while another app is
+ * in front; started from Settings (a foreground context) per Android 14 rules; not START_STICKY.
  */
 class FloatingButtonService : Service() {
     private lateinit var windowManager: WindowManager
@@ -49,9 +49,9 @@ class FloatingButtonService : Service() {
 
     private lateinit var bubble: View
     private lateinit var lp: WindowManager.LayoutParams
-    private lateinit var micIcon: ImageView
+    private lateinit var idleIcon: ImageView
     private lateinit var waveform: WaveformView
-    private lateinit var checkIcon: ImageView
+    private lateinit var stopIcon: ImageView
 
     private val interp = GestureInterpreter()
     private val silence = SilenceDetector()
@@ -82,7 +82,7 @@ class FloatingButtonService : Service() {
         controller.onText = { text -> main.post { deliver(text) } }
         controller.onLevel = { level -> main.post { onLevel(level) } }
         if (!startInForeground()) {
-            settings.floatingEnabled = false // don't leave the toggle claiming it's on
+            settings.floatingEnabled = false
             stopSelf()
             return
         }
@@ -92,13 +92,16 @@ class FloatingButtonService : Service() {
             stopSelf()
             return
         }
+        // Show the bubble only while a keyboard is up; reflect the current state immediately.
+        EchoAccessibilityService.visibilityListener = { open -> main.post { setBubbleVisible(open) } }
+        setBubbleVisible(EchoAccessibilityService.instance?.isKeyboardOpen() ?: false)
         controller.triggerSync() // pull the latest dictionary so corrections are current
     }
 
-    // Not sticky: see the class note. A background-context restart of a mic FGS throws on Android 14.
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_NOT_STICKY
 
     override fun onDestroy() {
+        EchoAccessibilityService.visibilityListener = null
         main.removeCallbacksAndMessages(null)
         if (::controller.isInitialized) controller.dispose()
         if (::bubble.isInitialized) runCatching { windowManager.removeView(bubble) }
@@ -113,11 +116,7 @@ class FloatingButtonService : Service() {
                 val nm = getSystemService(NotificationManager::class.java)
                 if (nm.getNotificationChannel(channelId) == null) {
                     nm.createNotificationChannel(
-                        NotificationChannel(
-                            channelId,
-                            getString(R.string.floating_channel),
-                            NotificationManager.IMPORTANCE_LOW
-                        )
+                        NotificationChannel(channelId, getString(R.string.floating_channel), NotificationManager.IMPORTANCE_LOW)
                     )
                 }
             }
@@ -137,7 +136,6 @@ class FloatingButtonService : Service() {
             }
             true
         } catch (e: Exception) {
-            // e.g. RECORD_AUDIO revoked between the Settings toggle and start, or an FGS-start rule.
             false
         }
     }
@@ -146,9 +144,10 @@ class FloatingButtonService : Service() {
     @SuppressLint("ClickableViewAccessibility") // bubble is a custom gesture target; cd_mic labels it
     private fun addBubble(): Boolean {
         bubble = LayoutInflater.from(this).inflate(R.layout.floating_bubble, null)
-        micIcon = bubble.findViewById(R.id.bubble_mic)
+        idleIcon = bubble.findViewById(R.id.bubble_idle_icon)
         waveform = bubble.findViewById(R.id.bubble_wave)
-        checkIcon = bubble.findViewById(R.id.bubble_check)
+        stopIcon = bubble.findViewById(R.id.bubble_stop)
+        bubble.visibility = View.GONE // shown only when a keyboard is up
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -164,32 +163,32 @@ class FloatingButtonService : Service() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         )
-        lp.gravity = Gravity.TOP or Gravity.START
+        // Anchor to the top-RIGHT: lp.x/lp.y are insets from the right/top, so the recording pill
+        // grows leftward and stays on-screen.
+        lp.gravity = Gravity.TOP or Gravity.END
         val dm = resources.displayMetrics
         val margin = (12 * dm.density).toInt()
-        val approxW = (180 * dm.density).toInt() // pre-measure estimate so the seed is on-screen
-        lp.x = if (settings.floatingX >= 0) settings.floatingX
-            else (dm.widthPixels - approxW - margin).coerceAtLeast(0)
-        lp.y = if (settings.floatingY >= 0) settings.floatingY else margin + (48 * dm.density).toInt()
+        lp.x = if (settings.floatingX >= 0) settings.floatingX else margin
+        lp.y = if (settings.floatingY >= 0) settings.floatingY else (96 * dm.density).toInt()
 
         bubble.setOnTouchListener { _, ev -> onTouch(ev) }
+        // Whenever the bubble's size changes (idle squircle ↔ recording pill), keep it fully on-screen.
+        bubble.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or2, ob ->
+            if (r - l != or2 - ol || b - t != ob - ot) clampToScreenAndApply()
+        }
         try {
             windowManager.addView(bubble, lp)
         } catch (e: Exception) {
             return false // overlay permission missing/revoked, or inflation failed — caller toasts
         }
-        // Once measured, clamp to the real screen (default snaps flush to the top-right).
-        bubble.post {
-            lp.x = if (settings.floatingX < 0) {
-                (dm.widthPixels - bubble.width - margin).coerceAtLeast(0)
-            } else {
-                lp.x.coerceIn(0, (dm.widthPixels - bubble.width).coerceAtLeast(0))
-            }
-            lp.y = lp.y.coerceIn(0, (dm.heightPixels - bubble.height).coerceAtLeast(0))
-            runCatching { windowManager.updateViewLayout(bubble, lp) }
-        }
         updateBubble(DictationPhase.IDLE)
         return true
+    }
+
+    private fun setBubbleVisible(visible: Boolean) {
+        if (!::bubble.isInitialized) return
+        if (!visible && mode != Mode.NONE) return // never yank the bubble mid-recording
+        bubble.visibility = if (visible) View.VISIBLE else View.GONE
     }
 
     private fun onTouch(ev: MotionEvent): Boolean {
@@ -206,7 +205,8 @@ class FloatingButtonService : Service() {
                 if (interp.move(ev.rawX, ev.rawY) is Gesture.Drag) {
                     main.removeCallbacks(holdRunnable)
                     movedDuringDrag = true
-                    lp.x = (dragStartLpX + (ev.rawX - dragStartRawX)).toInt()
+                    // END gravity: dragging right (rawX up) reduces the right-inset.
+                    lp.x = (dragStartLpX - (ev.rawX - dragStartRawX)).toInt()
                     lp.y = (dragStartLpY + (ev.rawY - dragStartRawY)).toInt()
                     clampToScreen()
                     runCatching { windowManager.updateViewLayout(bubble, lp) }
@@ -236,6 +236,13 @@ class FloatingButtonService : Service() {
         val dm = resources.displayMetrics
         lp.x = lp.x.coerceIn(0, (dm.widthPixels - bubble.width).coerceAtLeast(0))
         lp.y = lp.y.coerceIn(0, (dm.heightPixels - bubble.height).coerceAtLeast(0))
+    }
+
+    private fun clampToScreenAndApply() {
+        if (!::bubble.isInitialized) return
+        val px = lp.x; val py = lp.y
+        clampToScreen()
+        if (lp.x != px || lp.y != py) runCatching { windowManager.updateViewLayout(bubble, lp) }
     }
 
     private fun persistPosition() {
@@ -299,31 +306,27 @@ class FloatingButtonService : Service() {
 
     private fun updateBubble(phase: DictationPhase, msg: String? = null) {
         when (phase) {
-            DictationPhase.IDLE, DictationPhase.EMPTY, DictationPhase.ERROR -> {
+            // Idle squircle (lavender + purple waveform glyph). INSERTED collapses straight back —
+            // the pasted text is the confirmation, Wispr-style.
+            DictationPhase.IDLE, DictationPhase.EMPTY, DictationPhase.ERROR, DictationPhase.INSERTED -> {
                 transcribing = false
                 bubble.setBackgroundResource(R.drawable.bg_bubble_idle)
-                micIcon.visibility = View.VISIBLE
+                idleIcon.visibility = View.VISIBLE
                 waveform.visibility = View.GONE; waveform.stop()
-                checkIcon.visibility = View.GONE
+                stopIcon.visibility = View.GONE
                 if (phase == DictationPhase.ERROR) toast(msg ?: getString(R.string.floating_error))
             }
+            // Purple pill with a white waveform; a white stop circle on the right in tap mode.
             DictationPhase.LISTENING -> {
                 bubble.setBackgroundResource(R.drawable.bg_bubble_recording)
-                micIcon.visibility = View.GONE
+                idleIcon.visibility = View.GONE
                 waveform.visibility = View.VISIBLE; waveform.start()
-                checkIcon.visibility = if (mode == Mode.TAP) View.VISIBLE else View.GONE
+                stopIcon.visibility = if (mode == Mode.TAP) View.VISIBLE else View.GONE
             }
             DictationPhase.TRANSCRIBING -> {
-                micIcon.visibility = View.GONE
+                idleIcon.visibility = View.GONE
                 waveform.visibility = View.VISIBLE; waveform.start()
-                checkIcon.visibility = View.GONE
-            }
-            DictationPhase.INSERTED -> {
-                transcribing = false
-                waveform.visibility = View.GONE; waveform.stop()
-                micIcon.visibility = View.GONE
-                checkIcon.visibility = View.VISIBLE
-                main.postDelayed({ updateBubble(DictationPhase.IDLE) }, 900)
+                stopIcon.visibility = View.GONE
             }
         }
     }
