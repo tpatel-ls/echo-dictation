@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { join } from 'node:path'
 import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs'
 import initSqlJs from 'sql.js'
+import type { Database } from 'sql.js'
 import { HistoryStore } from './history'
 import { DictionaryStore } from './dictionary'
 
@@ -12,16 +13,27 @@ function wasmDir(): string {
 }
 
 export interface HistoryHandle {
+  /** The shared sql.js database — the sync SyncTables read/write it directly. */
+  db: Database
   store: HistoryStore
   dictionary: DictionaryStore
+  /** Immediate, synchronous persist — used on quit. */
   flush: () => void
+  /** Debounced persist — used to save records `applyRemote` writes outside the store hook. */
+  persist: () => void
+}
+
+export interface OpenHistoryOptions {
+  /** Fired (alongside the debounced disk persist) whenever a store mutates, so the caller
+   * can kick a sync. Store writes already debounce the DB persist; sync coalesces itself. */
+  onChange?: () => void
 }
 
 /**
  * Open (or create) the on-disk history database. Writes are debounced and atomic
  * (tmp file + rename) so a crash can never leave a half-written DB.
  */
-export async function openHistory(): Promise<HistoryHandle> {
+export async function openHistory(opts: OpenHistoryOptions = {}): Promise<HistoryHandle> {
   const dir = app.getPath('userData')
   mkdirSync(dir, { recursive: true })
   const dbPath = join(dir, 'history.sqlite')
@@ -41,8 +53,14 @@ export async function openHistory(): Promise<HistoryHandle> {
     timer = setTimeout(persist, 400)
   }
 
-  const store = new HistoryStore(db, schedule)
-  const dictionary = new DictionaryStore(db, schedule)
+  // A store mutation always schedules a disk persist; it may also nudge the sync runner.
+  const onStoreChange = (): void => {
+    schedule()
+    opts.onChange?.()
+  }
+
+  const store = new HistoryStore(db, onStoreChange)
+  const dictionary = new DictionaryStore(db, onStoreChange)
   const flush = (): void => {
     if (timer) {
       clearTimeout(timer)
@@ -50,5 +68,5 @@ export async function openHistory(): Promise<HistoryHandle> {
     }
     persist()
   }
-  return { store, dictionary, flush }
+  return { db, store, dictionary, flush, persist: schedule }
 }

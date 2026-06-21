@@ -60,7 +60,8 @@ export class SettingsStore {
   getMaskedSecrets(): MaskedSecrets {
     return {
       whisperApiKey: mask(this.secrets.whisperApiKey),
-      claudeApiKey: mask(this.secrets.claudeApiKey)
+      claudeApiKey: mask(this.secrets.claudeApiKey),
+      syncToken: mask(this.secrets.syncToken)
     }
   }
 
@@ -91,10 +92,11 @@ export class SettingsStore {
       /* fall through to seed */
     }
     const seed = this.loadSeed()
-    if (seed.whisperApiKey || seed.claudeApiKey) {
+    if (seed.whisperApiKey || seed.claudeApiKey || seed.syncToken) {
       const merged: Secrets = {
         whisperApiKey: seed.whisperApiKey ?? '',
-        claudeApiKey: seed.claudeApiKey ?? ''
+        claudeApiKey: seed.claudeApiKey ?? '',
+        syncToken: seed.syncToken ?? ''
       }
       this.persistSecrets(merged)
       return merged

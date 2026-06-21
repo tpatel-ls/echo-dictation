@@ -1,6 +1,11 @@
 import { app, BrowserWindow, session } from 'electron'
+import { join } from 'node:path'
 import { SettingsStore } from './store/settings'
 import { openHistory } from './store/history-file'
+import { SyncTable, SYNC_COLUMNS } from './sync/sync-table'
+import { SyncClient, type SyncBinding } from './sync/client'
+import { FileSyncState } from './sync/state'
+import { SyncRunner } from './sync/runner'
 import { createOverlay, createDashboard } from './windows'
 import { DictationController } from './dictation'
 import { HotkeyListener } from './hotkey/listener'
@@ -13,6 +18,10 @@ import { IPC, type Settings } from '@shared/types'
 // never take down the tray + global hotkey. Log and continue.
 process.on('uncaughtException', (err) => console.error('[echo] uncaughtException:', err))
 process.on('unhandledRejection', (reason) => console.error('[echo] unhandledRejection:', reason))
+
+// How often the desktop reconciles with the sync service, on top of the change- and
+// launch-triggered passes. Within the 30–60s target from the design spec.
+const SYNC_INTERVAL_MS = 45_000
 
 app.setAppUserModelId('com.tanay.echo')
 
@@ -40,7 +49,38 @@ async function main(): Promise<void> {
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => allowMic(permission))
 
   const settings = new SettingsStore()
-  const { store: history, dictionary, flush } = await openHistory()
+
+  // Sync: a store mutation nudges the runner, but the runner is built after the DB opens,
+  // so the change hook forwards through a mutable indirection set just below.
+  let nudgeSync = (): void => {}
+  const { db, store: history, dictionary, flush, persist } = await openHistory({
+    onChange: () => nudgeSync()
+  })
+
+  const syncBindings: SyncBinding[] = [
+    { name: 'transcripts', table: new SyncTable(db, 'transcripts', [...SYNC_COLUMNS.transcripts]) },
+    { name: 'dictionary', table: new SyncTable(db, 'dictionary', [...SYNC_COLUMNS.dictionary]) }
+  ]
+  const syncState = new FileSyncState(join(app.getPath('userData'), 'sync-state.json'))
+  // The run closure reads settings/secrets fresh each pass: editing them in Settings takes
+  // effect live, and an install without a sync endpoint simply no-ops.
+  const syncRunner = new SyncRunner(async () => {
+    const s = settings.getSettings()
+    const sec = settings.getSecrets()
+    if (!s.syncBaseUrl || !sec.syncToken) return // sync not configured yet
+    const client = new SyncClient(syncBindings, { baseUrl: s.syncBaseUrl, token: sec.syncToken }, syncState)
+    try {
+      await client.syncOnce()
+    } finally {
+      // `applyRemote` writes pulled rows straight to the db and the pull cursor has already
+      // advanced durably — so persist even if the push half then throws. Otherwise a crash
+      // could strand those rows: the cursor moved past them but they never reached disk.
+      persist()
+    }
+  })
+  nudgeSync = (): void => syncRunner.trigger()
+  syncRunner.trigger() // reconcile once on launch
+  syncRunner.startInterval(SYNC_INTERVAL_MS) // periodic catch-up
 
   const openedHidden = process.argv.includes('--hidden')
   let quitting = false
@@ -95,6 +135,7 @@ async function main(): Promise<void> {
     applyLoginItem(s.launchAtLogin)
     if (!overlay.isDestroyed()) overlay.webContents.send(IPC.SETTINGS_CHANGED, s)
     if (dashboard && !dashboard.isDestroyed()) dashboard.webContents.send(IPC.SETTINGS_CHANGED, s)
+    syncRunner.trigger() // picking up a newly-set sync endpoint reconciles right away
   }
 
   registerIpc({ settings, history, dictionary, controller, listener, openDashboard, onSettingsChanged })
@@ -104,6 +145,7 @@ async function main(): Promise<void> {
     onSettingsChanged,
     quit: () => {
       quitting = true
+      syncRunner.stop()
       flush()
       app.exit(0)
     }
@@ -118,6 +160,7 @@ async function main(): Promise<void> {
   })
   app.on('before-quit', () => {
     quitting = true
+    syncRunner.stop()
     try {
       listener.stop()
     } catch {

@@ -7,6 +7,8 @@ export interface SeedFile {
   claudeApiKey?: string
   whisperBaseUrl?: string
   claudeBaseUrl?: string
+  syncBaseUrl?: string
+  syncToken?: string
 }
 
 /** Parse a seed file's text, tolerating the UTF-8 BOM that Notepad and
@@ -28,9 +30,11 @@ export function parseSeed(text: string): SeedFile {
 export function applySeedEndpoints(settings: Settings, seed: SeedFile): Settings | null {
   const whisper = seed.whisperBaseUrl?.trim()
   const claude = seed.claudeBaseUrl?.trim()
+  const sync = seed.syncBaseUrl?.trim()
   const patch: Partial<Settings> = {}
   if (!settings.whisperBaseUrl && whisper) patch.whisperBaseUrl = whisper
   if (!settings.claudeBaseUrl && claude) patch.claudeBaseUrl = claude
+  if (!settings.syncBaseUrl && sync) patch.syncBaseUrl = sync
   if (!Object.keys(patch).length) return null
   return { ...settings, ...patch }
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import path from 'node:path'
-import initSqlJs, { type SqlJsStatic } from 'sql.js'
+import initSqlJs, { type SqlJsStatic, type Database } from 'sql.js'
 import { HistoryStore } from '../src/main/store/history'
 import type { NewTranscript } from '@shared/types'
 
@@ -28,6 +28,16 @@ beforeAll(async () => {
 })
 function newStore(onChange?: () => void): HistoryStore {
   return new HistoryStore(new SQL.Database(), onChange)
+}
+
+/** Read the sync columns straight off the DB (they aren't on the public Transcript type). */
+function syncMeta(db: Database, id: number): { uuid: string; updated_at: number; deleted: number } {
+  const stmt = db.prepare('SELECT uuid, updated_at, deleted FROM transcripts WHERE id = ?')
+  stmt.bind([id])
+  stmt.step()
+  const o = stmt.getAsObject()
+  stmt.free()
+  return { uuid: o.uuid as string, updated_at: o.updated_at as number, deleted: o.deleted as number }
 }
 
 describe('HistoryStore', () => {
@@ -123,5 +133,56 @@ describe('HistoryStore', () => {
     store.updateCleaned(t.id, 'x')
     store.delete(t.id)
     expect(n).toBe(3)
+  })
+})
+
+describe('HistoryStore sync write-path', () => {
+  it('stamps a unique uuid and updated_at on insert', () => {
+    const db = new SQL.Database()
+    const store = new HistoryStore(db, () => {}, () => 7000)
+    const a = store.insert(base())
+    const b = store.insert(base())
+    const ma = syncMeta(db, a.id)
+    expect(ma.uuid).not.toBe('')
+    expect(ma.uuid).not.toBe(syncMeta(db, b.id).uuid) // unique per row
+    expect(ma.updated_at).toBe(7000)
+    expect(ma.deleted).toBe(0)
+  })
+
+  it('bumps updated_at on updateCleaned and updateEdited', () => {
+    const db = new SQL.Database()
+    let clock = 1000
+    const store = new HistoryStore(db, () => {}, () => (clock += 1000))
+    const t = store.insert(base()) // updated_at = 2000
+    store.updateCleaned(t.id, 'x') // 3000
+    expect(syncMeta(db, t.id).updated_at).toBe(3000)
+    store.updateEdited(t.id, 'y z') // 4000
+    expect(syncMeta(db, t.id).updated_at).toBe(4000)
+  })
+
+  it('soft-deletes: hidden from reads but retained as a tombstone', () => {
+    const db = new SQL.Database()
+    let clock = 0
+    const store = new HistoryStore(db, () => {}, () => (clock += 100))
+    const t = store.insert(base())
+    store.delete(t.id)
+    expect(store.get(t.id)).toBeNull()
+    expect(store.list({ limit: 10, offset: 0 })).toHaveLength(0)
+    const m = syncMeta(db, t.id)
+    expect(m.deleted).toBe(1)
+    expect(m.updated_at).toBeGreaterThan(0)
+  })
+
+  it('excludes soft-deleted rows from search and stats', () => {
+    const db = new SQL.Database()
+    const store = new HistoryStore(db, () => {}, () => 1)
+    const now = new Date('2026-06-08T12:00:00').getTime()
+    const keep = store.insert(base({ created_at: now, raw_text: 'keep me', word_count: 2 }))
+    const gone = store.insert(base({ created_at: now, raw_text: 'delete me', word_count: 5 }))
+    store.delete(gone.id)
+    expect(store.search('me', { limit: 10, offset: 0 }).map((r) => r.id)).toEqual([keep.id])
+    const s = store.stats(now)
+    expect(s.totalTranscripts).toBe(1)
+    expect(s.totalWords).toBe(2)
   })
 })

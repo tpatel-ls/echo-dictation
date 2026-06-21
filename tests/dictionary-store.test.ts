@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import path from 'node:path'
-import initSqlJs, { type SqlJsStatic } from 'sql.js'
+import initSqlJs, { type SqlJsStatic, type Database } from 'sql.js'
 import { DictionaryStore } from '../src/main/store/dictionary'
 
 const WASM = path.join(process.cwd(), 'node_modules', 'sql.js', 'dist')
@@ -99,5 +99,74 @@ describe('DictionaryStore', () => {
     store.recordApplied([e.id])
     store.delete(e.id)
     expect(n).toBe(4)
+  })
+})
+
+function dictMeta(db: Database, id: number): { uuid: string; updated_at: number; deleted: number } {
+  const stmt = db.prepare('SELECT uuid, updated_at, deleted FROM dictionary WHERE id = ?')
+  stmt.bind([id])
+  stmt.step()
+  const o = stmt.getAsObject()
+  stmt.free()
+  return { uuid: o.uuid as string, updated_at: o.updated_at as number, deleted: o.deleted as number }
+}
+
+describe('DictionaryStore sync write-path', () => {
+  it('stamps a unique uuid and updated_at on add', () => {
+    const db = new SQL.Database()
+    const store = new DictionaryStore(db, () => {}, () => 7000)
+    const a = store.add('Bryan', ['Brian'], 'manual')
+    const b = store.add('Tanay', [], 'manual')
+    const m = dictMeta(db, a.id)
+    expect(m.uuid).not.toBe('')
+    expect(m.uuid).not.toBe(dictMeta(db, b.id).uuid)
+    expect(m.updated_at).toBe(7000)
+    expect(m.deleted).toBe(0)
+  })
+
+  it('bumps updated_at on update and recordApplied', () => {
+    const db = new SQL.Database()
+    let clock = 1000
+    const store = new DictionaryStore(db, () => {}, () => (clock += 1000))
+    const e = store.add('Bryan', [], 'manual') // add → 2000
+    store.update(e.id, { misheard: ['Brian'] }) // 3000
+    expect(dictMeta(db, e.id).updated_at).toBe(3000)
+    store.recordApplied([e.id]) // 4000
+    expect(dictMeta(db, e.id).updated_at).toBe(4000)
+  })
+
+  it('soft-deletes: hidden from list/get but retained as a tombstone', () => {
+    const db = new SQL.Database()
+    let clock = 0
+    const store = new DictionaryStore(db, () => {}, () => (clock += 100))
+    const e = store.add('Bryan', [], 'manual')
+    store.delete(e.id)
+    expect(store.list()).toEqual([])
+    expect(store.get(e.id)).toBeNull()
+    const m = dictMeta(db, e.id)
+    expect(m.deleted).toBe(1)
+    expect(m.updated_at).toBeGreaterThan(0)
+  })
+
+  it('allows re-adding a soft-deleted word as a fresh active entry', () => {
+    const db = new SQL.Database()
+    const store = new DictionaryStore(db, () => {}, () => 1)
+    const first = store.add('Bryan', ['Brian'], 'manual')
+    store.delete(first.id)
+    const second = store.add('Bryan', ['Bryanne'], 'manual') // must not hit a unique-index conflict
+    expect(second.id).not.toBe(first.id) // a new entry, not a merge into the tombstone
+    expect(store.list().map((e) => e.word)).toEqual(['Bryan'])
+    expect(second.misheard).toEqual(['Bryanne'])
+  })
+
+  it('recordApplied never mutates a soft-deleted tombstone', () => {
+    const db = new SQL.Database()
+    let clock = 0
+    const store = new DictionaryStore(db, () => {}, () => (clock += 100))
+    const e = store.add('Bryan', [], 'manual') // 100
+    store.delete(e.id) // 200
+    const before = dictMeta(db, e.id).updated_at
+    store.recordApplied([e.id]) // a stale id must be a no-op, not a tombstone bump
+    expect(dictMeta(db, e.id).updated_at).toBe(before)
   })
 })

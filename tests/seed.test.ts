@@ -33,6 +33,17 @@ describe('applySeedEndpoints', () => {
     expect(out?.claudeBaseUrl).toBe('https://c.example')
   })
 
+  it('fills an empty syncBaseUrl from the seed', () => {
+    const out = applySeedEndpoints(settings(), { syncBaseUrl: 'https://sync.example' })
+    expect(out?.syncBaseUrl).toBe('https://sync.example')
+  })
+
+  it('never overrides a syncBaseUrl the user already set', () => {
+    const s = settings({ syncBaseUrl: 'https://mine.sync' })
+    const out = applySeedEndpoints(s, { syncBaseUrl: 'https://seed.sync' })
+    expect(out).toBeNull()
+  })
+
   it('never overrides an endpoint the user already set', () => {
     const s = settings({ whisperBaseUrl: 'https://mine.example/v1' })
     const out = applySeedEndpoints(s, {

@@ -1,6 +1,13 @@
 import type { Database, SqlValue } from 'sql.js'
 import type { DictionaryEntry, DictionarySource } from '@shared/types'
+import { ensureSyncColumns } from './migrate'
+import { monotonicClock } from './clock'
+import { randomUUID } from 'node:crypto'
 
+// No unique word index: word-uniqueness is enforced at the app level (add() merges an
+// existing active word). A DB-level unique constraint would wedge cross-device sync when
+// two devices independently add the same word (each with its own uuid), so the constructor
+// drops any legacy one and tolerates the rare cross-device duplicate.
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS dictionary (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -10,7 +17,6 @@ CREATE TABLE IF NOT EXISTS dictionary (
   created_at INTEGER NOT NULL,
   times_applied INTEGER NOT NULL DEFAULT 0
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_dictionary_word ON dictionary(word COLLATE NOCASE);
 `
 
 /**
@@ -21,41 +27,51 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_dictionary_word ON dictionary(word COLLATE
 export class DictionaryStore {
   constructor(
     private db: Database,
-    private onChange: () => void = () => {}
+    private onChange: () => void = () => {},
+    private now: () => number = monotonicClock()
   ) {
     this.db.run(SCHEMA)
+    ensureSyncColumns(this.db, 'dictionary')
+    this.dropLegacyWordIndex()
   }
 
   list(): DictionaryEntry[] {
-    return this.query('SELECT * FROM dictionary ORDER BY created_at DESC, id DESC', [])
+    return this.query('SELECT * FROM dictionary WHERE deleted = 0 ORDER BY created_at DESC, id DESC', [])
   }
 
   get(id: number): DictionaryEntry | null {
-    return this.query('SELECT * FROM dictionary WHERE id = ?', [id])[0] ?? null
+    return this.query('SELECT * FROM dictionary WHERE id = ? AND deleted = 0', [id])[0] ?? null
   }
 
   add(word: string, misheard: string[], source: DictionarySource): DictionaryEntry {
     const w = word.trim().replace(/\s+/g, ' ')
     if (!w) throw new Error('A dictionary word is required')
 
-    const existing = this.query('SELECT * FROM dictionary WHERE word = ? COLLATE NOCASE', [w])[0]
+    // Only an active (non-deleted) entry merges; a tombstone with this word is ignored, so
+    // a deleted word can be re-added fresh (the partial unique index permits the coexistence).
+    const existing = this.query('SELECT * FROM dictionary WHERE word = ? COLLATE NOCASE AND deleted = 0', [w])[0]
     if (existing) {
       const merged = normalizeAliases([...existing.misheard, ...misheard], existing.word)
-      this.db.run('UPDATE dictionary SET misheard = ? WHERE id = ?', [JSON.stringify(merged), existing.id])
+      this.db.run('UPDATE dictionary SET misheard = ?, updated_at = ? WHERE id = ?', [
+        JSON.stringify(merged),
+        this.now(),
+        existing.id
+      ])
       this.onChange()
       return { ...existing, misheard: merged }
     }
 
+    const ts = this.now()
     const entry = {
       word: w,
       misheard: normalizeAliases(misheard, w),
       source,
-      created_at: Date.now(),
+      created_at: ts,
       times_applied: 0
     }
     this.db.run(
-      'INSERT INTO dictionary (word, misheard, source, created_at, times_applied) VALUES (?,?,?,?,?)',
-      [entry.word, JSON.stringify(entry.misheard), entry.source, entry.created_at, entry.times_applied]
+      'INSERT INTO dictionary (word, misheard, source, created_at, times_applied, uuid, updated_at, deleted) VALUES (?,?,?,?,?,?,?,0)',
+      [entry.word, JSON.stringify(entry.misheard), entry.source, entry.created_at, entry.times_applied, randomUUID(), ts]
     )
     const id = this.scalar('SELECT last_insert_rowid()')
     this.onChange()
@@ -68,17 +84,19 @@ export class DictionaryStore {
     const word = (patch.word ?? cur.word).trim().replace(/\s+/g, ' ')
     if (!word) throw new Error('A dictionary word is required')
     const misheard = normalizeAliases(patch.misheard ?? cur.misheard, word)
-    this.db.run('UPDATE dictionary SET word = ?, misheard = ? WHERE id = ?', [
+    this.db.run('UPDATE dictionary SET word = ?, misheard = ?, updated_at = ? WHERE id = ?', [
       word,
       JSON.stringify(misheard),
+      this.now(),
       id
     ])
     this.onChange()
     return { ...cur, word, misheard }
   }
 
+  /** Soft-delete: keep the row as a tombstone (deleted=1) so the deletion can sync. */
   delete(id: number): void {
-    this.db.run('DELETE FROM dictionary WHERE id = ?', [id])
+    this.db.run('UPDATE dictionary SET deleted = 1, updated_at = ? WHERE id = ?', [this.now(), id])
     this.onChange()
   }
 
@@ -92,10 +110,24 @@ export class DictionaryStore {
 
   recordApplied(ids: number[]): void {
     if (!ids.length) return
+    const ts = this.now()
     for (const id of ids) {
-      this.db.run('UPDATE dictionary SET times_applied = times_applied + 1 WHERE id = ?', [id])
+      // Guard deleted=0 so a stale id can never bump a tombstone back to "recently changed".
+      this.db.run(
+        'UPDATE dictionary SET times_applied = times_applied + 1, updated_at = ? WHERE id = ? AND deleted = 0',
+        [ts, id]
+      )
     }
     this.onChange()
+  }
+
+  /**
+   * Drop the legacy unique word index. Word-uniqueness is enforced at the app level (add()
+   * merges an existing active word); a DB-level unique constraint would wedge cross-device
+   * sync when two devices independently add the same word, each with its own uuid.
+   */
+  private dropLegacyWordIndex(): void {
+    this.db.run('DROP INDEX IF EXISTS idx_dictionary_word')
   }
 
   private query(sql: string, params: SqlValue[]): DictionaryEntry[] {

@@ -49,6 +49,8 @@ export interface Settings {
   retainAudio: boolean
   insertMode: 'paste'
   overlayOffsetBottom: number
+  /** Base URL of the self-hosted sync service (tailnet). Empty disables sync. */
+  syncBaseUrl: string
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -66,17 +68,21 @@ export const DEFAULT_SETTINGS: Settings = {
   micMode: 'on-demand',
   retainAudio: false,
   insertMode: 'paste',
-  overlayOffsetBottom: 28
+  overlayOffsetBottom: 28,
+  syncBaseUrl: ''
 }
 
 export interface Secrets {
   whisperApiKey: string
   claudeApiKey: string
+  /** Bearer token shared with the sync service. Empty disables sync. */
+  syncToken: string
 }
 
 export const EMPTY_SECRETS: Secrets = {
   whisperApiKey: '',
-  claudeApiKey: ''
+  claudeApiKey: '',
+  syncToken: ''
 }
 
 // ── Dictation state (main → overlay) ─────────────────────────────────────────
@@ -192,6 +198,7 @@ export interface ListOpts {
 export interface MaskedSecrets {
   whisperApiKey: string // masked, e.g. "sk-whi…1a2b"
   claudeApiKey: string
+  syncToken: string
 }
 
 // ── The contract exposed on `window.api` via the preload bridge ───────────────

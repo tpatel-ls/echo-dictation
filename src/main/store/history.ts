@@ -1,6 +1,9 @@
 import type { Database, SqlValue } from 'sql.js'
 import type { ListOpts, NewTranscript, Stats, Transcript, TranscriptStatus } from '@shared/types'
 import { estimatedSecondsSaved, wordCount } from '@shared/format'
+import { ensureSyncColumns } from './migrate'
+import { monotonicClock } from './clock'
+import { randomUUID } from 'node:crypto'
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS transcripts (
@@ -25,16 +28,18 @@ const DAY_MS = 86_400_000
 export class HistoryStore {
   constructor(
     private db: Database,
-    private onChange: () => void = () => {}
+    private onChange: () => void = () => {},
+    private now: () => number = monotonicClock()
   ) {
     this.db.run(SCHEMA)
+    ensureSyncColumns(this.db, 'transcripts')
   }
 
   insert(t: NewTranscript): Transcript {
     this.db.run(
       `INSERT INTO transcripts
-       (created_at, raw_text, cleaned_text, duration_ms, word_count, latency_ms, app_context, model, status, audio_path)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+       (created_at, raw_text, cleaned_text, duration_ms, word_count, latency_ms, app_context, model, status, audio_path, uuid, updated_at, deleted)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0)`,
       [
         t.created_at,
         t.raw_text,
@@ -45,7 +50,9 @@ export class HistoryStore {
         t.app_context,
         t.model,
         t.status,
-        t.audio_path
+        t.audio_path,
+        randomUUID(),
+        this.now()
       ]
     )
     const id = this.scalar('SELECT last_insert_rowid()', [])
@@ -54,21 +61,21 @@ export class HistoryStore {
   }
 
   get(id: number): Transcript | null {
-    return this.query('SELECT * FROM transcripts WHERE id = ?', [id])[0] ?? null
+    return this.query('SELECT * FROM transcripts WHERE id = ? AND deleted = 0', [id])[0] ?? null
   }
 
   list(opts: ListOpts): Transcript[] {
-    return this.query('SELECT * FROM transcripts ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?', [
-      opts.limit,
-      opts.offset
-    ])
+    return this.query(
+      'SELECT * FROM transcripts WHERE deleted = 0 ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?',
+      [opts.limit, opts.offset]
+    )
   }
 
   search(q: string, opts: ListOpts): Transcript[] {
     const like = `%${q}%`
     return this.query(
       `SELECT * FROM transcripts
-       WHERE raw_text LIKE ? OR cleaned_text LIKE ?
+       WHERE deleted = 0 AND (raw_text LIKE ? OR cleaned_text LIKE ?)
        ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
       [like, like, opts.limit, opts.offset]
     )
@@ -82,9 +89,10 @@ export class HistoryStore {
     const cur = this.get(id)
     if (!cur) return null
     const column = cur.cleaned_text !== null ? 'cleaned_text' : 'raw_text'
-    this.db.run(`UPDATE transcripts SET ${column} = ?, word_count = ? WHERE id = ?`, [
+    this.db.run(`UPDATE transcripts SET ${column} = ?, word_count = ?, updated_at = ? WHERE id = ?`, [
       text,
       wordCount(text),
+      this.now(),
       id
     ])
     this.onChange()
@@ -92,37 +100,48 @@ export class HistoryStore {
   }
 
   updateCleaned(id: number, cleaned: string): Transcript | null {
-    this.db.run('UPDATE transcripts SET cleaned_text = ? WHERE id = ?', [cleaned, id])
+    this.db.run('UPDATE transcripts SET cleaned_text = ?, updated_at = ? WHERE id = ?', [
+      cleaned,
+      this.now(),
+      id
+    ])
     this.onChange()
     return this.get(id)
   }
 
+  /** Soft-delete: keep the row as a tombstone (deleted=1) so the deletion can sync. */
   delete(id: number): void {
-    this.db.run('DELETE FROM transcripts WHERE id = ?', [id])
+    this.db.run('UPDATE transcripts SET deleted = 1, updated_at = ? WHERE id = ?', [this.now(), id])
     this.onChange()
   }
 
   stats(now: number): Stats {
     const startToday = startOfDay(now)
     return {
-      totalTranscripts: this.scalar(`SELECT COUNT(*) FROM transcripts WHERE status='ok'`, []),
-      totalWords: this.scalar(`SELECT COALESCE(SUM(word_count),0) FROM transcripts WHERE status='ok'`, []),
-      todayCount: this.scalar(`SELECT COUNT(*) FROM transcripts WHERE status='ok' AND created_at >= ?`, [
-        startToday
-      ]),
+      totalTranscripts: this.scalar(`SELECT COUNT(*) FROM transcripts WHERE status='ok' AND deleted=0`, []),
+      totalWords: this.scalar(
+        `SELECT COALESCE(SUM(word_count),0) FROM transcripts WHERE status='ok' AND deleted=0`,
+        []
+      ),
+      todayCount: this.scalar(
+        `SELECT COUNT(*) FROM transcripts WHERE status='ok' AND deleted=0 AND created_at >= ?`,
+        [startToday]
+      ),
       todayWords: this.scalar(
-        `SELECT COALESCE(SUM(word_count),0) FROM transcripts WHERE status='ok' AND created_at >= ?`,
+        `SELECT COALESCE(SUM(word_count),0) FROM transcripts WHERE status='ok' AND deleted=0 AND created_at >= ?`,
         [startToday]
       ),
       estSecondsSaved: estimatedSecondsSaved(
-        this.scalar(`SELECT COALESCE(SUM(word_count),0) FROM transcripts WHERE status='ok'`, [])
+        this.scalar(`SELECT COALESCE(SUM(word_count),0) FROM transcripts WHERE status='ok' AND deleted=0`, [])
       ),
       streakDays: this.streak(now)
     }
   }
 
   private streak(now: number): number {
-    const stmt = this.db.prepare(`SELECT created_at FROM transcripts WHERE status='ok' ORDER BY created_at DESC`)
+    const stmt = this.db.prepare(
+      `SELECT created_at FROM transcripts WHERE status='ok' AND deleted=0 ORDER BY created_at DESC`
+    )
     const days = new Set<number>()
     while (stmt.step()) days.add(startOfDay(stmt.get()[0] as number))
     stmt.free()

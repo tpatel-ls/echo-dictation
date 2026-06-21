@@ -10,6 +10,7 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
   const [masked, setMasked] = useState<MaskedSecrets | null>(null)
   const [whisperKey, setWhisperKey] = useState('')
   const [claudeKey, setClaudeKey] = useState('')
+  const [syncToken, setSyncToken] = useState('')
 
   useEffect(() => {
     void (async () => {
@@ -25,15 +26,17 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
   }
 
   const saveKeys = async (): Promise<void> => {
-    const body: Partial<{ whisperApiKey: string; claudeApiKey: string }> = {}
+    const body: Partial<{ whisperApiKey: string; claudeApiKey: string; syncToken: string }> = {}
     if (whisperKey) body.whisperApiKey = whisperKey
     if (claudeKey) body.claudeApiKey = claudeKey
+    if (syncToken) body.syncToken = syncToken
     if (Object.keys(body).length === 0) return
     await api.settings.setSecrets(body)
     setWhisperKey('')
     setClaudeKey('')
+    setSyncToken('')
     setMasked(await api.settings.getSecretsMasked())
-    notify('API keys saved (encrypted)')
+    notify('Saved (encrypted)')
   }
 
   return (
@@ -118,6 +121,18 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
             </Field>
           </Section>
 
+          <Section title="Sync">
+            <Field
+              label="Service URL"
+              hint="Your self-hosted sync service (e.g. on your tailnet). Leave blank to keep this device local-only."
+            >
+              <TextInput value={s.syncBaseUrl} onChange={(v) => void patch({ syncBaseUrl: v })} />
+            </Field>
+            <Field label="Token" hint={masked?.syncToken ? `Current: ${masked.syncToken}` : 'Not set'}>
+              <TextInput type="password" value={syncToken} placeholder="Enter to change" onChange={setSyncToken} />
+            </Field>
+          </Section>
+
           <Section title="Behavior">
             <Field label="Launch at login">
               <Toggle checked={s.launchAtLogin} onChange={(v) => void patch({ launchAtLogin: v })} />
@@ -157,13 +172,13 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
             </Field>
           </Section>
 
-          {(whisperKey || claudeKey) && (
+          {(whisperKey || claudeKey || syncToken) && (
             <div className="py-4">
               <button
                 onClick={() => void saveKeys()}
                 className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium shadow-sm hover:bg-accent2 active:scale-[0.98] transition"
               >
-                Save API keys
+                Save keys &amp; token
               </button>
             </div>
           )}
