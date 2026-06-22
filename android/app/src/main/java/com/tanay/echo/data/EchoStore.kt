@@ -99,9 +99,15 @@ class EchoStore(
         )
     }
 
-    /** The sync collections to hand a SyncClient. */
+    /**
+     * The sync collections to hand a SyncClient — the dictionary only, by deliberate choice.
+     *
+     * The user wants their corrections (e.g. Brian→Bryan) uniform across devices, but does NOT want
+     * dictated text — which is often private messages — copied off the phone to other devices.
+     * Transcripts are still saved locally (see [addTranscript]) so on-device history works; they
+     * just aren't pushed/pulled. To restore cross-device history, add TranscriptSyncCollection back.
+     */
     fun syncCollections(): List<SyncCollection> = listOf(
-        TranscriptSyncCollection(transcripts),
         DictionarySyncCollection(dictionary)
     )
 

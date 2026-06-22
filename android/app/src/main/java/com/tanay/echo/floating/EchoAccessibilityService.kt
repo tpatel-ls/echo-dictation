@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
@@ -22,7 +23,7 @@ import android.view.accessibility.AccessibilityWindowInfo
  */
 class EchoAccessibilityService : AccessibilityService() {
     private val main = Handler(Looper.getMainLooper())
-    private var lastKeyboardOpen = false
+    @Volatile private var lastKeyboardOpen = false
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -62,6 +63,24 @@ class EchoAccessibilityService : AccessibilityService() {
         windows?.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD } ?: false
     } catch (e: Exception) {
         false
+    }
+
+    /**
+     * Screen-space Y of the top edge of the soft keyboard, or -1 if no keyboard is up. Lets the
+     * floating button dock just above the keyboard (Wispr-style) instead of floating over content.
+     */
+    fun keyboardTopY(): Int = try {
+        var top = -1
+        val r = Rect()
+        windows?.forEach { w ->
+            if (w.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD) {
+                w.getBoundsInScreen(r)
+                top = r.top
+            }
+        }
+        top
+    } catch (e: Exception) {
+        -1
     }
 
     /** Package of the app currently in front — stored with the transcript like desktop app_context. */
