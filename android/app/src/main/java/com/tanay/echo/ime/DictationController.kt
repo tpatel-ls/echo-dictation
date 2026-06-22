@@ -51,6 +51,10 @@ class DictationController(context: Context) {
     var onPhase: (DictationPhase, String?) -> Unit = { _, _ -> }
     var onText: (String) -> Unit = {}
 
+    /** Command Mode result sink: the host replaces [original] (the user's selection) with [rewrite]
+     *  and arms the tap-to-undo. Fired instead of onText when dictation runs as a command. */
+    var onReplace: (original: String, rewrite: String) -> Unit = { _, _ -> }
+
     /** Live mic level (RMS 0..1) while capturing — for a host that draws a waveform / detects silence. */
     var onLevel: (Float) -> Unit = {}
 
@@ -145,6 +149,44 @@ class DictationController(context: Context) {
                     }
                 }
                 triggerSync()
+            } catch (e: Exception) {
+                onPhase(DictationPhase.ERROR, e.message)
+            }
+        }
+    }
+
+    /** Command Mode: the captured audio is a spoken *instruction* applied to [selectedText] (the
+     * user's current selection). Transcribe the instruction → Claude command → onReplace. Requires
+     * Claude; on any failure nothing is replaced, so the selection is never destroyed on an error. */
+    fun stopAndCommand(selectedText: String) {
+        val pcm = mic.stop()
+        if (pcm.isEmpty()) {
+            onPhase(DictationPhase.EMPTY, null)
+            return
+        }
+        val claudeBaseUrl = settings.claudeBaseUrl
+        val claudeApiKey = settings.claudeApiKey
+        val claudeModel = settings.claudeModel
+        if (claudeBaseUrl.isEmpty() || claudeApiKey.isEmpty()) {
+            onPhase(DictationPhase.ERROR, "Set up Claude to use voice commands")
+            return
+        }
+        onPhase(DictationPhase.TRANSCRIBING, null)
+        val baseUrl = settings.whisperBaseUrl
+        val model = settings.whisperModel
+        val apiKey = settings.whisperApiKey
+        scope.launch {
+            try {
+                val dict = withContext(Dispatchers.IO) { store.dictionaryEntries() }
+                val wav = pcm16ToWav(pcm, TARGET_RATE)
+                // The spoken audio is the instruction (e.g. "make this more formal"), not content.
+                val instruction = whisper.transcribe(wav, baseUrl, model, apiKey, prompt = buildBiasPrompt(dict)).trim()
+                if (instruction.isBlank()) {
+                    onPhase(DictationPhase.EMPTY, null)
+                    return@launch
+                }
+                val rewrite = claude.command(instruction, selectedText, claudeBaseUrl, claudeModel, claudeApiKey, dict.map { it.word })
+                onReplace(selectedText, rewrite) // host swaps the selection and arms tap-to-undo
             } catch (e: Exception) {
                 onPhase(DictationPhase.ERROR, e.message)
             }

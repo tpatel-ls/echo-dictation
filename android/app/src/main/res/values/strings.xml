@@ -5,6 +5,7 @@
 
     <!-- Keyboard status pill -->
     <string name="ime_hold_to_speak">Hold to speak</string>
+    <string name="ime_tap_undo">↶ Tap to undo</string>
     <string name="ime_listening">Listening…</string>
     <string name="ime_transcribing">Transcribing…</string>
     <string name="ime_inserted">Inserted ✓</string>
