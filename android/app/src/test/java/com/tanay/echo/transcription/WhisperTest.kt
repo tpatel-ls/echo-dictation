@@ -8,6 +8,7 @@ import okhttp3.mockwebserver.SocketPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -118,6 +119,32 @@ class WhisperTest {
         assertEquals("ok", out)
         assertTrue(server.takeRequest().body.readUtf8().contains("name=\"prompt\"")) // first: with prompt
         assertFalse(server.takeRequest().body.readUtf8().contains("name=\"prompt\"")) // retry: without
+    }
+
+    @Test
+    fun languageParamNormalizesAutoAndBlankToNull() {
+        assertNull(languageParam(""))
+        assertNull(languageParam("   "))
+        assertNull(languageParam("auto"))
+        assertNull(languageParam(" AUTO "))
+        assertEquals("en", languageParam(" EN "))
+        assertEquals("hi", languageParam("hi"))
+    }
+
+    @Test
+    fun includesLanguageWhenSet() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"text":"ok"}"""))
+        client.transcribe(ByteArray(8), base(), "whisper-1", "KEY", language = "es")
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body.contains("name=\"language\""))
+        assertTrue(body.contains("es"))
+    }
+
+    @Test
+    fun omitsLanguageWhenNull() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"text":"ok"}"""))
+        client.transcribe(ByteArray(8), base(), "whisper-1", "KEY")
+        assertFalse(server.takeRequest().body.readUtf8().contains("name=\"language\""))
     }
 
     @Test

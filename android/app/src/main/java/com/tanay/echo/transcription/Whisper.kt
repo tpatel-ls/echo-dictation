@@ -31,6 +31,12 @@ fun parseWhisperText(body: String): String =
 fun joinUrl(base: String, path: String): String =
     base.trimEnd('/') + "/" + path.trimStart('/')
 
+/** The Whisper `language` form value, or null to let Whisper auto-detect. Blank or "auto" ⇒ null. */
+fun languageParam(raw: String): String? {
+    val v = raw.trim().lowercase()
+    return if (v.isEmpty() || v == "auto") null else v
+}
+
 /**
  * POST a WAV to an OpenAI-compatible `/audio/transcriptions` endpoint and return the text.
  * Retries transient failures (network errors, 5xx) so a momentary tailnet blip doesn't lose
@@ -48,6 +54,7 @@ class WhisperClient(
         model: String,
         apiKey: String,
         prompt: String? = null,
+        language: String? = null,
         retries: Int = 2,
         timeoutMs: Long = 20_000
     ): String {
@@ -57,7 +64,7 @@ class WhisperClient(
         var attempt = 0
         while (attempt <= retries) {
             try {
-                return postOnce(url, wav, model, apiKey, currentPrompt, timeoutMs)
+                return postOnce(url, wav, model, apiKey, currentPrompt, language, timeoutMs)
             } catch (e: TranscriptionException) {
                 lastError = e
                 // 4xx is a real client error (bad key/request) — retrying won't help. But the
@@ -83,6 +90,7 @@ class WhisperClient(
         model: String,
         apiKey: String,
         prompt: String?,
+        language: String?,
         timeoutMs: Long
     ): String = withContext(Dispatchers.IO) {
         val form = MultipartBody.Builder().setType(MultipartBody.FORM)
@@ -90,6 +98,7 @@ class WhisperClient(
             .addFormDataPart("model", model)
             .addFormDataPart("response_format", "json")
             .apply { if (prompt != null) addFormDataPart("prompt", prompt) }
+            .apply { if (!language.isNullOrEmpty()) addFormDataPart("language", language) }
             .build()
         val req = Request.Builder().url(url).header("Authorization", "Bearer $apiKey").post(form).build()
         val call = httpClient.newBuilder().callTimeout(timeoutMs, TimeUnit.MILLISECONDS).build().newCall(req)

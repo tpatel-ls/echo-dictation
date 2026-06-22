@@ -60,6 +60,16 @@ class EchoSettings(context: Context) {
         get() = prefs.getBoolean("contextToneEnabled", true)
         set(v) = prefs.edit().putBoolean("contextToneEnabled", v).apply()
 
+    /** Whisper language as an ISO-639-1 code (e.g. "en", "hi", "es"); blank ⇒ auto-detect. */
+    var language: String
+        get() = prefs.getString("language", "") ?: ""
+        set(v) = prefs.edit().putString("language", v.trim()).apply()
+
+    /** Whisper Mode: amplify quiet/whispered audio before transcription (see [com.tanay.echo.audio.boostGain]). */
+    var whisperMode: Boolean
+        get() = prefs.getBoolean("whisperMode", false)
+        set(v) = prefs.edit().putBoolean("whisperMode", v).apply()
+
     /** Whether the system-wide floating mic button is enabled (starts FloatingButtonService). */
     var floatingEnabled: Boolean
         get() = prefs.getBoolean("floatingEnabled", false)
