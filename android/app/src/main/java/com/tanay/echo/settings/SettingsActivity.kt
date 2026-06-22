@@ -39,7 +39,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var whisperModel: TextInputEditText
     private lateinit var syncBaseUrl: TextInputEditText
     private lateinit var syncToken: TextInputEditText
-    private lateinit var cleanupEnabled: MaterialSwitch
+    private lateinit var contextTone: MaterialSwitch
     private lateinit var claudeBaseUrl: TextInputEditText
     private lateinit var claudeApiKey: TextInputEditText
     private lateinit var claudeModel: TextInputEditText
@@ -59,7 +59,7 @@ class SettingsActivity : AppCompatActivity() {
         whisperModel = findViewById(R.id.whisper_model)
         syncBaseUrl = findViewById(R.id.sync_base_url)
         syncToken = findViewById(R.id.sync_token)
-        cleanupEnabled = findViewById(R.id.cleanup_enabled)
+        contextTone = findViewById(R.id.context_tone_enabled)
         claudeBaseUrl = findViewById(R.id.claude_base_url)
         claudeApiKey = findViewById(R.id.claude_api_key)
         claudeModel = findViewById(R.id.claude_model)
@@ -131,7 +131,7 @@ class SettingsActivity : AppCompatActivity() {
         whisperModel.setText(settings.whisperModel)
         syncBaseUrl.setText(settings.syncBaseUrl)
         syncToken.setText(settings.syncToken)
-        cleanupEnabled.isChecked = settings.cleanupEnabled
+        contextTone.isChecked = settings.contextToneEnabled
         claudeBaseUrl.setText(settings.claudeBaseUrl)
         claudeApiKey.setText(settings.claudeApiKey)
         claudeModel.setText(settings.claudeModel)
@@ -144,7 +144,7 @@ class SettingsActivity : AppCompatActivity() {
         settings.whisperModel = text(whisperModel)
         settings.syncBaseUrl = text(syncBaseUrl)
         settings.syncToken = text(syncToken)
-        settings.cleanupEnabled = cleanupEnabled.isChecked
+        settings.contextToneEnabled = contextTone.isChecked
         settings.claudeBaseUrl = text(claudeBaseUrl)
         settings.claudeApiKey = text(claudeApiKey)
         settings.claudeModel = text(claudeModel)

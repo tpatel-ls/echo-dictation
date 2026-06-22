@@ -55,6 +55,20 @@ fun parseClaudeText(body: String, fallback: String): String {
     return out.ifEmpty { fallback }
 }
 
+/**
+ * Assemble the cleanup system prompt: base instructions, then the pinned [glossary] (so cleanup never
+ * un-corrects a custom spelling), then an optional per-app [styleDirective]. Pure so the layering is
+ * unit-testable.
+ */
+fun buildCleanupSystem(glossary: List<String>, styleDirective: String? = null): String {
+    var s = SYSTEM_PROMPT
+    if (glossary.isNotEmpty()) {
+        s += " The speaker's custom vocabulary — always keep these exact spellings: ${glossary.joinToString(", ")}."
+    }
+    if (!styleDirective.isNullOrBlank()) s += " $styleDirective"
+    return s
+}
+
 class ClaudeClient(private val httpClient: OkHttpClient = OkHttpClient()) {
     /** Clean up `text`; `glossary` (the dictionary words) is pinned so cleanup never un-corrects
      * a custom spelling. Returns the cleaned text, or the input on an empty response. */
@@ -63,14 +77,11 @@ class ClaudeClient(private val httpClient: OkHttpClient = OkHttpClient()) {
         baseUrl: String,
         model: String,
         apiKey: String,
-        glossary: List<String> = emptyList()
+        glossary: List<String> = emptyList(),
+        styleDirective: String? = null
     ): String = withContext(Dispatchers.IO) {
         val url = joinUrl(baseUrl, "v1/messages")
-        val system = if (glossary.isEmpty()) {
-            SYSTEM_PROMPT
-        } else {
-            "$SYSTEM_PROMPT The speaker's custom vocabulary — always keep these exact spellings: ${glossary.joinToString(", ")}."
-        }
+        val system = buildCleanupSystem(glossary, styleDirective)
         val payload = json.encodeToString(
             ClaudeRequest(model, 2000, system, listOf(ClaudeMessage("user", text)))
         ).toRequestBody(jsonMedia)
