@@ -53,13 +53,14 @@ async function main(): Promise<void> {
   // Sync: a store mutation nudges the runner, but the runner is built after the DB opens,
   // so the change hook forwards through a mutable indirection set just below.
   let nudgeSync = (): void => {}
-  const { db, store: history, dictionary, flush, persist } = await openHistory({
+  const { db, store: history, dictionary, snippets, flush, persist } = await openHistory({
     onChange: () => nudgeSync()
   })
 
   const syncBindings: SyncBinding[] = [
     { name: 'transcripts', table: new SyncTable(db, 'transcripts', [...SYNC_COLUMNS.transcripts]) },
-    { name: 'dictionary', table: new SyncTable(db, 'dictionary', [...SYNC_COLUMNS.dictionary]) }
+    { name: 'dictionary', table: new SyncTable(db, 'dictionary', [...SYNC_COLUMNS.dictionary]) },
+    { name: 'snippets', table: new SyncTable(db, 'snippets', [...SYNC_COLUMNS.snippets]) }
   ]
   const syncState = new FileSyncState(join(app.getPath('userData'), 'sync-state.json'))
   // The run closure reads settings/secrets fresh each pass: editing them in Settings takes
@@ -108,7 +109,7 @@ async function main(): Promise<void> {
   // Auto-launch at login passes --hidden so we boot straight to the tray.
   if (!openedHidden) openDashboard()
 
-  const controller = new DictationController(overlay, settings, history, dictionary)
+  const controller = new DictationController(overlay, settings, history, dictionary, snippets)
 
   const opts = (): { minHoldMs: number; cancelOnOtherKey: boolean } => {
     const s = settings.getSettings()

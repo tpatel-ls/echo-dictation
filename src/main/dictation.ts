@@ -12,9 +12,11 @@ import {
 } from '@shared/types'
 import { applyDictionary, buildBiasPrompt } from '@shared/dictionary'
 import { registerForTitle, styleDirective } from '@shared/app-style'
+import { expandSnippet, type Snippet } from '@shared/snippets'
 import type { SettingsStore } from './store/settings'
 import type { HistoryStore } from './store/history'
 import type { DictionaryStore } from './store/dictionary'
+import type { SnippetsStore } from './store/snippets'
 import { transcribe } from './transcription/whisper'
 import { cleanup } from './transcription/claude'
 import { pasteText } from './insert/paste'
@@ -41,7 +43,8 @@ export class DictationController {
     private overlay: BrowserWindow,
     private settings: SettingsStore,
     private history: HistoryStore,
-    private dictionary: DictionaryStore
+    private dictionary: DictionaryStore,
+    private snippets: SnippetsStore
   ) {}
 
   async onStart(): Promise<void> {
@@ -84,6 +87,13 @@ export class DictationController {
       /* dictation works fine without the dictionary */
     }
 
+    let snippets: Snippet[] = []
+    try {
+      snippets = this.snippets.list()
+    } catch {
+      /* dictation works fine without snippets */
+    }
+
     try {
       const heard = await transcribe(buf, s, sec.whisperApiKey, undefined, {
         prompt: buildBiasPrompt(dict)
@@ -100,7 +110,11 @@ export class DictationController {
 
       let text = raw
       let cleaned: string | null = null
-      if (s.cleanupMode === 'auto') {
+      // A voice snippet (the whole utterance matches a cue) pastes its saved block as-is, no cleanup.
+      const expansion = expandSnippet(raw, snippets)
+      if (expansion !== null) {
+        text = expansion
+      } else if (s.cleanupMode === 'auto') {
         try {
           // Context-aware tone: adapt the cleanup register to the focused app (best-effort, from
           // the window title). Neutral titles yield a null directive ⇒ the base cleanup prompt.

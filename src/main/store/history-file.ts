@@ -5,6 +5,7 @@ import initSqlJs from 'sql.js'
 import type { Database } from 'sql.js'
 import { HistoryStore } from './history'
 import { DictionaryStore } from './dictionary'
+import { SnippetsStore } from './snippets'
 
 /** Where the sql.js `.wasm` lives at runtime (unpacked resource in prod, node_modules in dev). */
 function wasmDir(): string {
@@ -17,6 +18,7 @@ export interface HistoryHandle {
   db: Database
   store: HistoryStore
   dictionary: DictionaryStore
+  snippets: SnippetsStore
   /** Immediate, synchronous persist — used on quit. */
   flush: () => void
   /** Debounced persist — used to save records `applyRemote` writes outside the store hook. */
@@ -61,6 +63,7 @@ export async function openHistory(opts: OpenHistoryOptions = {}): Promise<Histor
 
   const store = new HistoryStore(db, onStoreChange)
   const dictionary = new DictionaryStore(db, onStoreChange)
+  const snippets = new SnippetsStore(db, onStoreChange)
   const flush = (): void => {
     if (timer) {
       clearTimeout(timer)
@@ -68,5 +71,5 @@ export async function openHistory(opts: OpenHistoryOptions = {}): Promise<Histor
     }
     persist()
   }
-  return { db, store, dictionary, flush, persist: schedule }
+  return { db, store, dictionary, snippets, flush, persist: schedule }
 }
