@@ -90,5 +90,6 @@ export const SYNC_COLUMNS = {
     'model',
     'status'
   ],
-  dictionary: ['word', 'misheard', 'source', 'created_at', 'times_applied']
+  dictionary: ['word', 'misheard', 'source', 'created_at', 'times_applied'],
+  snippets: ['cue', 'expansion', 'created_at']
 } as const
