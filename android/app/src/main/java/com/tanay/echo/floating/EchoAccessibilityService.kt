@@ -6,11 +6,13 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import com.tanay.echo.transcription.EditableState
 
 /**
  * The OS-sanctioned bridge for inserting dictated text into another app's focused field. The
@@ -136,6 +138,52 @@ class EchoAccessibilityService : AccessibilityService() {
         } finally {
             node?.recycle()
             root?.recycle()
+        }
+    }
+
+    /**
+     * Snapshot the focused editable field — full text + selection range — or null if nothing editable
+     * is focused. Command Mode uses this to detect a selection (selStart != selEnd) and to verify the
+     * field is unchanged before an undo.
+     */
+    @Suppress("DEPRECATION")
+    fun readEditable(): EditableState? {
+        val root = rootInActiveWindow ?: return null
+        var node: AccessibilityNodeInfo? = null
+        return try {
+            node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            if (node?.isEditable != true) return null
+            EditableState(node.text?.toString() ?: "", node.textSelectionStart, node.textSelectionEnd)
+        } catch (e: Exception) {
+            null
+        } finally {
+            node?.recycle()
+            root.recycle()
+        }
+    }
+
+    /**
+     * Select [start, end) in the focused editable field — used to re-select a rewrite before pasting
+     * the original back on undo. Returns false if there's no editable focus or the field refuses
+     * (some OEM fields ignore ACTION_SET_SELECTION; the caller then skips the undo rather than risk it).
+     */
+    @Suppress("DEPRECATION")
+    fun setSelection(start: Int, end: Int): Boolean {
+        val root = rootInActiveWindow ?: return false
+        var node: AccessibilityNodeInfo? = null
+        return try {
+            node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            if (node?.isEditable != true) return false
+            val args = Bundle().apply {
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, start)
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, end)
+            }
+            node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, args)
+        } catch (e: Exception) {
+            false
+        } finally {
+            node?.recycle()
+            root.recycle()
         }
     }
 

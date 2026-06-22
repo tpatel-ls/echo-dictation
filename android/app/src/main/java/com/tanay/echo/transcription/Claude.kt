@@ -55,23 +55,44 @@ fun parseClaudeText(body: String, fallback: String): String {
     return out.ifEmpty { fallback }
 }
 
+/** The pinned-glossary clause shared by the cleanup and command prompts, or null when empty. */
+private fun glossaryLine(glossary: List<String>): String? =
+    if (glossary.isEmpty()) null
+    else " The speaker's custom vocabulary — always keep these exact spellings: ${glossary.joinToString(", ")}."
+
 /**
- * Assemble the cleanup system prompt: base instructions, then the pinned [glossary] (so cleanup never
+ * Assemble the cleanup system prompt: base instructions, then the pinned glossary (so cleanup never
  * un-corrects a custom spelling), then an optional per-app [styleDirective]. Pure so the layering is
  * unit-testable.
  */
 fun buildCleanupSystem(glossary: List<String>, styleDirective: String? = null): String {
     var s = SYSTEM_PROMPT
-    if (glossary.isNotEmpty()) {
-        s += " The speaker's custom vocabulary — always keep these exact spellings: ${glossary.joinToString(", ")}."
-    }
+    glossaryLine(glossary)?.let { s += it }
     if (!styleDirective.isNullOrBlank()) s += " $styleDirective"
     return s
 }
 
+private const val COMMAND_SYSTEM_PROMPT =
+    "You are a precise in-place text editor. Apply the user's instruction to the provided text and " +
+        "return ONLY the resulting text — no preamble, quotes, or explanation. Preserve the original " +
+        "meaning and formatting unless the instruction asks otherwise."
+
+/** System prompt for Command Mode: apply a spoken instruction to selected text and return only the
+ *  result. Pins [glossary] like cleanup so it never un-corrects a custom spelling. Pure + testable. */
+fun buildCommandSystem(glossary: List<String> = emptyList()): String {
+    var s = COMMAND_SYSTEM_PROMPT
+    glossaryLine(glossary)?.let { s += it }
+    return s
+}
+
+/** User message for Command Mode: the spoken [instruction] plus the [text] it operates on. */
+fun buildCommandUser(instruction: String, text: String): String =
+    "Instruction: $instruction\n\nText:\n$text"
+
 class ClaudeClient(private val httpClient: OkHttpClient = OkHttpClient()) {
-    /** Clean up `text`; `glossary` (the dictionary words) is pinned so cleanup never un-corrects
-     * a custom spelling. Returns the cleaned text, or the input on an empty response. */
+    /** Clean up `text`; `glossary` (the dictionary words) is pinned so cleanup never un-corrects a
+     * custom spelling, and an optional `styleDirective` adapts the tone to the focused app. Returns
+     * the cleaned text, or the input on an empty response. */
     suspend fun cleanup(
         text: String,
         baseUrl: String,
@@ -79,11 +100,32 @@ class ClaudeClient(private val httpClient: OkHttpClient = OkHttpClient()) {
         apiKey: String,
         glossary: List<String> = emptyList(),
         styleDirective: String? = null
+    ): String = complete(buildCleanupSystem(glossary, styleDirective), text, text, baseUrl, model, apiKey)
+
+    /** Apply a spoken `instruction` to `text` (the user's selection) and return the rewrite, or the
+     * original `text` on an empty response. `glossary` is pinned so custom spellings survive. */
+    suspend fun command(
+        instruction: String,
+        text: String,
+        baseUrl: String,
+        model: String,
+        apiKey: String,
+        glossary: List<String> = emptyList()
+    ): String = complete(buildCommandSystem(glossary), buildCommandUser(instruction, text), text, baseUrl, model, apiKey)
+
+    /** One Anthropic /v1/messages round-trip: `system` + a single user message, parsed to text with
+     * `fallback` returned on an empty response. Throws CleanupException on network/HTTP failure. */
+    private suspend fun complete(
+        system: String,
+        userText: String,
+        fallback: String,
+        baseUrl: String,
+        model: String,
+        apiKey: String
     ): String = withContext(Dispatchers.IO) {
         val url = joinUrl(baseUrl, "v1/messages")
-        val system = buildCleanupSystem(glossary, styleDirective)
         val payload = json.encodeToString(
-            ClaudeRequest(model, 2000, system, listOf(ClaudeMessage("user", text)))
+            ClaudeRequest(model, 2000, system, listOf(ClaudeMessage("user", userText)))
         ).toRequestBody(jsonMedia)
         val req = Request.Builder()
             .url(url)
@@ -103,7 +145,7 @@ class ClaudeClient(private val httpClient: OkHttpClient = OkHttpClient()) {
                 val body = res.body?.string()?.take(200) ?: ""
                 throw CleanupException("Claude proxy returned ${res.code}: $body", res.code)
             }
-            parseClaudeText(res.body?.string() ?: "", text)
+            parseClaudeText(res.body?.string() ?: "", fallback)
         }
     }
 }

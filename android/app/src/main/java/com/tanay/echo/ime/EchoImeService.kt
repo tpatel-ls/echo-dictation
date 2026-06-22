@@ -15,6 +15,7 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.tanay.echo.R
 import com.tanay.echo.settings.SettingsActivity
+import com.tanay.echo.transcription.PendingUndo
 
 /**
  * The Echo dictation keyboard. A compact view with one big mic button (push-to-talk: hold →
@@ -26,11 +27,15 @@ import com.tanay.echo.settings.SettingsActivity
 class EchoImeService : InputMethodService() {
     private lateinit var controller: DictationController
     private var pill: TextView? = null
+    private var pendingUndo: PendingUndo? = null
+    private val clearUndoRunnable = Runnable { clearUndo() }
+    private val undoWindowMs = 5000L
 
     override fun onCreate() {
         super.onCreate()
         controller = DictationController(this)
         controller.onText = { text -> currentInputConnection?.commitText(text, 1) }
+        controller.onReplace = { original, rewrite -> applyCommand(original, rewrite) }
         controller.onPhase = { phase, msg -> updatePill(phase, msg) }
     }
 
@@ -48,6 +53,7 @@ class EchoImeService : InputMethodService() {
                         promptForMic()
                     } else {
                         v.isPressed = true
+                        clearUndoState() // a fresh capture supersedes any pending undo
                         controller.startCapture()
                     }
                     true
@@ -55,7 +61,12 @@ class EchoImeService : InputMethodService() {
                 MotionEvent.ACTION_UP -> {
                     v.isPressed = false
                     v.performClick() // a11y: report the press-release as a click
-                    if (hasMicPermission()) controller.stopAndTranscribe(focusedPackage())
+                    if (hasMicPermission()) {
+                        // Text selected → the speech is a command on it; otherwise normal dictation.
+                        val sel = currentInputConnection?.getSelectedText(0)?.toString()
+                        if (!sel.isNullOrBlank()) controller.stopAndCommand(sel)
+                        else controller.stopAndTranscribe(focusedPackage())
+                    }
                     true
                 }
                 MotionEvent.ACTION_CANCEL -> {
@@ -91,6 +102,54 @@ class EchoImeService : InputMethodService() {
     override fun onDestroy() {
         controller.dispose()
         super.onDestroy()
+    }
+
+    // ── Command Mode: replace the selection, then a tap-to-undo pill for a few seconds ───────────
+    private fun applyCommand(original: String, rewrite: String) {
+        val ic = currentInputConnection ?: return
+        ic.commitText(rewrite, 1) // commitText replaces the still-active selection
+        pendingUndo = PendingUndo(0, original, rewrite) // IME undo is cursor-based; start is unused
+        showUndoPill()
+    }
+
+    private fun showUndoPill() {
+        val p = pill ?: return
+        p.text = getString(R.string.ime_tap_undo)
+        p.setTextColor(ContextCompat.getColor(this, R.color.echo_accent))
+        p.isClickable = true
+        p.setOnClickListener { doUndo() }
+        p.removeCallbacks(clearUndoRunnable)
+        p.postDelayed(clearUndoRunnable, undoWindowMs)
+    }
+
+    /** Delete the rewrite and put the original back — only if the rewrite is still right before the
+     *  cursor (so edits made during the window aren't clobbered). */
+    private fun doUndo() {
+        val u = pendingUndo
+        val ic = currentInputConnection
+        if (u != null && ic != null) {
+            val before = ic.getTextBeforeCursor(u.rewrite.length, 0)?.toString()
+            if (before == u.rewrite) {
+                ic.deleteSurroundingText(u.rewrite.length, 0)
+                ic.commitText(u.original, 1)
+            }
+        }
+        clearUndo()
+    }
+
+    /** Drop the undo window without forcing the pill to idle (used when a new capture starts). */
+    private fun clearUndoState() {
+        pendingUndo = null
+        pill?.let {
+            it.removeCallbacks(clearUndoRunnable)
+            it.isClickable = false
+            it.setOnClickListener(null)
+        }
+    }
+
+    private fun clearUndo() {
+        clearUndoState()
+        updatePill(DictationPhase.IDLE, null)
     }
 
     private fun updatePill(phase: DictationPhase, msg: String?) {

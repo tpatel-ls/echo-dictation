@@ -53,4 +53,27 @@ class ClaudeTest {
         val s = buildCleanupSystem(listOf("GitHub"), "Make it formal.")
         assertTrue(s.indexOf("GitHub") < s.indexOf("Make it formal."))
     }
+
+    // Command Mode prompt building.
+
+    @Test
+    fun `command system prompt describes an in-place editor`() {
+        val s = buildCommandSystem(emptyList())
+        assertTrue(s.contains("editor", ignoreCase = true))
+        assertFalse(s.contains("custom vocabulary", ignoreCase = true))
+    }
+
+    @Test
+    fun `command system pins the glossary`() {
+        val s = buildCommandSystem(listOf("GitHub"))
+        assertTrue(s.contains("custom vocabulary", ignoreCase = true))
+        assertTrue(s.contains("GitHub"))
+    }
+
+    @Test
+    fun `command user message carries the instruction and the text`() {
+        val u = buildCommandUser("make it formal", "hey whats up")
+        assertTrue(u.contains("make it formal"))
+        assertTrue(u.contains("hey whats up"))
+    }
 }

@@ -30,6 +30,9 @@ import com.tanay.echo.R
 import com.tanay.echo.ime.DictationController
 import com.tanay.echo.ime.DictationPhase
 import com.tanay.echo.settings.EchoSettings
+import com.tanay.echo.transcription.PendingUndo
+import com.tanay.echo.transcription.selectedText
+import com.tanay.echo.transcription.undoSliceMatches
 
 /**
  * A system-wide floating mic button. Hosts the bubble in a non-focusable WindowManager overlay (so
@@ -65,6 +68,11 @@ class FloatingButtonService : Service() {
     private var mode = Mode.NONE
     private var transcribing = false
 
+    // Command Mode: after a replace, a tap-to-undo is armed for a few seconds. commandStart is the
+    // selection's start index, captured at stop, so undo knows where to restore.
+    private var pendingUndo: PendingUndo? = null
+    private var commandStart = 0
+
     private var dragStartLpX = 0
     private var dragStartLpY = 0
     private var dragStartRawX = 0f
@@ -76,6 +84,8 @@ class FloatingButtonService : Service() {
         if (interp.holdTimerFired() is Gesture.HoldStart) onHoldStart()
     }
 
+    private val clearUndoRunnable = Runnable { clearUndo() }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -85,6 +95,7 @@ class FloatingButtonService : Service() {
         controller = DictationController(this)
         controller.onPhase = { phase, msg -> main.post { updateBubble(phase, msg) } }
         controller.onText = { text -> main.post { deliver(text) } }
+        controller.onReplace = { original, rewrite -> main.post { applyCommand(original, rewrite) } }
         controller.onLevel = { level -> main.post { onLevel(level) } }
         if (!startInForeground()) {
             settings.floatingEnabled = false
@@ -315,6 +326,7 @@ class FloatingButtonService : Service() {
 
     // ── Recording control ──────────────────────────────────────────────────────────
     private fun onTap() {
+        if (pendingUndo != null) { doUndo(); return } // a tap during the undo window means "undo"
         when (mode) {
             Mode.TAP -> stopRecording()
             Mode.HOLD -> {}
@@ -331,6 +343,7 @@ class FloatingButtonService : Service() {
     private fun onHoldStart() {
         if (mode != Mode.NONE || transcribing) return
         if (!controller.isConfigured) { toast(getString(R.string.floating_configure)); return }
+        clearUndoState() // starting a fresh capture supersedes any pending undo
         controller.startCapture()
         mode = Mode.HOLD
     }
@@ -340,10 +353,76 @@ class FloatingButtonService : Service() {
     }
 
     private fun stopRecording() {
-        val pkg = EchoAccessibilityService.instance?.focusedPackage() ?: ""
+        val svc = EchoAccessibilityService.instance
+        val pkg = svc?.focusedPackage() ?: ""
+        // If text is selected, the speech is a command on it (Wispr-style); otherwise it's dictation.
+        val editable = svc?.readEditable()
+        val selected = editable?.let { selectedText(it.text, it.selStart, it.selEnd) }
         mode = Mode.NONE
         transcribing = true
-        controller.stopAndTranscribe(pkg)
+        if (selected != null) {
+            commandStart = editable.selStart
+            controller.stopAndCommand(selected)
+        } else {
+            controller.stopAndTranscribe(pkg)
+        }
+    }
+
+    // ── Command Mode: replace the selection, then a tap-to-undo for a few seconds ────────────────
+    private fun applyCommand(original: String, rewrite: String) {
+        transcribing = false
+        mode = Mode.NONE
+        val svc = EchoAccessibilityService.instance
+        if (svc == null) {
+            copyToClipboard(rewrite)
+            toast(getString(R.string.floating_no_a11y))
+            updateBubble(DictationPhase.IDLE)
+            return
+        }
+        svc.pasteIntoFocusedField(rewrite) // the selection is still active — paste replaces it
+        pendingUndo = PendingUndo(commandStart, original, rewrite)
+        showUndo()
+    }
+
+    /** Show the bubble as a tap-to-undo for UNDO_WINDOW_MS, then auto-collapse. */
+    private fun showUndo() {
+        bubble.visibility = View.VISIBLE
+        bubble.setBgKeepingPadding(0)
+        pill.setBgKeepingPadding(R.drawable.bg_bubble_idle)
+        idleIcon.setImageResource(R.drawable.ic_undo)
+        idleIcon.visibility = View.VISIBLE
+        waveform.visibility = View.GONE; waveform.stop()
+        stopIcon.visibility = View.GONE
+        main.removeCallbacks(clearUndoRunnable)
+        main.postDelayed(clearUndoRunnable, UNDO_WINDOW_MS)
+    }
+
+    /** Re-select the rewrite and paste the original back — but only if the field is unchanged, so we
+     *  never clobber edits made during the window (and only if the field honors set-selection). */
+    private fun doUndo() {
+        val u = pendingUndo ?: return
+        val svc = EchoAccessibilityService.instance
+        if (svc != null) {
+            val cur = svc.readEditable()
+            if (cur != null && undoSliceMatches(cur.text, u.start, u.rewrite) &&
+                svc.setSelection(u.start, u.start + u.rewrite.length)) {
+                svc.pasteIntoFocusedField(u.original)
+            }
+        }
+        clearUndo()
+    }
+
+    /** Cancel the undo window and restore the idle glyph, without forcing visibility (used when a new
+     *  capture supersedes it). */
+    private fun clearUndoState() {
+        main.removeCallbacks(clearUndoRunnable)
+        pendingUndo = null
+        idleIcon.setImageResource(R.drawable.ic_waveform)
+    }
+
+    private fun clearUndo() {
+        clearUndoState()
+        updateBubble(DictationPhase.IDLE) // resets state + re-checks keyboard visibility
     }
 
     private fun onLevel(level: Float) {
@@ -428,6 +507,7 @@ class FloatingButtonService : Service() {
         private const val DEFAULT_RIGHT_DP = 4f  // right inset of the window (pill sits ~GLOW_PAD in)
         private const val DEFAULT_BOTTOM_DP = 120f // provisional bottom inset before the first resolve
         private const val FALLBACK_KB_FRACTION = 0.45f // assumed keyboard height when its top reads bogus
+        private const val UNDO_WINDOW_MS = 5000L // how long the tap-to-undo stays after a command
 
         fun start(ctx: Context) {
             val i = Intent(ctx, FloatingButtonService::class.java)
