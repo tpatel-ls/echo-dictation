@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { cleanup, CleanupError } from '../src/main/transcription/claude'
+import { cleanup, command, CleanupError } from '../src/main/transcription/claude'
 
 const s = { claudeBaseUrl: 'https://mac.ts.net', claudeModel: 'claude-sonnet-4-6' }
 
@@ -53,5 +53,33 @@ describe('cleanup', () => {
     await expect(cleanup('x', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch })).rejects.toBeInstanceOf(
       CleanupError
     )
+  })
+
+  it('appends the style directive to the system prompt when provided', async () => {
+    const fetchMock = vi.fn(async (_url: unknown, init: any) => {
+      expect(JSON.parse(init.body).system).toContain('professional')
+      return new Response(JSON.stringify({ content: [{ type: 'text', text: 'x' }] }), { status: 200 })
+    })
+    await cleanup('x', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch }, [], 'Format as professional writing.')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('command', () => {
+  it('sends the instruction plus the text and parses the rewrite', async () => {
+    const fetchMock = vi.fn(async (_url: unknown, init: any) => {
+      const body = JSON.parse(init.body)
+      expect(body.system).toMatch(/editor/i)
+      expect(body.messages[0].content).toContain('make it formal')
+      expect(body.messages[0].content).toContain('hey whats up')
+      return new Response(JSON.stringify({ content: [{ type: 'text', text: 'Hello, how are you?' }] }), { status: 200 })
+    })
+    const out = await command('hey whats up', 'make it formal', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch })
+    expect(out).toBe('Hello, how are you?')
+  })
+
+  it('falls back to the original text on an empty response', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ content: [] }), { status: 200 }))
+    expect(await command('keep me', 'do nothing', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch })).toBe('keep me')
   })
 })
