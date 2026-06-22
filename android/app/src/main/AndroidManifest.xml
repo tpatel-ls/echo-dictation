@@ -66,5 +66,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Manage voice snippets (cue → expansion). Opened from Settings. -->
+        <activity
+            android:name=".settings.SnippetsActivity"
+            android:exported="false"
+            android:label="@string/snippets_title" />
     </application>
 </manifest>

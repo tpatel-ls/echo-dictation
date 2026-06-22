@@ -87,6 +87,29 @@ describe('sync HTTP service', () => {
     }
   })
 
+  it('round-trips a snippet record (the snippets collection is allowed)', async () => {
+    const s = await start('secret')
+    try {
+      const payload = '{"cue":"my address","expansion":"123 Main St"}'
+      const push = await fetch(`${s.url}/sync/snippets`, {
+        method: 'POST',
+        headers: { ...auth(), 'content-type': 'application/json' },
+        body: JSON.stringify({ records: [{ uuid: 's1', updatedAt: 100, deleted: false, payload }] })
+      })
+      expect(push.status).toBe(200)
+      expect(((await push.json()) as { applied: number }).applied).toBe(1)
+
+      const pull = await fetch(`${s.url}/sync/snippets?since=0`, { headers: auth() })
+      expect(pull.status).toBe(200)
+      const data = (await pull.json()) as { records: Array<{ uuid: string; payload: string | null }> }
+      expect(data.records).toHaveLength(1)
+      expect(data.records[0].uuid).toBe('s1')
+      expect(data.records[0].payload).toBe(payload)
+    } finally {
+      await s.close()
+    }
+  })
+
   it('404s an unknown collection', async () => {
     const s = await start('secret')
     try {

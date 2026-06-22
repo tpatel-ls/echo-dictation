@@ -42,8 +42,8 @@ All routes require `Authorization: Bearer <SYNC_TOKEN>` except `/health`.
 - `GET  /sync/:collection?since=<cursor>&limit=<n>` → `{ records, cursor, hasMore }`
 - `POST /sync/:collection` with `{ records: [...] }` → `{ applied }`
 
-`:collection` is `transcripts` or `dictionary`. Clients advance their pull cursor only
-from `GET` responses (a push returns a count, not a cursor).
+`:collection` is `transcripts`, `dictionary`, or `snippets`. Clients advance their pull
+cursor only from `GET` responses (a push returns a count, not a cursor).
 
 ## Keep it running (macOS launchd)
 

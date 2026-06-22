@@ -7,8 +7,11 @@ import com.tanay.echo.audio.TARGET_RATE
 import com.tanay.echo.audio.pcm16ToWav
 import com.tanay.echo.data.EchoDatabase
 import com.tanay.echo.data.EchoStore
+import com.tanay.echo.data.SnippetDatabase
+import com.tanay.echo.data.SnippetStore
 import com.tanay.echo.dictionary.applyDictionary
 import com.tanay.echo.dictionary.buildBiasPrompt
+import com.tanay.echo.snippet.expandSnippet
 import com.tanay.echo.settings.EchoSettings
 import com.tanay.echo.sync.PrefsSyncState
 import com.tanay.echo.sync.SyncClient
@@ -39,6 +42,7 @@ class DictationController(context: Context) {
     private val app = context.applicationContext
     private val settings = EchoSettings(app)
     private val store = EchoStore(EchoDatabase.get(app))
+    private val snippetStore = SnippetStore(SnippetDatabase.get(app))
     private val mic = MicRecorder().apply { onLevel = { l -> this@DictationController.onLevel(l) } }
     private val http = OkHttpClient() // pooled keep-alive, shared by Whisper + Claude + sync
     private val whisper = WhisperClient(http)
@@ -112,6 +116,7 @@ class DictationController(context: Context) {
         scope.launch {
             try {
                 val dict = withContext(Dispatchers.IO) { store.dictionaryEntries() }
+                val snippets = withContext(Dispatchers.IO) { snippetStore.active() }
                 val wav = pcm16ToWav(pcm, TARGET_RATE)
                 val heard = whisper.transcribe(wav, baseUrl, model, apiKey, prompt = buildBiasPrompt(dict))
                 val applied = applyDictionary(heard, dict)
@@ -122,7 +127,12 @@ class DictationController(context: Context) {
                 }
                 var finalText = corrected
                 var cleaned: String? = null
-                if (profile.runCleanup && claudeBaseUrl.isNotEmpty() && claudeApiKey.isNotEmpty()) {
+                // A voice snippet (the whole utterance matches a cue) pastes its canned block as-is —
+                // no cleanup. Otherwise fall through to the context-aware cleanup path.
+                val expansion = expandSnippet(corrected, snippets)
+                if (expansion != null) {
+                    finalText = expansion
+                } else if (profile.runCleanup && claudeBaseUrl.isNotEmpty() && claudeApiKey.isNotEmpty()) {
                     cleaned = runCatching {
                         claude.cleanup(corrected, claudeBaseUrl, claudeModel, claudeApiKey, dict.map { it.word }, styleDirective = directive)
                     }.getOrNull() // cleanup is best-effort — never block insertion on it
@@ -201,7 +211,7 @@ class DictationController(context: Context) {
         if (!syncing.compareAndSet(false, true)) return
         scope.launch {
             try {
-                val client = SyncClient(store.syncCollections(), settings.syncBaseUrl, settings.syncToken, syncState, http)
+                val client = SyncClient(store.syncCollections() + snippetStore.syncCollections(), settings.syncBaseUrl, settings.syncToken, syncState, http)
                 client.syncOnce()
             } catch (e: Exception) {
                 // best-effort: a sync failure must never surface in the keyboard
