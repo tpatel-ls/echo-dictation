@@ -36,12 +36,13 @@ import com.tanay.echo.settings.EchoSettings
  * the app underneath keeps its text-field focus) and reuses the IME's DictationController, routing
  * transcribed text through the accessibility service to paste into whatever field is focused.
  *
- * Visible only while a soft keyboard is up, and docked just above it on the right (Wispr-style):
- * the accessibility service reports the keyboard's show/hide and its top edge. The bottom edge is
- * pinned above the keyboard so the pill grows upward/leftward and never runs off-screen; horizontal
- * drag slides it along that dock. Tap = hands-free record (stops on a 2nd tap or after silence);
- * press-and-hold = push-to-talk. Runs as a microphone foreground service so it can capture while
- * another app is in front; started from Settings (a foreground context) per Android 14 rules.
+ * Visible only while a soft keyboard is up. By default it docks just above the keyboard on the right
+ * (Wispr-style) from the keyboard's reported top edge — but that accessibility read is unreliable, so
+ * once you drag the bubble it pins to that exact screen spot (both axes persisted) and never derives
+ * its position from the keyboard again. Drag = reposition (any direction); tap = hands-free record
+ * (stops on a 2nd tap or after silence); press-and-hold = push-to-talk. Runs as a microphone
+ * foreground service so it can capture while another app is in front; started from Settings (a
+ * foreground context) per Android 14 rules.
  */
 class FloatingButtonService : Service() {
     private lateinit var windowManager: WindowManager
@@ -65,8 +66,11 @@ class FloatingButtonService : Service() {
     private var transcribing = false
 
     private var dragStartLpX = 0
+    private var dragStartLpY = 0
     private var dragStartRawX = 0f
+    private var dragStartRawY = 0f
     private var movedDuringDrag = false
+    private var draggingNow = false
 
     private val holdRunnable = Runnable {
         if (interp.holdTimerFired() is Gesture.HoldStart) onHoldStart()
@@ -169,12 +173,13 @@ class FloatingButtonService : Service() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         )
-        // Bottom-RIGHT anchor: lp.x/lp.y are insets from the right/bottom. The bottom edge is pinned
-        // just above the keyboard (positionAboveKeyboard) so the pill grows up/left and stays on-screen.
+        // Bottom-RIGHT anchor: lp.x/lp.y are insets from the right/bottom. resolvePosition() sets the
+        // real spot on each show — a saved drag position if any, else the default dock above the
+        // keyboard. Seed from saved values so a pinned bubble appears correctly before the first resolve.
         lp.gravity = Gravity.BOTTOM or Gravity.END
         val dm = resources.displayMetrics
         lp.x = if (settings.floatingX >= 0) settings.floatingX else (DEFAULT_RIGHT_DP * dm.density).toInt()
-        lp.y = (DEFAULT_BOTTOM_DP * dm.density).toInt() // provisional until the keyboard top is known
+        lp.y = if (settings.floatingY >= 0) settings.floatingY else (DEFAULT_BOTTOM_DP * dm.density).toInt()
 
         bubble.setOnTouchListener { _, ev -> onTouch(ev) }
         // Idle squircle ↔ recording pill changes width; keep it fully on-screen when it does.
@@ -195,29 +200,35 @@ class FloatingButtonService : Service() {
         if (!visible && mode != Mode.NONE) return // never yank the bubble mid-recording
         bubble.visibility = if (visible) View.VISIBLE else View.GONE
         if (visible) {
-            // Dock above the keyboard now, then again once its open animation settles (the IME
-            // window's reported top can still be moving on the first event).
-            main.post { positionAboveKeyboard() }
-            main.postDelayed({ positionAboveKeyboard() }, 140)
+            // Place it now, then again once the keyboard's open animation settles (the IME window's
+            // reported top can still be moving on the first event). A no-op once the bubble is pinned.
+            main.post { resolvePosition() }
+            main.postDelayed({ resolvePosition() }, 140)
         }
     }
 
     /**
-     * Pin the bubble's bottom edge just above the soft keyboard, near the right edge. Vertical is
-     * always automatic (so the dock tracks each app's keyboard height); horizontal honors a drag.
+     * Place the bubble. If the user has dragged it before (a saved Y exists), restore that exact
+     * screen spot and leave it — this is what stops the bubble drifting onto the keys. Otherwise use
+     * the default dock: top-right, just above the keyboard (see [BubbleDock.defaultDockInset], which
+     * guards against the unreliable keyboard-top read).
      */
-    private fun positionAboveKeyboard() {
+    private fun resolvePosition() {
         if (!::bubble.isInitialized || bubble.visibility != View.VISIBLE) return
+        if (draggingNow) return // don't fight an in-progress drag (e.g. the 140ms settle re-place)
         val dm = resources.displayMetrics
-        val top = EchoAccessibilityService.instance?.keyboardTopY() ?: -1
-        if (top > 0) {
-            val glowPad = GLOW_PAD_DP * dm.density
-            val gap = ABOVE_KB_GAP_DP * dm.density
-            // Gravity.BOTTOM inset = screen height − keyboard top, plus a gap, minus the transparent
-            // glow ring so the *visible* pill (not its halo) is what clears the keyboard.
-            lp.y = (screenHeightPx() - top + gap - glowPad).toInt().coerceAtLeast(0)
-        }
         lp.x = if (settings.floatingX >= 0) settings.floatingX else (DEFAULT_RIGHT_DP * dm.density).toInt()
+        lp.y = if (settings.floatingY >= 0) {
+            settings.floatingY // pinned: exactly where the user left it, no keyboard math involved
+        } else {
+            BubbleDock.defaultDockInset(
+                screenHeight = screenHeightPx(),
+                keyboardTop = EchoAccessibilityService.instance?.keyboardTopY() ?: -1,
+                gapPx = (ABOVE_KB_GAP_DP * dm.density).toInt(),
+                glowPadPx = (GLOW_PAD_DP * dm.density).toInt(),
+                fallbackFraction = FALLBACK_KB_FRACTION,
+            )
+        }
         clampToScreen()
         runCatching { windowManager.updateViewLayout(bubble, lp) }
     }
@@ -227,7 +238,9 @@ class FloatingButtonService : Service() {
             MotionEvent.ACTION_DOWN -> {
                 interp.down(ev.rawX, ev.rawY)
                 dragStartLpX = lp.x
+                dragStartLpY = lp.y
                 dragStartRawX = ev.rawX
+                dragStartRawY = ev.rawY
                 movedDuringDrag = false
                 main.postDelayed(holdRunnable, longPressMs)
                 return true
@@ -236,9 +249,11 @@ class FloatingButtonService : Service() {
                 if (interp.move(ev.rawX, ev.rawY) is Gesture.Drag) {
                     main.removeCallbacks(holdRunnable)
                     movedDuringDrag = true
-                    // Horizontal reposition only — vertical stays docked above the keyboard. END
-                    // gravity: dragging right (rawX up) reduces the right-inset.
+                    draggingNow = true
+                    // Free reposition in both axes. BOTTOM|END gravity: dragging right (rawX up)
+                    // reduces the right-inset; dragging down (rawY up) reduces the bottom-inset.
                     lp.x = (dragStartLpX - (ev.rawX - dragStartRawX)).toInt()
+                    lp.y = (dragStartLpY - (ev.rawY - dragStartRawY)).toInt()
                     clampToScreen()
                     runCatching { windowManager.updateViewLayout(bubble, lp) }
                 }
@@ -246,6 +261,7 @@ class FloatingButtonService : Service() {
             }
             MotionEvent.ACTION_UP -> {
                 main.removeCallbacks(holdRunnable)
+                draggingNow = false
                 when (interp.up()) {
                     Gesture.Tap -> onTap()
                     Gesture.HoldEnd -> onHoldEnd()
@@ -256,6 +272,7 @@ class FloatingButtonService : Service() {
             }
             MotionEvent.ACTION_CANCEL -> {
                 main.removeCallbacks(holdRunnable)
+                draggingNow = false
                 interp.up()
                 return true
             }
@@ -276,7 +293,10 @@ class FloatingButtonService : Service() {
     }
 
     private fun persistPosition() {
-        settings.floatingX = lp.x // horizontal only; vertical is always pinned above the keyboard
+        // Both axes: resolvePosition() restores this exact spot on every later show, so the bubble
+        // stays where the user dropped it instead of re-deriving a position from the keyboard.
+        settings.floatingX = lp.x
+        settings.floatingY = lp.y
     }
 
     private fun screenWidthPx(): Int =
@@ -356,7 +376,7 @@ class FloatingButtonService : Service() {
 
     /**
      * Swap a background without the new drawable's (zero) intrinsic padding wiping the view's own
-     * padding. positionAboveKeyboard() depends on the root's 16dp ring being stable, and some OEM
+     * padding. The default dock math depends on the root's 16dp ring being stable, and some OEM
      * View internals reset padding on background change — read-then-restore makes it deterministic.
      */
     private fun View.setBgKeepingPadding(resId: Int) {
@@ -406,7 +426,8 @@ class FloatingButtonService : Service() {
         private const val GLOW_PAD_DP = 16f      // must match floating_bubble.xml root padding
         private const val ABOVE_KB_GAP_DP = 12f  // visible gap between the pill and the keyboard top
         private const val DEFAULT_RIGHT_DP = 4f  // right inset of the window (pill sits ~GLOW_PAD in)
-        private const val DEFAULT_BOTTOM_DP = 120f // provisional bottom inset before the keyboard top is read
+        private const val DEFAULT_BOTTOM_DP = 120f // provisional bottom inset before the first resolve
+        private const val FALLBACK_KB_FRACTION = 0.45f // assumed keyboard height when its top reads bogus
 
         fun start(ctx: Context) {
             val i = Intent(ctx, FloatingButtonService::class.java)
