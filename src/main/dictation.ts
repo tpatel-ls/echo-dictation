@@ -11,6 +11,7 @@ import {
   type TranscriptStatus
 } from '@shared/types'
 import { applyDictionary, buildBiasPrompt } from '@shared/dictionary'
+import { registerForTitle, styleDirective } from '@shared/app-style'
 import type { SettingsStore } from './store/settings'
 import type { HistoryStore } from './store/history'
 import type { DictionaryStore } from './store/dictionary'
@@ -101,7 +102,16 @@ export class DictationController {
       let cleaned: string | null = null
       if (s.cleanupMode === 'auto') {
         try {
-          cleaned = await cleanup(raw, s, sec.claudeApiKey, undefined, dict.map((e) => e.word))
+          // Context-aware tone: adapt the cleanup register to the focused app (best-effort, from
+          // the window title). Neutral titles yield a null directive ⇒ the base cleanup prompt.
+          cleaned = await cleanup(
+            raw,
+            s,
+            sec.claudeApiKey,
+            undefined,
+            dict.map((e) => e.word),
+            styleDirective(registerForTitle(appContext))
+          )
           text = cleaned
         } catch {
           /* proxy down — fall back to raw text, no failure */

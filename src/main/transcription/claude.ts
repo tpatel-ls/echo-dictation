@@ -23,23 +23,29 @@ const SYSTEM_PROMPT =
   'translate, add content, or comment. Return ONLY the cleaned transcript text, with no ' +
   'preamble, quotes, or explanation.'
 
-/**
- * Send raw transcript text to the Anthropic-compatible proxy for cleanup.
- * Throws CleanupError on failure; callers decide whether to fall back to raw text.
- * `glossary` lists the user's dictionary words so cleanup never "fixes" them back.
- */
-export async function cleanup(
-  text: string,
+const COMMAND_SYSTEM_PROMPT =
+  'You are a precise in-place text editor. Apply the user’s instruction to the provided text and ' +
+  'return ONLY the resulting text — no preamble, quotes, or explanation. Preserve the original ' +
+  'meaning and formatting unless the instruction asks otherwise.'
+
+/** Pin the user's dictionary onto a system prompt so neither cleanup nor a command un-corrects it. */
+function withGlossary(base: string, glossary: string[]): string {
+  return glossary.length
+    ? `${base} The speaker's custom vocabulary — always keep these exact spellings: ${glossary.join(', ')}.`
+    : base
+}
+
+/** One Anthropic /v1/messages round-trip: `system` + a single user message, parsed to text with
+ *  `fallback` returned on an empty response. Throws CleanupError on network/HTTP failure. */
+async function post(
+  system: string,
+  userContent: string,
+  fallback: string,
   settings: Pick<Settings, 'claudeBaseUrl' | 'claudeModel'>,
   apiKey: string,
-  deps: ClaudeDeps = { fetch },
-  glossary: string[] = []
+  deps: ClaudeDeps
 ): Promise<string> {
   const url = joinUrl(settings.claudeBaseUrl, 'v1/messages')
-  const system = glossary.length
-    ? `${SYSTEM_PROMPT} The speaker's custom vocabulary — always keep these exact spellings: ${glossary.join(', ')}.`
-    : SYSTEM_PROMPT
-
   let res: Response
   try {
     res = await deps.fetch(url, {
@@ -53,7 +59,7 @@ export async function cleanup(
         model: settings.claudeModel,
         max_tokens: 2000,
         system,
-        messages: [{ role: 'user', content: text }]
+        messages: [{ role: 'user', content: userContent }]
       })
     })
   } catch (e) {
@@ -71,5 +77,39 @@ export async function cleanup(
     .map((b) => b.text ?? '')
     .join('')
     .trim()
-  return out || text
+  return out || fallback
+}
+
+/**
+ * Send raw transcript text to the Anthropic-compatible proxy for cleanup. Throws CleanupError on
+ * failure; callers decide whether to fall back to raw text. `glossary` lists the user's dictionary
+ * words so cleanup never "fixes" them back; `styleDirective` adapts the tone to the focused app.
+ */
+export async function cleanup(
+  text: string,
+  settings: Pick<Settings, 'claudeBaseUrl' | 'claudeModel'>,
+  apiKey: string,
+  deps: ClaudeDeps = { fetch },
+  glossary: string[] = [],
+  styleDirective?: string | null
+): Promise<string> {
+  let system = withGlossary(SYSTEM_PROMPT, glossary)
+  if (styleDirective) system = `${system} ${styleDirective}`
+  return post(system, text, text, settings, apiKey, deps)
+}
+
+/**
+ * Command Mode: apply a spoken `instruction` to `text` (the user's selection) and return the rewrite,
+ * or the original `text` on an empty response. `glossary` is pinned so custom spellings survive.
+ */
+export async function command(
+  text: string,
+  instruction: string,
+  settings: Pick<Settings, 'claudeBaseUrl' | 'claudeModel'>,
+  apiKey: string,
+  deps: ClaudeDeps = { fetch },
+  glossary: string[] = []
+): Promise<string> {
+  const system = withGlossary(COMMAND_SYSTEM_PROMPT, glossary)
+  return post(system, `Instruction: ${instruction}\n\nText:\n${text}`, text, settings, apiKey, deps)
 }
