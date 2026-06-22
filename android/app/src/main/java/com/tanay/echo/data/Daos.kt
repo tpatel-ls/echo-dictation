@@ -59,3 +59,30 @@ interface DictionaryDao {
     @Query("UPDATE dictionary SET timesApplied = timesApplied + 1, updatedAt = :updatedAt WHERE id = :id AND deleted = 0")
     fun bumpApplied(id: Long, updatedAt: Long)
 }
+
+@Dao
+interface SnippetDao {
+    @Insert
+    fun insert(e: SnippetEntity): Long
+
+    @Update
+    fun update(e: SnippetEntity)
+
+    @Query("SELECT * FROM snippets WHERE deleted = 0 ORDER BY createdAt DESC, id DESC")
+    fun active(): List<SnippetEntity>
+
+    @Query("SELECT * FROM snippets WHERE id = :id")
+    fun byId(id: Long): SnippetEntity?
+
+    @Query("SELECT * FROM snippets WHERE uuid = :uuid")
+    fun byUuid(uuid: String): SnippetEntity?
+
+    @Query("SELECT uuid, updatedAt, deleted FROM snippets WHERE uuid = :uuid")
+    fun metaByUuid(uuid: String): SyncMetaRow?
+
+    @Query("SELECT * FROM snippets WHERE updatedAt > :watermark ORDER BY updatedAt ASC, id ASC")
+    fun changedSince(watermark: Long): List<SnippetEntity>
+
+    @Query("UPDATE snippets SET deleted = 1, updatedAt = :updatedAt WHERE id = :id")
+    fun softDelete(id: Long, updatedAt: Long)
+}

@@ -78,6 +78,9 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         findViewById<MaterialButton>(R.id.save).setOnClickListener { save() }
+        findViewById<MaterialButton>(R.id.manage_snippets).setOnClickListener {
+            startActivity(Intent(this, SnippetsActivity::class.java))
+        }
         findViewById<MaterialButton>(R.id.enable_keyboard).setOnClickListener {
             startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
         }

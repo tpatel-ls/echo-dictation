@@ -115,3 +115,41 @@ class DictionarySyncCollection(private val dao: DictionaryDao) : SyncCollection 
         put("times_applied", e.timesApplied)
     }.toString()
 }
+
+class SnippetSyncCollection(private val dao: SnippetDao) : SyncCollection {
+    override val name = "snippets"
+
+    override fun changedSince(watermark: Long): List<LocalChange> =
+        dao.changedSince(watermark).map { e -> LocalChange(e.uuid, e.updatedAt, e.deleted, buildPayload(e)) }
+
+    override fun applyRemote(uuid: String, updatedAt: Long, deleted: Boolean, payload: String?): Boolean {
+        val local = dao.metaByUuid(uuid)?.let { SyncMeta(it.uuid, it.updatedAt, it.deleted) }
+        if (!shouldApply(local, SyncMeta(uuid, updatedAt, deleted))) return false
+        val existing = dao.byUuid(uuid)
+        if (payload == null) {
+            if (deleted && existing != null) {
+                dao.update(existing.copy(updatedAt = updatedAt, deleted = true))
+                return true
+            }
+            return false
+        }
+        val obj = payloadJson.parseToJsonElement(payload).jsonObject
+        val row = SnippetEntity(
+            id = existing?.id ?: 0,
+            uuid = uuid,
+            updatedAt = updatedAt,
+            deleted = deleted,
+            cue = obj["cue"]!!.jsonPrimitive.content, // missing ⇒ throws ⇒ record skipped
+            expansion = obj["expansion"]!!.jsonPrimitive.content,
+            createdAt = obj["created_at"]!!.jsonPrimitive.long
+        )
+        if (existing != null) dao.update(row) else dao.insert(row)
+        return true
+    }
+
+    private fun buildPayload(e: SnippetEntity): String = buildJsonObject {
+        put("cue", e.cue)
+        put("expansion", e.expansion)
+        put("created_at", e.createdAt)
+    }.toString()
+}

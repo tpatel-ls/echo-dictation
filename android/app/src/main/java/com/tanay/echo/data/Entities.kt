@@ -41,5 +41,16 @@ data class DictionaryEntity(
     val timesApplied: Int
 )
 
+@Entity(tableName = "snippets", indices = [Index(value = ["uuid"], unique = true)])
+data class SnippetEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val uuid: String,
+    val updatedAt: Long,
+    val deleted: Boolean,
+    val cue: String,
+    val expansion: String,
+    val createdAt: Long
+)
+
 /** Projection for the last-write-wins meta-check in applyRemote. */
 data class SyncMetaRow(val uuid: String, val updatedAt: Long, val deleted: Boolean)

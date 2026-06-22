@@ -169,6 +169,16 @@
             android:layout_marginTop="20dp"
             android:text="@string/settings_save" />
 
+        <!-- Snippets -->
+        <TextView style="@style/EchoSectionHeader" android:text="@string/section_snippets" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/manage_snippets"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/snippets_open" />
+
         <!-- Setup actions -->
         <TextView style="@style/EchoSectionHeader" android:text="@string/section_setup" />
 

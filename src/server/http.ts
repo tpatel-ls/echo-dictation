@@ -8,7 +8,7 @@ import type { SyncStore, UpsertInput } from './sync-store'
 // request, calls the handler, and writes JSON back.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const COLLECTIONS = new Set(['transcripts', 'dictionary'])
+const COLLECTIONS = new Set(['transcripts', 'dictionary', 'snippets'])
 const DEFAULT_LIMIT = 200
 const MAX_LIMIT = 1000
 const MAX_BODY_BYTES = 5_000_000
