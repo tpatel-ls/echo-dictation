@@ -12,8 +12,8 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * A compact white audio equalizer for the floating bubble — five rounded bars that rise with
- * [setLevel] plus a gentle per-bar shimmer, drawn on the violet pill. Animates only while
+ * A compact white audio equalizer for the floating bubble — a row of slim rounded bars that rise
+ * with [setLevel] plus a gentle per-bar shimmer, drawn on the violet pill. Animates only while
  * [start]ed. The minimal sibling of the desktop overlay's canvas waveform.
  */
 class WaveformView @JvmOverloads constructor(
@@ -23,7 +23,7 @@ class WaveformView @JvmOverloads constructor(
 ) : View(context, attrs, defStyle) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
     private val rect = RectF()
-    private val bars = 9
+    private val bars = 13
     private var level = 0f
     private var smooth = 0f
     private var phase = 0f
@@ -51,7 +51,7 @@ class WaveformView @JvmOverloads constructor(
         val w = width.toFloat()
         val h = height.toFloat()
         val slot = w / bars
-        val barW = slot * 0.5f
+        val barW = slot * 0.4f
         val mid = (bars - 1) / 2f
         smooth += (level - smooth) * 0.35f
         phase += 0.22f

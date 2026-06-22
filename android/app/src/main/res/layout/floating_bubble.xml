@@ -1,38 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Idle: shows only the purple waveform glyph → a lavender squircle.
-     Recording: glyph hidden, white WaveformView + white stop circle → a purple pill. -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Root holds the soft violet glow (recording only) as its background, with padding so the halo +
+     elevation shadow can bleed around the pill. The inner pill is the visible button:
+       idle      → lavender squircle with a purple waveform glyph
+       recording → purple pill with a white WaveformView + a white stop circle.
+     NOTE: the root padding (16dp) must match FloatingButtonService.GLOW_PAD_DP — the above-keyboard
+     positioning subtracts it so the *visible* pill, not the transparent halo, clears the keyboard. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/bubble_root"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:orientation="horizontal"
-    android:gravity="center_vertical"
-    android:paddingStart="15dp"
-    android:paddingEnd="15dp"
-    android:paddingTop="15dp"
-    android:paddingBottom="15dp"
-    android:background="@drawable/bg_bubble_idle"
-    android:elevation="9dp">
+    android:padding="16dp"
+    android:clipChildren="false"
+    android:clipToPadding="false">
 
-    <ImageView
-        android:id="@+id/bubble_idle_icon"
-        android:layout_width="26dp"
-        android:layout_height="26dp"
-        android:src="@drawable/ic_waveform"
-        android:contentDescription="@string/cd_mic" />
+    <LinearLayout
+        android:id="@+id/bubble_pill"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="14dp"
+        android:paddingBottom="14dp"
+        android:background="@drawable/bg_bubble_idle"
+        android:elevation="8dp">
 
-    <com.tanay.echo.floating.WaveformView
-        android:id="@+id/bubble_wave"
-        android:layout_width="116dp"
-        android:layout_height="26dp"
-        android:visibility="gone" />
+        <ImageView
+            android:id="@+id/bubble_idle_icon"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:src="@drawable/ic_waveform"
+            android:contentDescription="@string/cd_mic" />
 
-    <ImageView
-        android:id="@+id/bubble_stop"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:layout_marginStart="12dp"
-        android:src="@drawable/ic_stop_circle"
-        android:visibility="gone"
-        android:contentDescription="@string/floating_stop" />
-</LinearLayout>
+        <com.tanay.echo.floating.WaveformView
+            android:id="@+id/bubble_wave"
+            android:layout_width="120dp"
+            android:layout_height="26dp"
+            android:visibility="gone" />
+
+        <ImageView
+            android:id="@+id/bubble_stop"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_marginStart="12dp"
+            android:src="@drawable/ic_stop_circle"
+            android:visibility="gone"
+            android:contentDescription="@string/floating_stop" />
+    </LinearLayout>
+</FrameLayout>
