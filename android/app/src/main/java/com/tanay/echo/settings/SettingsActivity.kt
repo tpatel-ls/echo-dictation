@@ -37,6 +37,8 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var whisperBaseUrl: TextInputEditText
     private lateinit var whisperApiKey: TextInputEditText
     private lateinit var whisperModel: TextInputEditText
+    private lateinit var language: TextInputEditText
+    private lateinit var whisperMode: MaterialSwitch
     private lateinit var syncBaseUrl: TextInputEditText
     private lateinit var syncToken: TextInputEditText
     private lateinit var contextTone: MaterialSwitch
@@ -57,6 +59,8 @@ class SettingsActivity : AppCompatActivity() {
         whisperBaseUrl = findViewById(R.id.whisper_base_url)
         whisperApiKey = findViewById(R.id.whisper_api_key)
         whisperModel = findViewById(R.id.whisper_model)
+        language = findViewById(R.id.language)
+        whisperMode = findViewById(R.id.whisper_mode)
         syncBaseUrl = findViewById(R.id.sync_base_url)
         syncToken = findViewById(R.id.sync_token)
         contextTone = findViewById(R.id.context_tone_enabled)
@@ -132,6 +136,8 @@ class SettingsActivity : AppCompatActivity() {
         whisperBaseUrl.setText(settings.whisperBaseUrl)
         whisperApiKey.setText(settings.whisperApiKey)
         whisperModel.setText(settings.whisperModel)
+        language.setText(settings.language)
+        whisperMode.isChecked = settings.whisperMode
         syncBaseUrl.setText(settings.syncBaseUrl)
         syncToken.setText(settings.syncToken)
         contextTone.isChecked = settings.contextToneEnabled
@@ -145,6 +151,8 @@ class SettingsActivity : AppCompatActivity() {
         settings.whisperBaseUrl = text(whisperBaseUrl)
         settings.whisperApiKey = text(whisperApiKey)
         settings.whisperModel = text(whisperModel)
+        settings.language = text(language)
+        settings.whisperMode = whisperMode.isChecked
         settings.syncBaseUrl = text(syncBaseUrl)
         settings.syncToken = text(syncToken)
         settings.contextToneEnabled = contextTone.isChecked

@@ -25,6 +25,10 @@
     <string name="field_whisper_url">Whisper base URL</string>
     <string name="field_whisper_key">Whisper API key</string>
     <string name="field_whisper_model">Whisper model</string>
+    <string name="field_language">Language (ISO code)</string>
+    <string name="field_language_hint">Blank = auto-detect. e.g. en, hi, es, fr.</string>
+    <string name="field_whisper_mode">Whisper Mode</string>
+    <string name="field_whisper_mode_hint">Boost quiet / whispered speech before transcribing.</string>
     <string name="field_sync_url">Sync service URL</string>
     <string name="field_sync_token">Sync token</string>
     <string name="field_context_tone">Adapt formatting to the app</string>

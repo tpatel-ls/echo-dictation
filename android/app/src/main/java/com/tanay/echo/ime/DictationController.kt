@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.SystemClock
 import com.tanay.echo.audio.MicRecorder
 import com.tanay.echo.audio.TARGET_RATE
+import com.tanay.echo.audio.boostGain
 import com.tanay.echo.audio.pcm16ToWav
 import com.tanay.echo.data.EchoDatabase
 import com.tanay.echo.data.EchoStore
@@ -19,6 +20,7 @@ import com.tanay.echo.transcription.ClaudeClient
 import com.tanay.echo.transcription.Register
 import com.tanay.echo.transcription.StyleProfile
 import com.tanay.echo.transcription.WhisperClient
+import com.tanay.echo.transcription.languageParam
 import com.tanay.echo.transcription.styleDirective
 import com.tanay.echo.transcription.styleForPackage
 import kotlinx.coroutines.CoroutineScope
@@ -105,6 +107,8 @@ class DictationController(context: Context) {
         val baseUrl = settings.whisperBaseUrl
         val model = settings.whisperModel
         val apiKey = settings.whisperApiKey
+        val language = languageParam(settings.language)
+        val whisperMode = settings.whisperMode
         val claudeBaseUrl = settings.claudeBaseUrl
         val claudeApiKey = settings.claudeApiKey
         val claudeModel = settings.claudeModel
@@ -117,8 +121,8 @@ class DictationController(context: Context) {
             try {
                 val dict = withContext(Dispatchers.IO) { store.dictionaryEntries() }
                 val snippets = withContext(Dispatchers.IO) { snippetStore.active() }
-                val wav = pcm16ToWav(pcm, TARGET_RATE)
-                val heard = whisper.transcribe(wav, baseUrl, model, apiKey, prompt = buildBiasPrompt(dict))
+                val wav = pcm16ToWav(if (whisperMode) boostGain(pcm) else pcm, TARGET_RATE)
+                val heard = whisper.transcribe(wav, baseUrl, model, apiKey, prompt = buildBiasPrompt(dict), language = language)
                 val applied = applyDictionary(heard, dict)
                 val corrected = applied.text // dictionary-corrected text — what desktop stores as raw_text
                 if (corrected.isBlank()) {
@@ -185,12 +189,14 @@ class DictationController(context: Context) {
         val baseUrl = settings.whisperBaseUrl
         val model = settings.whisperModel
         val apiKey = settings.whisperApiKey
+        val language = languageParam(settings.language)
+        val whisperMode = settings.whisperMode
         scope.launch {
             try {
                 val dict = withContext(Dispatchers.IO) { store.dictionaryEntries() }
-                val wav = pcm16ToWav(pcm, TARGET_RATE)
+                val wav = pcm16ToWav(if (whisperMode) boostGain(pcm) else pcm, TARGET_RATE)
                 // The spoken audio is the instruction (e.g. "make this more formal"), not content.
-                val instruction = whisper.transcribe(wav, baseUrl, model, apiKey, prompt = buildBiasPrompt(dict)).trim()
+                val instruction = whisper.transcribe(wav, baseUrl, model, apiKey, prompt = buildBiasPrompt(dict), language = language).trim()
                 if (instruction.isBlank()) {
                     onPhase(DictationPhase.EMPTY, null)
                     return@launch
