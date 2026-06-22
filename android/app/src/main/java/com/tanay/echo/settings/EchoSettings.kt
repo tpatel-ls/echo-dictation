@@ -53,10 +53,12 @@ class EchoSettings(context: Context) {
         get() = prefs.getString("claudeModel", "claude-sonnet-4-6") ?: "claude-sonnet-4-6"
         set(v) = prefs.edit().putString("claudeModel", v.trim().ifEmpty { "claude-sonnet-4-6" }).apply()
 
-    /** Optional Claude cleanup — off by default to keep dictation latency low. */
-    var cleanupEnabled: Boolean
-        get() = prefs.getBoolean("cleanupEnabled", false)
-        set(v) = prefs.edit().putBoolean("cleanupEnabled", v).apply()
+    /** Context-aware AI formatting: adapt tone to the focused app (casual in chat, polished in email/
+     *  docs), spending the Claude pass only where it helps. On by default; a no-op until Claude is
+     *  configured. See [com.tanay.echo.transcription.styleForPackage]. */
+    var contextToneEnabled: Boolean
+        get() = prefs.getBoolean("contextToneEnabled", true)
+        set(v) = prefs.edit().putBoolean("contextToneEnabled", v).apply()
 
     /** Whether the system-wide floating mic button is enabled (starts FloatingButtonService). */
     var floatingEnabled: Boolean

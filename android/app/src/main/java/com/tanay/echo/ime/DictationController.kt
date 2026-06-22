@@ -13,7 +13,11 @@ import com.tanay.echo.settings.EchoSettings
 import com.tanay.echo.sync.PrefsSyncState
 import com.tanay.echo.sync.SyncClient
 import com.tanay.echo.transcription.ClaudeClient
+import com.tanay.echo.transcription.Register
+import com.tanay.echo.transcription.StyleProfile
 import com.tanay.echo.transcription.WhisperClient
+import com.tanay.echo.transcription.styleDirective
+import com.tanay.echo.transcription.styleForPackage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,7 +30,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Assembles the Android dictation pipeline (the same accuracy stack as desktop): a pre-warmed
  * AudioRecord → WAV → Whisper (with the dictionary bias prompt) → deterministic dictionary
- * replacement → optional Claude cleanup → commit into the field → persist to Room → push to
+ * replacement → context-aware Claude cleanup (the focused app picks the tone, and whether to run
+ * at all) → commit into the field → persist to Room → push to
  * sync. One OkHttpClient is shared so connections stay warm. UI callbacks fire on the main
  * thread; network/DB work runs on IO. Config is read live from EchoSettings each dictation.
  */
@@ -92,10 +97,14 @@ class DictationController(context: Context) {
         val baseUrl = settings.whisperBaseUrl
         val model = settings.whisperModel
         val apiKey = settings.whisperApiKey
-        val cleanupEnabled = settings.cleanupEnabled
         val claudeBaseUrl = settings.claudeBaseUrl
         val claudeApiKey = settings.claudeApiKey
         val claudeModel = settings.claudeModel
+        // Context-aware tone: the app you're dictating into picks the register AND whether to spend the
+        // AI pass at all. Casual apps (chat) stay instant; email/docs/unknown get polished. Pure + fast.
+        val profile = if (settings.contextToneEnabled) styleForPackage(appContext)
+                      else StyleProfile(Register.NEUTRAL, runCleanup = false)
+        val directive = styleDirective(profile.register, appContext)
         scope.launch {
             try {
                 val dict = withContext(Dispatchers.IO) { store.dictionaryEntries() }
@@ -109,9 +118,9 @@ class DictationController(context: Context) {
                 }
                 var finalText = corrected
                 var cleaned: String? = null
-                if (cleanupEnabled && claudeBaseUrl.isNotEmpty() && claudeApiKey.isNotEmpty()) {
+                if (profile.runCleanup && claudeBaseUrl.isNotEmpty() && claudeApiKey.isNotEmpty()) {
                     cleaned = runCatching {
-                        claude.cleanup(corrected, claudeBaseUrl, claudeModel, claudeApiKey, dict.map { it.word })
+                        claude.cleanup(corrected, claudeBaseUrl, claudeModel, claudeApiKey, dict.map { it.word }, styleDirective = directive)
                     }.getOrNull() // cleanup is best-effort — never block insertion on it
                     if (cleaned != null) finalText = cleaned
                 }

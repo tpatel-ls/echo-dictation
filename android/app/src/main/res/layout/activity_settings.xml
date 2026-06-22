@@ -103,22 +103,22 @@
                 android:inputType="textPassword" />
         </com.google.android.material.textfield.TextInputLayout>
 
-        <!-- Cleanup (optional) -->
-        <TextView style="@style/EchoSectionHeader" android:text="@string/section_cleanup" />
+        <!-- AI formatting (context-aware tone) -->
+        <TextView style="@style/EchoSectionHeader" android:text="@string/section_formatting" />
 
         <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/cleanup_enabled"
+            android:id="@+id/context_tone_enabled"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="4dp"
-            android:text="@string/field_cleanup_enabled"
+            android:text="@string/field_context_tone"
             android:textColor="@color/echo_text" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
-            android:text="@string/field_cleanup_hint"
+            android:text="@string/field_context_tone_hint"
             android:textColor="@color/echo_muted"
             android:textSize="12sp" />
 
