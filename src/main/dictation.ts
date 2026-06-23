@@ -8,6 +8,8 @@ import {
   type DictionaryEntry,
   type InsertResult,
   type NewTranscript,
+  type Secrets,
+  type Settings,
   type TranscriptStatus
 } from '@shared/types'
 import { applyDictionary, buildBiasPrompt } from '@shared/dictionary'
@@ -18,9 +20,11 @@ import type { HistoryStore } from './store/history'
 import type { DictionaryStore } from './store/dictionary'
 import type { SnippetsStore } from './store/snippets'
 import { transcribe } from './transcription/whisper'
-import { cleanup } from './transcription/claude'
+import { cleanup, command } from './transcription/claude'
 import { pasteText } from './insert/paste'
-import { realPasteDeps } from './insert/paste-deps'
+import { realPasteDeps, realSelectionDeps } from './insert/paste-deps'
+import { captureSelection } from './insert/selection'
+import { looksLikeTerminal } from './insert/terminal'
 import { snapshotForegroundWindow, type WindowSnapshot } from './insert/window-focus'
 import { positionOverlay } from './windows'
 import { wordCount } from '@shared/format'
@@ -36,6 +40,9 @@ const WATCHDOG_MS = 20_000
 export class DictationController {
   private busy = false
   private pendingFocus: WindowSnapshot | null = null
+  /** Command Mode: the in-flight selection probe started at hotkey-down. Resolves to the focused
+   *  app's selected text, or null when there's nothing selected / command mode is off. */
+  private selectionProbe: Promise<string | null> | null = null
   private watchdog: ReturnType<typeof setTimeout> | null = null
   private linger: ReturnType<typeof setTimeout> | null = null
 
@@ -57,6 +64,23 @@ export class DictationController {
     this.send({ phase: 'listening', startedAt: Date.now() })
     this.show()
     this.pendingFocus = await snapshotForegroundWindow()
+    // Probe the selection now, while the user is still speaking, so it's ready by paste time.
+    this.selectionProbe = this.startSelectionProbe()
+  }
+
+  /**
+   * Command Mode (Wispr-parity): if enabled and Claude is configured, probe the focused app for a
+   * selection. A captured selection turns this dictation into a spoken command on it. Skipped for
+   * terminals, where a synthetic Ctrl+C is SIGINT (would kill a running process) rather than copy.
+   * Returns null — no probe — when any gate fails.
+   */
+  private startSelectionProbe(): Promise<string | null> | null {
+    const s = this.settings.getSettings()
+    const sec = this.settings.getSecrets()
+    if (!s.commandModeEnabled) return null
+    if (!s.claudeBaseUrl || !sec.claudeApiKey) return null
+    if (looksLikeTerminal(this.pendingFocus?.title ?? '')) return null
+    return captureSelection(realSelectionDeps())
   }
 
   onStop(): void {
@@ -68,6 +92,7 @@ export class DictationController {
   onCancel(): void {
     this.busy = false
     this.pendingFocus = null
+    this.selectionProbe = null
     this.clearWatchdog()
     this.send({ phase: 'idle' })
   }
@@ -98,6 +123,14 @@ export class DictationController {
       const heard = await transcribe(buf, s, sec.whisperApiKey, undefined, {
         prompt: buildBiasPrompt(dict)
       })
+
+      // Command Mode: a selection captured at hotkey-down means this utterance is a spoken
+      // instruction on that selection, not text to insert. Nothing selected ⇒ normal dictation.
+      const selection = this.selectionProbe ? await this.selectionProbe : null
+      if (selection !== null) {
+        return await this.runCommand(selection, heard, s, sec, dict)
+      }
+
       const raw = this.correct(heard, dict)
       if (!raw) {
         this.history.insert(
@@ -162,6 +195,46 @@ export class DictationController {
     } finally {
       this.busy = false
       this.pendingFocus = null
+      this.selectionProbe = null
+    }
+  }
+
+  /**
+   * Command Mode: apply the spoken `heard` instruction to the captured `selection` and paste the
+   * rewrite over it (Ctrl+V replaces the still-active selection). Non-destructive — an empty
+   * instruction or any failure pastes nothing, so the selection is never clobbered. Not recorded to
+   * history (it's an in-place edit, not a capture), matching Android.
+   */
+  private async runCommand(
+    selection: string,
+    heard: string,
+    s: Settings,
+    sec: Secrets,
+    dict: DictionaryEntry[]
+  ): Promise<InsertResult> {
+    const instruction = heard.trim()
+    if (!instruction) {
+      this.send({ phase: 'empty', message: 'No command heard' })
+      this.startLinger()
+      return { ok: false, error: 'empty' }
+    }
+    try {
+      const rewrite = await command(
+        selection,
+        instruction,
+        s,
+        sec.claudeApiKey,
+        undefined,
+        dict.map((e) => e.word)
+      )
+      await pasteText(rewrite, realPasteDeps(this.pendingFocus?.focus))
+      this.send({ phase: 'inserted', message: preview(rewrite) })
+      this.startLinger()
+      return { ok: true }
+    } catch (e) {
+      this.send({ phase: 'error', message: friendlyError(e, 'Claude') })
+      this.startLinger()
+      return { ok: false, error: (e as Error).message }
     }
   }
 
@@ -203,6 +276,7 @@ export class DictationController {
     this.watchdog = setTimeout(() => {
       this.busy = false
       this.pendingFocus = null
+      this.selectionProbe = null
       this.send({ phase: 'error', message: 'Timed out' })
       this.startLinger()
     }, WATCHDOG_MS)
@@ -261,8 +335,8 @@ function preview(text: string): string {
   return t.length > 48 ? `${t.slice(0, 48)}…` : t
 }
 
-function friendlyError(e: unknown): string {
+function friendlyError(e: unknown, service = 'Whisper'): string {
   const m = (e as Error)?.message ?? 'Transcription failed'
-  if (/network|fetch|econn|enotfound|reach|timeout/i.test(m)) return "Can't reach Whisper (Tailscale up?)"
+  if (/network|fetch|econn|enotfound|reach|timeout/i.test(m)) return `Can't reach ${service} (Tailscale up?)`
   return m.length > 64 ? `${m.slice(0, 64)}…` : m
 }
