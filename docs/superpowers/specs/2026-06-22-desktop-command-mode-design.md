@@ -80,6 +80,25 @@ The hotkey listener, `HotkeyMachine`, and their tests are untouched — the trig
   - `command()` proxy down or empty instruction → selection is preserved, nothing pasted.
   - Native Ctrl+Z undoes the rewrite.
 
+## Known limitations (residual risk after code review)
+
+These are inherent to the auto-detect-via-Ctrl+C approach; the **off-switch** is the ultimate safety
+net and live-tuning of timings is expected (per this handoff).
+
+- **Terminal detection is title-based.** `looksLikeTerminal` can miss a terminal whose title shows
+  only the running command/path (no shell keyword) — then the probe's Ctrl+C reaches it as SIGINT — and
+  can over-match a non-terminal window whose title contains "terminal" (command mode silently disabled
+  there). A robust fix needs process/window-class detection, not just the title.
+- **Late-copy clipboard race.** If the synthetic Ctrl+C lands *after* the poll budget (~250 ms), the
+  probe returns "no selection" and the late copy can overwrite the clipboard after restore; the
+  following `pasteText` then snapshots that value. Widening the poll budget reduces this at a small
+  latency cost.
+- **Focus change between snapshot and keystroke.** The terminal gate is computed from the foreground
+  snapshot; if focus moves to a terminal in the few ms before the Ctrl+C, the gate is stale.
+
+The probe is otherwise **best-effort**: `captureSelection` never throws and always restores the
+clipboard, so a clipboard/keyboard failure degrades to normal dictation rather than breaking it.
+
 ## Deferred / non-goals
 
 - Custom re-select/repaste undo (rely on native Ctrl+Z).
