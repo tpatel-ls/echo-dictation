@@ -44,6 +44,8 @@ export interface Settings {
   cleanupMode: CleanupMode
   claudeBaseUrl: string
   claudeModel: string
+  /** Command Mode: when text is selected, treat a dictation as a spoken instruction on it (needs Claude). */
+  commandModeEnabled: boolean
   launchAtLogin: boolean
   micMode: MicMode
   retainAudio: boolean
@@ -64,6 +66,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cleanupMode: 'on-demand',
   claudeBaseUrl: '',
   claudeModel: 'claude-sonnet-4-6',
+  commandModeEnabled: true,
   launchAtLogin: true,
   micMode: 'on-demand',
   retainAudio: false,

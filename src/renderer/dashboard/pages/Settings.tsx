@@ -110,6 +110,15 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
                 ]}
               />
             </Field>
+            <Field
+              label="Voice commands"
+              hint="When text is selected, treat your dictation as an instruction to rewrite it in place (e.g. 'make this formal'). Needs Claude."
+            >
+              <Toggle
+                checked={s.commandModeEnabled}
+                onChange={(v) => void patch({ commandModeEnabled: v })}
+              />
+            </Field>
             <Field label="Base URL">
               <TextInput value={s.claudeBaseUrl} onChange={(v) => void patch({ claudeBaseUrl: v })} />
             </Field>
