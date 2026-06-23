@@ -74,4 +74,20 @@ describe('captureSelection', () => {
     await captureSelection(h.deps)
     expect(h.clip()).toBe('ORIGINAL')
   })
+
+  it('treats a whitespace-only selection as no selection', async () => {
+    const h = harness((set) => set('   \n\t')) // blank highlight shouldn't hijack into command mode
+    const out = await captureSelection(h.deps)
+    expect(out).toBeNull()
+    expect(h.clip()).toBe('ORIGINAL')
+  })
+
+  it('is best-effort: returns null and restores the clipboard if the copy keystroke throws', async () => {
+    const h = harness(() => {
+      throw new Error('nut.js failed to send Ctrl+C')
+    })
+    const out = await captureSelection(h.deps)
+    expect(out).toBeNull()
+    expect(h.clip()).toBe('ORIGINAL') // sentinel must not be left behind on failure
+  })
 })
