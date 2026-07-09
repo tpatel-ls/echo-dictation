@@ -6,6 +6,27 @@ export function wordCount(text: string): number {
   return t.split(/\s+/).length
 }
 
+const FILLERS = /\b(?:um+|uh+|erm+|hmm+)\b/i
+const STUTTER = /\b(\w+)\s+\1\b/i
+const META_DIRECTIONS = /\b(?:email|write that|say that|scratch that|bullet)\b/i
+const MAX_INSTANT_WORDS = 12
+
+/**
+ * Fast path: a short dictation Whisper already punctuated cleanly (capitalized start, terminal
+ * punctuation, no fillers/stutters, no breaks, no spoken directions) gains nothing from the AI
+ * pass — skip it and insert instantly. Anything doubtful returns true and gets cleaned.
+ */
+export function needsAiCleanup(text: string): boolean {
+  const t = text.trim()
+  if (!t) return true
+  if (wordCount(t) > MAX_INSTANT_WORDS) return true
+  if (t.includes('\n')) return true
+  if (FILLERS.test(t) || STUTTER.test(t) || META_DIRECTIONS.test(t)) return true
+  if (!/^["'(]?[A-Z0-9]/.test(t)) return true
+  if (!/[.!?…]["')]?$/.test(t)) return true
+  return false
+}
+
 // Value of dictating instead of typing: estimated time to *type* the same text
 // at ~40 wpm. (Speaking is faster, so this approximates time saved.)
 export function estimatedSecondsSaved(words: number): number {
