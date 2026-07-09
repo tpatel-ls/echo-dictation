@@ -80,7 +80,10 @@ async function attemptTranscribe(
   const form = new FormData()
   form.append('file', new Blob([wav], { type: 'audio/wav' }), 'audio.wav')
   form.append('model', model)
+  form.append('language', 'en')
   form.append('response_format', 'json')
+  // Deterministic decoding — greedy, no sampling drift between identical dictations.
+  form.append('temperature', '0')
   if (prompt) form.append('prompt', prompt)
 
   const controller = new AbortController()

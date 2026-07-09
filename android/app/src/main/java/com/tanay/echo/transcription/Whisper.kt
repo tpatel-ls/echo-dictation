@@ -48,6 +48,28 @@ class WhisperClient(
     private val httpClient: OkHttpClient = OkHttpClient(),
     private val sleep: suspend (Long) -> Unit = { delay(it) }
 ) {
+    /**
+     * Fire-and-forget ping to the server origin's /health while the user is still speaking, so the
+     * transcription POST at release reuses a pooled warm socket instead of paying TCP+TLS setup.
+     * Any response (even 404) warms the connection; failures are swallowed — pre-warming must never
+     * break dictation. Mirrors the desktop prewarm.ts.
+     */
+    fun prewarm(baseUrl: String) {
+        val origin = try {
+            val u = java.net.URI(baseUrl)
+            "${u.scheme}://${u.authority}"
+        } catch (_: Exception) {
+            return
+        }
+        if (origin.isBlank() || !origin.startsWith("http")) return
+        val req = Request.Builder().url("$origin/health").get().build()
+        httpClient.newCall(req).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {}
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                response.close()
+            }
+        })
+    }
     suspend fun transcribe(
         wav: ByteArray,
         baseUrl: String,
@@ -97,6 +119,8 @@ class WhisperClient(
             .addFormDataPart("file", "audio.wav", wav.toRequestBody("audio/wav".toMediaType()))
             .addFormDataPart("model", model)
             .addFormDataPart("response_format", "json")
+            // Deterministic decoding — greedy, no sampling drift between identical dictations.
+            .addFormDataPart("temperature", "0")
             .apply { if (prompt != null) addFormDataPart("prompt", prompt) }
             .apply { if (!language.isNullOrEmpty()) addFormDataPart("language", language) }
             .build()

@@ -63,7 +63,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // /audio/transcriptions server; any Anthropic-compatible /v1/messages proxy).
   whisperBaseUrl: '',
   whisperModel: 'whisper-1',
-  cleanupMode: 'on-demand',
+  cleanupMode: 'auto',
   claudeBaseUrl: '',
   claudeModel: 'claude-sonnet-4-6',
   commandModeEnabled: true,

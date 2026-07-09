@@ -14,8 +14,8 @@ enum class Register { CASUAL, PROFESSIONAL, TECHNICAL, NEUTRAL, INFER }
  */
 data class StyleProfile(val register: Register, val runCleanup: Boolean)
 
-// Casual apps skip the AI pass entirely (instant); everything else gets polished. Unknown packages
-// fall through to INFER so the model adapts from the package name. Edit these sets to retune.
+// Every register gets the AI pass (Willow-style always-on cleanup); casual apps just get a lighter
+// touch. Unknown packages fall through to INFER so the model adapts from the package name.
 private val CASUAL_APPS = setOf(
     "com.whatsapp", "com.whatsapp.w4b",          // WhatsApp / Business
     "org.telegram.messenger", "org.telegram.plus",
@@ -65,7 +65,7 @@ private val BROWSERS = setOf(
 
 fun styleForPackage(pkg: String): StyleProfile = when {
     pkg.isBlank()             -> StyleProfile(Register.NEUTRAL, runCleanup = true)
-    pkg in CASUAL_APPS        -> StyleProfile(Register.CASUAL, runCleanup = false)
+    pkg in CASUAL_APPS        -> StyleProfile(Register.CASUAL, runCleanup = true)
     pkg in PROFESSIONAL_APPS  -> StyleProfile(Register.PROFESSIONAL, runCleanup = true)
     pkg in NEUTRAL_APPS       -> StyleProfile(Register.NEUTRAL, runCleanup = true)
     pkg in TECHNICAL_APPS     -> StyleProfile(Register.TECHNICAL, runCleanup = true)
