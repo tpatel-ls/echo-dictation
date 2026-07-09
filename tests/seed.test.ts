@@ -38,6 +38,11 @@ describe('applySeedEndpoints', () => {
     expect(out?.syncBaseUrl).toBe('https://sync.example')
   })
 
+  it('can leave syncBaseUrl empty when an existing user disabled sync', () => {
+    const out = applySeedEndpoints(settings(), { syncBaseUrl: 'https://sync.example' }, { seedSync: false })
+    expect(out).toBeNull()
+  })
+
   it('never overrides a syncBaseUrl the user already set', () => {
     const s = settings({ syncBaseUrl: 'https://mine.sync' })
     const out = applySeedEndpoints(s, { syncBaseUrl: 'https://seed.sync' })

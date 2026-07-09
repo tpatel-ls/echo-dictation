@@ -66,4 +66,21 @@ describe('pasteText', () => {
     expect(paste).toHaveBeenCalledOnce()
     expect(clip).toBe('X')
   })
+
+  it('leaves dictated text on the clipboard when macOS blocks auto-paste', async () => {
+    let clip = 'OLD'
+    await expect(
+      pasteText('DICTATED', {
+        readClipboard: () => clip,
+        writeClipboard: (t) => {
+          clip = t
+        },
+        sendPaste: async () => {
+          throw new Error('Grant Accessibility to EchoPasteHelper')
+        },
+        delay: async () => {}
+      })
+    ).rejects.toThrow('Text copied to clipboard')
+    expect(clip).toBe('DICTATED')
+  })
 })

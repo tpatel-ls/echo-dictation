@@ -25,8 +25,10 @@ export type MicMode = 'on-demand' | 'warm'
 export type TriggerKey =
   | 'RightControl'
   | 'LeftControl'
-  | 'RightCommand' // ⌘ — macOS default
+  | 'RightCommand' // ⌘
   | 'LeftCommand'
+  | 'EitherOption' // either ⌥ key
+  | 'LeftOption'
   | 'RightOption' // ⌥
   | 'CapsLock'
   | 'F8'
@@ -56,20 +58,20 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  triggerKey: 'RightControl',
+  triggerKey: 'EitherOption',
   minHoldMs: 200,
   cancelOnOtherKey: true,
   // Point these at your own endpoints in Settings (any OpenAI-compatible
   // /audio/transcriptions server; any Anthropic-compatible /v1/messages proxy).
   whisperBaseUrl: '',
   whisperModel: 'whisper-1',
-  cleanupMode: 'on-demand',
+  cleanupMode: 'auto',
   claudeBaseUrl: '',
   claudeModel: 'claude-sonnet-4-6',
-  commandModeEnabled: true,
+  commandModeEnabled: false,
   launchAtLogin: true,
   micMode: 'on-demand',
-  retainAudio: false,
+  retainAudio: true,
   insertMode: 'paste',
   overlayOffsetBottom: 28,
   syncBaseUrl: ''

@@ -18,7 +18,7 @@ body {
   font-family: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
 }
 
-/* ── Echo overlay pill — minimal violet (Wispr-style) ───────────────────────── */
+/* ── Echo Flow Bar — bottom-center glass dictation surface ─────────────────── */
 
 .ov-root {
   width: 100vw;
@@ -26,7 +26,7 @@ body {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding-bottom: 14px;
+  padding-bottom: 10px;
   overflow: hidden;
 }
 
@@ -46,16 +46,64 @@ body {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 11px;
-  height: 42px;
-  padding: 0 17px;
-  border-radius: 21px;
-  background: linear-gradient(135deg, #7c3aed, #6d28d9);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  gap: 12px;
+  height: 54px;
+  min-width: 336px;
+  padding: 0 18px;
+  border-radius: 27px;
+  background:
+    linear-gradient(180deg, rgba(35, 38, 48, 0.84), rgba(12, 14, 20, 0.9)),
+    radial-gradient(circle at 50% 0%, rgba(167, 139, 250, 0.18), transparent 55%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   box-shadow:
-    0 12px 30px -10px rgba(109, 40, 217, 0.55),
-    0 3px 10px -3px rgba(76, 29, 149, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    0 24px 60px -20px rgba(0, 0, 0, 0.72),
+    0 8px 22px -16px rgba(124, 58, 237, 0.72),
+    inset 0 1.3px 0 rgba(255, 255, 255, 0.24),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(24px);
+}
+
+.ov-capsule::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  mask: linear-gradient(#000, transparent 34%);
+}
+
+.ov-live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex: none;
+  background: #ff3b30;
+  box-shadow: 0 0 0 5px rgba(255, 59, 48, 0.14), 0 0 16px rgba(255, 59, 48, 0.65);
+  animation: ovPulse 1.5s ease-in-out infinite;
+}
+
+.ov-status,
+.ov-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(247, 248, 255, 0.86);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.ov-time {
+  min-width: 34px;
+  justify-content: flex-end;
+  color: rgba(247, 248, 255, 0.6);
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-spin {
+  animation: ovSpin 0.9s linear infinite;
 }
 
 .ov-check {
@@ -74,8 +122,8 @@ body {
 
 .ov-text {
   font-size: 13px;
-  color: #ffffff;
-  max-width: 210px;
+  color: rgba(255, 255, 255, 0.94);
+  max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -86,11 +134,29 @@ body {
 }
 .ov-msg-warn {
   font-size: 13px;
-  color: #fcd34d;
-  max-width: 250px;
+  color: #ffd166;
+  max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@keyframes ovPulse {
+  0%,
+  100% {
+    transform: scale(0.92);
+    opacity: 0.82;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes ovSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes ovCheck {
@@ -106,6 +172,10 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .ov-check {
+    animation: none;
+  }
+  .ov-live-dot,
+  .ov-spin {
     animation: none;
   }
   .ov-pill-wrap {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { wordCount, estimatedSecondsSaved, relativeTime, formatDuration } from '@shared/format'
+import { wordCount, estimatedSecondsSaved, relativeTime, formatDuration, needsAiCleanup } from '@shared/format'
 
 describe('wordCount', () => {
   it('counts words, collapsing whitespace', () => {
@@ -35,5 +35,33 @@ describe('relativeTime', () => {
     expect(relativeTime(now - 2 * 3_600_000, now)).toBe('2h ago')
     expect(relativeTime(now - 3 * 86_400_000, now)).toBe('3d ago')
     expect(relativeTime(now - 14 * 86_400_000, now)).toBe('2w ago')
+  })
+})
+
+describe('needsAiCleanup', () => {
+  it('skips the AI pass for short dictations Whisper already punctuated cleanly', () => {
+    expect(needsAiCleanup('Sounds good, see you tomorrow.')).toBe(false)
+    expect(needsAiCleanup('On my way!')).toBe(false)
+    expect(needsAiCleanup('Can you send me the report?')).toBe(false)
+  })
+
+  it('cleans anything with fillers, stutters, or missing punctuation', () => {
+    expect(needsAiCleanup('um sounds good see you tomorrow')).toBe(true)
+    expect(needsAiCleanup('Sounds good, uh, see you tomorrow.')).toBe(true)
+    expect(needsAiCleanup('Sounds good see you tomorrow')).toBe(true) // no terminal punctuation
+    expect(needsAiCleanup('The the report is ready.')).toBe(true) // stutter
+  })
+
+  it('cleans anything long, multi-line, or with meta directions', () => {
+    expect(
+      needsAiCleanup('This is a much longer dictation that keeps going and definitely deserves a proper cleanup pass to organize it.')
+    ).toBe(true)
+    expect(needsAiCleanup('First line.\nSecond line.')).toBe(true)
+    expect(needsAiCleanup('Write an email to Bryan.')).toBe(true)
+    expect(needsAiCleanup('Scratch that, use Thursday.')).toBe(true)
+  })
+
+  it('cleans empty-ish input defensively', () => {
+    expect(needsAiCleanup('')).toBe(true)
   })
 })

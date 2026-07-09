@@ -1,5 +1,97 @@
 import { describe, it, expect, vi } from 'vitest'
-import { cleanup, command, CleanupError } from '../src/main/transcription/claude'
+import {
+  cleanup,
+  command,
+  stripEmDashes,
+  stripWrapper,
+  protectBreaks,
+  restoreBreaks,
+  CleanupError
+} from '../src/main/transcription/claude'
+
+describe('protectBreaks / restoreBreaks', () => {
+  it('round-trips speaker-placed breaks through sentinel markers', () => {
+    const text = 'Hi everyone\n\nThe next steps are done.\nThanks'
+    const protectedText = protectBreaks(text)
+    expect(protectedText).not.toContain('\n')
+    expect(restoreBreaks(protectedText)).toBe(text)
+  })
+
+  it('restores markers regardless of surrounding whitespace the model adds', () => {
+    expect(restoreBreaks('a ⟦PARA⟧b')).toBe('a\n\nb')
+    expect(restoreBreaks('a⟦LINE⟧ b')).toBe('a\nb')
+  })
+
+  it('leaves break-free text untouched', () => {
+    expect(protectBreaks('one line only')).toBe('one line only')
+    expect(restoreBreaks('one line only')).toBe('one line only')
+  })
+})
+
+describe('stripWrapper', () => {
+  it('drops a leading "Here is the cleaned transcript:" line', () => {
+    expect(stripWrapper('Here is the cleaned transcript:\n\nThe next steps are done.')).toBe(
+      'The next steps are done.'
+    )
+    expect(stripWrapper("Here's the cleaned text:\nHello.")).toBe('Hello.')
+  })
+
+  it('drops leading and trailing --- separator lines', () => {
+    expect(stripWrapper('---\nThe next steps are done.\n---')).toBe('The next steps are done.')
+    expect(stripWrapper('Here is the cleaned transcript:\n\n---\n\nReady to test.')).toBe('Ready to test.')
+  })
+
+  it('drops separator lines BETWEEN paragraphs, leaving one blank line', () => {
+    expect(stripWrapper('Hi everyone.\n\n---\n\nThe next steps are done.\n\n---\n\nWe are ready to test it.')).toBe(
+      'Hi everyone.\n\nThe next steps are done.\n\nWe are ready to test it.'
+    )
+    expect(stripWrapper('First.\n***\nSecond.\n___\nThird.')).toBe('First.\n\nSecond.\n\nThird.')
+  })
+
+  it('does not touch dashes inside a sentence', () => {
+    expect(stripWrapper('The range is 5-10 items - roughly.')).toBe('The range is 5-10 items - roughly.')
+  })
+
+  it('drops an invented leading Subject: line', () => {
+    expect(stripWrapper('Subject: Last Quarter Numbers\n\nHi Bryan,\n\nThe numbers look good.')).toBe(
+      'Hi Bryan,\n\nThe numbers look good.'
+    )
+    expect(stripWrapper('The subject: pricing came up again.')).toBe('The subject: pricing came up again.')
+  })
+
+  it('keeps real content that merely starts with "Here is"', () => {
+    expect(stripWrapper('Here is the plan: we ship on Friday.')).toBe('Here is the plan: we ship on Friday.')
+    expect(stripWrapper('Here is what I found in the logs.')).toBe('Here is what I found in the logs.')
+  })
+
+  it('leaves normal text untouched', () => {
+    expect(stripWrapper('Hi everyone,\n\nThe next steps are done.')).toBe('Hi everyone,\n\nThe next steps are done.')
+  })
+})
+
+describe('stripEmDashes', () => {
+  it('replaces spaced and unspaced em dashes with commas', () => {
+    expect(stripEmDashes('The report — which Bryan sent — is ready.')).toBe(
+      'The report, which Bryan sent, is ready.'
+    )
+    expect(stripEmDashes('Revenue is up—nice work.')).toBe('Revenue is up, nice work.')
+  })
+
+  it('collapses an em dash that follows punctuation instead of doubling it', () => {
+    expect(stripEmDashes('Ready, — thanks')).toBe('Ready, thanks')
+    expect(stripEmDashes('Done: — next steps below')).toBe('Done: next steps below')
+  })
+
+  it('turns a line-leading em dash into a plain hyphen bullet', () => {
+    expect(stripEmDashes('— first item\n— second item')).toBe('- first item\n- second item')
+  })
+
+  it('leaves text without em dashes untouched', () => {
+    expect(stripEmDashes('Plain text, with commas - and a hyphen.')).toBe(
+      'Plain text, with commas - and a hyphen.'
+    )
+  })
+})
 
 const s = { claudeBaseUrl: 'https://mac.ts.net', claudeModel: 'claude-sonnet-4-6' }
 
@@ -11,7 +103,8 @@ describe('cleanup', () => {
       expect(init.headers['anthropic-version']).toBe('2023-06-01')
       const body = JSON.parse(init.body)
       expect(body.model).toBe('claude-sonnet-4-6')
-      expect(body.messages[0].content).toBe('um hello, uh, world')
+      expect(body.messages[0].content).toContain('<raw_transcript>')
+      expect(body.messages[0].content).toContain('um hello, uh, world')
       return new Response(
         JSON.stringify({ content: [{ type: 'text', text: 'Hello, world.' }] }),
         { status: 200 }
@@ -27,6 +120,20 @@ describe('cleanup', () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ content: [] }), { status: 200 }))
     const out = await cleanup('keep me', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch })
     expect(out).toBe('keep me')
+  })
+
+  it('falls back to the raw transcript when cleanup returns an assistant reply', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            content: [{ type: 'text', text: "You're welcome! Let me know if you need help with anything." }]
+          }),
+          { status: 200 }
+        )
+    )
+    const out = await cleanup('Thank you.', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch })
+    expect(out).toBe('Thank you.')
   })
 
   it('includes the dictionary glossary in the system prompt when provided', async () => {
@@ -46,6 +153,33 @@ describe('cleanup', () => {
       return new Response(JSON.stringify({ content: [{ type: 'text', text: 'x' }] }), { status: 200 })
     })
     await cleanup('x', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch })
+  })
+
+  it('instructs the model to organize paragraphs, obey spoken commands, and format emails', async () => {
+    const fetchMock = vi.fn(async (_url: unknown, init: any) => {
+      const system = JSON.parse(init.body).system as string
+      expect(system).toMatch(/paragraph/i)
+      expect(system).toMatch(/spoken (formatting )?instruction/i)
+      expect(system).toMatch(/email/i)
+      expect(system).toMatch(/do not summarize|never summarize/i)
+      expect(system).toMatch(/never use em dashes/i)
+      return new Response(JSON.stringify({ content: [{ type: 'text', text: 'x' }] }), { status: 200 })
+    })
+    await cleanup('x', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch })
+  })
+
+  it('scrubs em dashes out of the model output as a hard guarantee', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ content: [{ type: 'text', text: 'Numbers look good — see attached.' }] }),
+          { status: 200 }
+        )
+    )
+    const out = await cleanup('numbers look good see attached', s, 'KEY', {
+      fetch: fetchMock as unknown as typeof fetch
+    })
+    expect(out).toBe('Numbers look good, see attached.')
   })
 
   it('throws CleanupError on non-200', async () => {

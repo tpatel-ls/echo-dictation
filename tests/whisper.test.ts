@@ -20,6 +20,8 @@ describe('transcribe', () => {
       expect(init.headers.Authorization).toBe('Bearer KEY')
       expect(init.body).toBeInstanceOf(FormData)
       expect((init.body as FormData).get('model')).toBe('whisper-1')
+      expect((init.body as FormData).get('language')).toBe('en')
+      expect((init.body as FormData).get('temperature')).toBe('0')
       return new Response(JSON.stringify({ text: '  hello world  ' }), { status: 200 })
     })
     expect(await transcribe(new ArrayBuffer(8), settings, 'KEY', deps(fetchMock), fast)).toBe('hello world')

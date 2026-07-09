@@ -1,32 +1,110 @@
-import { clipboard } from 'electron'
-import { keyboard, Key } from '@nut-tree-fork/nut-js'
+import { app, clipboard, shell, systemPreferences } from 'electron'
+import { spawn } from 'node:child_process'
+import { appendFileSync, existsSync, statSync, truncateSync } from 'node:fs'
+import { join } from 'node:path'
 import type { PasteDeps } from './paste'
 import type { SelectionDeps } from './selection'
-import { pasteModifier } from './platform'
 
-// Shared backing for both dependency sets — Electron's clipboard and a nut.js modifier-chord — so the
-// two real* factories can't drift on clipboard access or the platform modifier.
+// Shared backing for both dependency sets — Electron's clipboard and the macOS helper chord — so the
+// two real* factories can't drift on clipboard access.
 const readClipboard = (): string => clipboard.readText()
 const writeClipboard = (text: string): void => clipboard.writeText(text)
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** Press the platform's paste/copy modifier (⌘ on macOS, Ctrl elsewhere) together with `key`. */
-function sendChord(key: Key): () => Promise<void> {
-  const modifier = pasteModifier() === 'super' ? Key.LeftSuper : Key.LeftControl
+/** Real paste dependencies backed by Electron's clipboard and the native macOS paste helper. */
+export function realPasteDeps(refocus?: () => Promise<void>): PasteDeps {
+  return { readClipboard, writeClipboard, sendPaste: sendHelper('paste'), refocus, delay }
+}
+
+/** Real selection-probe dependencies: Electron's clipboard + native ⌘C to copy the focused
+ *  app's current selection (see selection.ts for the pure sentinel/poll/restore logic). */
+export function realSelectionDeps(): SelectionDeps {
+  return { readClipboard, writeClipboard, sendCopy: sendHelper('copy'), delay }
+}
+
+function sendHelper(action: 'copy' | 'paste'): () => Promise<void> {
   return async () => {
-    keyboard.config.autoDelayMs = 0
-    await keyboard.pressKey(modifier, key)
-    await keyboard.releaseKey(modifier, key)
+    const helper = nativeHelperPath('EchoPasteHelper')
+    if (!existsSync(helper)) throw new Error(`Paste helper is not built at ${helper}`)
+    const result = await runHelper(helper, action === 'copy' ? ['--copy'] : [])
+    if (result.code === 0) return
+    pasteLog(
+      `${action} helper failed code=${result.code ?? 'signal'} mainAccessibility=${mainAccessibilityTrusted()} message=${JSON.stringify(result.message)} stdout=${JSON.stringify(result.stdout)} stderr=${JSON.stringify(result.stderr)}`
+    )
+    if (result.code === 2) {
+      try {
+        systemPreferences.isTrustedAccessibilityClient(true)
+      } catch {
+        /* ignore */
+      }
+      await runHelper(helper, ['--prompt']).catch(() => undefined)
+      void shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility')
+      throw new Error(
+        'Grant Accessibility to Echo and EchoPasteHelper in System Settings → Privacy & Security → Accessibility, then try again.'
+      )
+    }
+    throw new Error(result.message || `${action} helper exited with code ${result.code}`)
   }
 }
 
-/** Real paste dependencies backed by Electron's clipboard and nut.js keystrokes. */
-export function realPasteDeps(refocus?: () => Promise<void>): PasteDeps {
-  return { readClipboard, writeClipboard, sendPaste: sendChord(Key.V), refocus, delay }
+function runHelper(
+  helper: string,
+  args: string[]
+): Promise<{ code: number | null; message: string; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(helper, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk
+    })
+    child.stderr.on('data', (chunk: string) => {
+      stderr += chunk
+    })
+    child.on('error', reject)
+    child.on('exit', (code) => {
+      resolve({ code, message: helperMessage(stdout) || stderr.trim(), stdout, stderr })
+    })
+  })
 }
 
-/** Real selection-probe dependencies: Electron's clipboard + a nut.js Ctrl/⌘+C to copy the focused
- *  app's current selection (see selection.ts for the pure sentinel/poll/restore logic). */
-export function realSelectionDeps(): SelectionDeps {
-  return { readClipboard, writeClipboard, sendCopy: sendChord(Key.C), delay }
+function helperMessage(stdout: string): string {
+  const last = stdout
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .pop()
+  if (!last) return ''
+  try {
+    const parsed = JSON.parse(last) as { message?: unknown }
+    return typeof parsed.message === 'string' ? parsed.message : ''
+  } catch {
+    return ''
+  }
+}
+
+function nativeHelperPath(name: string): string {
+  if (app.isPackaged) return join(process.resourcesPath, 'native', name)
+  return join(process.cwd(), 'out', 'native', name)
+}
+
+function mainAccessibilityTrusted(): boolean {
+  if (process.platform !== 'darwin') return true
+  try {
+    return systemPreferences.isTrustedAccessibilityClient(false)
+  } catch {
+    return false
+  }
+}
+
+function pasteLog(message: string): void {
+  try {
+    const file = join(app.getPath('userData'), 'paste.log')
+    if (existsSync(file) && statSync(file).size > 64 * 1024) truncateSync(file, 0)
+    appendFileSync(file, `${new Date().toISOString()} ${message}\n`)
+  } catch {
+    /* Diagnostics must never affect dictation. */
+  }
 }

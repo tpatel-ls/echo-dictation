@@ -2,7 +2,7 @@ import { clipboard } from 'electron'
 import { transcribe } from './transcription/whisper'
 import { cleanup } from './transcription/claude'
 import { floatToWav } from '@shared/wav'
-import { checkMacPermissions, isMac } from './permissions'
+import { checkMacPermissions, checkNativeHelper, isMac } from './permissions'
 import type { DiagName, DiagResult } from '@shared/types'
 import type { SettingsStore } from './store/settings'
 
@@ -40,7 +40,20 @@ export async function runDiagnostic(
         if (!roundTrip) return result(name, false, 'Clipboard round-trip failed.', t0)
         // On macOS the synthetic paste keystroke needs Accessibility permission.
         if (isMac() && !checkMacPermissions().accessibility) {
-          return result(name, false, 'Grant Accessibility (System Settings → Privacy) so Echo can paste.', t0)
+          return result(
+            name,
+            false,
+            'Grant Accessibility to Echo in System Settings → Privacy & Security → Accessibility.',
+            t0
+          )
+        }
+        if (isMac() && !(await checkNativeHelper('EchoPasteHelper'))) {
+          return result(
+            name,
+            false,
+            'Grant Accessibility to EchoPasteHelper in System Settings → Privacy & Security → Accessibility.',
+            t0
+          )
         }
         const chord = isMac() ? '⌘V' : 'Ctrl+V'
         return result(name, true, `Clipboard OK. ${chord} is sent into the focused field when you dictate.`, t0)
@@ -49,7 +62,7 @@ export async function runDiagnostic(
         if (!hotkeyRunning) return result(name, false, 'Keyboard hook is not running.', t0)
         const base = `Global keyboard hook running. Trigger: ${s.triggerKey}.`
         // On macOS the hook only receives keys once Input Monitoring is granted.
-        const note = isMac() ? ' Requires Input Monitoring permission (quit & reopen after granting).' : ''
+        const note = isMac() ? ' Requires Input Monitoring permission for EchoKeyHelper (quit & reopen after granting).' : ''
         return result(name, true, base + note, t0)
       }
       case 'mic':
