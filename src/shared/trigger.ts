@@ -11,6 +11,10 @@ export function triggerLabel(key: TriggerKey): string {
       return 'Right ⌘'
     case 'LeftCommand':
       return 'Left ⌘'
+    case 'EitherOption':
+      return 'Left or Right ⌥'
+    case 'LeftOption':
+      return 'Left ⌥'
     case 'RightOption':
       return 'Right ⌥'
     case 'CapsLock':
@@ -27,12 +31,12 @@ export function triggerLabel(key: TriggerKey): string {
  */
 export function triggerOptions(platform: OSPlatform): TriggerKey[] {
   if (platform === 'darwin') {
-    return ['RightCommand', 'RightOption', 'LeftCommand', 'CapsLock', 'F8']
+    return ['EitherOption', 'LeftOption', 'RightOption', 'RightCommand', 'LeftCommand', 'CapsLock', 'F8']
   }
   return ['RightControl', 'LeftControl', 'CapsLock', 'F8']
 }
 
 /** The sensible default trigger for a fresh install on this platform. */
 export function defaultTriggerKey(platform: OSPlatform): TriggerKey {
-  return platform === 'darwin' ? 'RightCommand' : 'RightControl'
+  return platform === 'darwin' ? 'EitherOption' : 'RightControl'
 }

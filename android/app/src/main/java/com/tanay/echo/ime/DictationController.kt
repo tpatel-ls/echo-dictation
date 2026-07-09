@@ -20,8 +20,10 @@ import com.tanay.echo.transcription.ClaudeClient
 import com.tanay.echo.transcription.Register
 import com.tanay.echo.transcription.StyleProfile
 import com.tanay.echo.transcription.WhisperClient
+import com.tanay.echo.transcription.applyVoiceCommands
 import com.tanay.echo.transcription.languageParam
 import com.tanay.echo.transcription.styleDirective
+import com.tanay.echo.transcription.needsAiCleanup
 import com.tanay.echo.transcription.styleForPackage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -83,6 +85,8 @@ class DictationController(context: Context) {
         if (!mic.isPrimed) primeMic()
         if (!mic.isPrimed) return // priming failed (mic busy/denied) — primeMic already set ERROR
         mic.start()
+        // Warm the Whisper connection while the user speaks so the POST at release skips TLS setup.
+        whisper.prewarm(settings.whisperBaseUrl)
         onPhase(DictationPhase.LISTENING, null)
     }
 
@@ -124,7 +128,9 @@ class DictationController(context: Context) {
                 val wav = pcm16ToWav(if (whisperMode) boostGain(pcm) else pcm, TARGET_RATE)
                 val heard = whisper.transcribe(wav, baseUrl, model, apiKey, prompt = buildBiasPrompt(dict), language = language)
                 val applied = applyDictionary(heard, dict)
-                val corrected = applied.text // dictionary-corrected text — what desktop stores as raw_text
+                // Dictionary guarantees custom spellings; spoken formatting commands ("new paragraph",
+                // "leave space", "new line") become real breaks instantly, before any AI pass.
+                val corrected = applyVoiceCommands(applied.text) // what desktop stores as raw_text
                 if (corrected.isBlank()) {
                     onPhase(DictationPhase.EMPTY, null)
                     return@launch
@@ -136,7 +142,8 @@ class DictationController(context: Context) {
                 val expansion = expandSnippet(corrected, snippets)
                 if (expansion != null) {
                     finalText = expansion
-                } else if (profile.runCleanup && claudeBaseUrl.isNotEmpty() && claudeApiKey.isNotEmpty()) {
+                } else if (profile.runCleanup && needsAiCleanup(corrected) && claudeBaseUrl.isNotEmpty() && claudeApiKey.isNotEmpty()) {
+                    // (short dictations Whisper already punctuated cleanly skip the AI pass — instant insert)
                     cleaned = runCatching {
                         claude.cleanup(corrected, claudeBaseUrl, claudeModel, claudeApiKey, dict.map { it.word }, styleDirective = directive)
                     }.getOrNull() // cleanup is best-effort — never block insertion on it

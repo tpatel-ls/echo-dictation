@@ -25,17 +25,31 @@ class WhisperTest {
         sleep = { /* no real backoff in tests */ }
     )
 
-    private fun base() = server.url("/v1").toString()
+    // Pin to 127.0.0.1: "localhost" resolves to both ::1 and 127.0.0.1, the server binds only one,
+    // and with retryOnConnectionFailure(false) OkHttp won't fall back to the second address — so the
+    // disconnect test's retry would die on the unbound address instead of reaching the server.
+    private fun base() = "http://127.0.0.1:${server.port}/v1"
 
     @Before
     fun setUp() {
         server = MockWebServer()
-        server.start()
+        server.start(java.net.InetAddress.getByName("127.0.0.1"), 0)
     }
 
     @After
     fun tearDown() {
         server.shutdown()
+    }
+
+    @Test
+    fun prewarmPingsTheOriginHealthEndpointAndSwallowsFailures() {
+        server.enqueue(MockResponse().setResponseCode(404).setBody("nope"))
+        client.prewarm(base())
+        val req = server.takeRequest(2, java.util.concurrent.TimeUnit.SECONDS)
+        assertEquals("/health", req?.path)
+        assertEquals("GET", req?.method)
+        client.prewarm("") // invalid URL — must not throw
+        client.prewarm("not a url")
     }
 
     @Test

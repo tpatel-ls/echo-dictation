@@ -11,11 +11,11 @@ files:
   - package.json
 asarUnpack:
   - '**/node_modules/sql.js/**'
-  - '**/node_modules/uiohook-napi/**'
-  - '**/node_modules/@nut-tree-fork/**'
 extraResources:
   - from: node_modules/sql.js/dist/sql-wasm.wasm
     to: sql-wasm/sql-wasm.wasm
+  - from: out/native
+    to: native
   # Seeds API keys on first run so the packaged app works out of the box (personal
   # build). Remove this + secrets.local.json to require entering keys in Settings.
   - from: secrets.local.json
@@ -40,11 +40,11 @@ mac:
   target:
     - dmg
     - zip
-  # Personal/unsigned build — no Apple Developer account required. Gatekeeper will ask
-  # you to right-click → Open the first time. To ship a signed build later, set a real
-  # `identity` and uncomment hardenedRuntime + entitlements below.
-  identity: null
-  # hardenedRuntime: true
+  # Personal local signing identity. This is intentionally not an Apple Developer ID,
+  # but it gives macOS privacy/TCC a stable designated requirement so Accessibility
+  # permissions survive rebuilds on this Mac.
+  identity: Echo Local Code Signing
+  hardenedRuntime: false
   # entitlements: build/entitlements.mac.plist
   # entitlementsInherit: build/entitlements.mac.plist
   extendInfo:

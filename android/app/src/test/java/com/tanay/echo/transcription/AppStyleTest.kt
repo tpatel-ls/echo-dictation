@@ -11,10 +11,10 @@ class AppStyleTest {
     // styleForPackage: the curated map drives BOTH the register and whether to spend the AI pass.
 
     @Test
-    fun `chat apps are casual and skip the AI pass`() {
+    fun `chat apps are casual and still get the AI pass`() {
         val p = styleForPackage("com.whatsapp")
         assertEquals(Register.CASUAL, p.register)
-        assertFalse("chat should stay instant — no cleanup", p.runCleanup)
+        assertTrue("always-on cleanup — casual register, light touch", p.runCleanup)
     }
 
     @Test

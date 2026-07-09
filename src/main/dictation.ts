@@ -15,11 +15,13 @@ import {
 import { applyDictionary, buildBiasPrompt } from '@shared/dictionary'
 import { registerForTitle, styleDirective } from '@shared/app-style'
 import { expandSnippet, type Snippet } from '@shared/snippets'
+import { applyVoiceCommands } from '@shared/voice-commands'
 import type { SettingsStore } from './store/settings'
 import type { HistoryStore } from './store/history'
 import type { DictionaryStore } from './store/dictionary'
 import type { SnippetsStore } from './store/snippets'
 import { transcribe } from './transcription/whisper'
+import { WhisperPrewarm } from './transcription/prewarm'
 import { cleanup, command } from './transcription/claude'
 import { pasteText } from './insert/paste'
 import { realPasteDeps, realSelectionDeps } from './insert/paste-deps'
@@ -27,7 +29,7 @@ import { captureSelection } from './insert/selection'
 import { looksLikeTerminal } from './insert/terminal'
 import { snapshotForegroundWindow, type WindowSnapshot } from './insert/window-focus'
 import { positionOverlay } from './windows'
-import { wordCount } from '@shared/format'
+import { wordCount, needsAiCleanup } from '@shared/format'
 
 const LINGER_MS = 1500
 const WATCHDOG_MS = 20_000
@@ -45,6 +47,8 @@ export class DictationController {
   private selectionProbe: Promise<string | null> | null = null
   private watchdog: ReturnType<typeof setTimeout> | null = null
   private linger: ReturnType<typeof setTimeout> | null = null
+  /** Keeps a TLS socket to the Whisper server warm while the user speaks (see prewarm.ts). */
+  private prewarm = new WhisperPrewarm()
 
   constructor(
     private overlay: BrowserWindow,
@@ -63,6 +67,8 @@ export class DictationController {
     // at paste time, by which point the user is still speaking.
     this.send({ phase: 'listening', startedAt: Date.now() })
     this.show()
+    // Warm the Whisper connection while the user speaks so the POST at release skips TLS setup.
+    this.prewarm.start(this.settings.getSettings().whisperBaseUrl)
     this.pendingFocus = await snapshotForegroundWindow()
     // Probe the selection now, while the user is still speaking, so it's ready by paste time.
     this.selectionProbe = this.startSelectionProbe()
@@ -90,6 +96,7 @@ export class DictationController {
   }
 
   onCancel(): void {
+    this.prewarm.stop()
     this.busy = false
     this.pendingFocus = null
     this.selectionProbe = null
@@ -98,6 +105,7 @@ export class DictationController {
   }
 
   async handleAudio(buf: ArrayBuffer, meta: AudioMeta): Promise<InsertResult> {
+    this.prewarm.stop()
     this.clearWatchdog()
     const t0 = Date.now()
     const s = this.settings.getSettings()
@@ -131,7 +139,9 @@ export class DictationController {
         return await this.runCommand(selection, heard, s, sec, dict)
       }
 
-      const raw = this.correct(heard, dict)
+      // Dictionary guarantees custom spellings; spoken formatting commands ("new paragraph",
+      // "leave space", "new line") become real breaks instantly, before any AI pass.
+      const raw = applyVoiceCommands(this.correct(heard, dict))
       if (!raw) {
         this.history.insert(
           row({ status: 'empty', meta, appContext, model: s.whisperModel, latency: Date.now() - t0 })
@@ -147,7 +157,8 @@ export class DictationController {
       const expansion = expandSnippet(raw, snippets)
       if (expansion !== null) {
         text = expansion
-      } else if (s.cleanupMode === 'auto') {
+      } else if (s.cleanupMode === 'auto' && needsAiCleanup(raw)) {
+        // (short dictations Whisper already punctuated cleanly skip the AI pass — instant insert)
         try {
           // Context-aware tone: adapt the cleanup register to the focused app (best-effort, from
           // the window title). Neutral titles yield a null directive ⇒ the base cleanup prompt.
@@ -274,6 +285,7 @@ export class DictationController {
   private armWatchdog(): void {
     this.clearWatchdog()
     this.watchdog = setTimeout(() => {
+      this.prewarm.stop()
       this.busy = false
       this.pendingFocus = null
       this.selectionProbe = null

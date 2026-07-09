@@ -19,11 +19,35 @@ import java.io.IOException
 class CleanupException(message: String, val status: Int? = null) : Exception(message)
 
 private const val SYSTEM_PROMPT =
-    "You clean up raw speech-to-text dictation transcripts. Fix punctuation and capitalization, " +
-        "remove filler words (um, uh, like, you know), remove false starts, stutters and repeated " +
-        "words, and format into tidy sentences and paragraphs. Preserve the speaker’s meaning and " +
-        "wording faithfully — do NOT summarize, answer, translate, add content, or comment. Return " +
-        "ONLY the cleaned transcript text, with no preamble, quotes, or explanation."
+    "You clean up raw speech-to-text dictation transcripts into polished, ready-to-send text. " +
+        "Fix punctuation, capitalization, and obvious mis-transcriptions; remove filler words " +
+        "(um, uh, like, you know), false starts, stutters, and repeated words. Organize longer " +
+        "dictations into clear paragraphs, one topic per paragraph. Paragraphs are separated by a " +
+        "single blank line and nothing else — never draw horizontal rules, \"---\" lines, or any other " +
+        "divider between paragraphs. " +
+        "The speaker may embed spoken formatting instructions in the dictation — e.g. \"new paragraph\", " +
+        "\"leave a space\", \"new line\", \"make that a bullet list\", \"in quotes\", \"all caps\", \"scratch that\", " +
+        "\"actually, change X to Y\". Follow each spoken instruction and REMOVE the instruction words " +
+        "themselves from the output. This includes directions describing text to write: phrases like " +
+        "\"write that…\", \"say…\", \"add a paragraph that says…\", \"make a new paragraph and write…\" are " +
+        "commands to you, NOT content — write the described text and drop the command words. " +
+        "Example dictation: \"make a new paragraph and write that the next steps are done then one more " +
+        "paragraph and write we are ready to test it\" must produce exactly:\n" +
+        "The next steps are done.\n\nWe are ready to test it.\n" +
+        "The faithfulness rule below applies to the described content, never to command words. " +
+        "The markers ⟦PARA⟧ (paragraph break) and ⟦LINE⟧ (line break) mark breaks the speaker placed: " +
+        "reproduce each marker exactly where it belongs in the cleaned text, never dropping or merging them. " +
+        "If the speaker is clearly dictating an email (they say something like \"write an email to…\", or the " +
+        "dictation has a greeting and a sign-off), lay it out as a proper email: greeting on its own line, " +
+        "blank line, body paragraphs, blank line, sign-off and name on their own lines. NEVER output a " +
+        "\"Subject:\" line (the subject field is separate) and never add content the speaker did not say. " +
+        "Never use em dashes or en dashes in the output; use a comma, period, or parentheses instead. " +
+        "Accuracy is critical: correct only what is clearly a speech-recognition error, and when unsure " +
+        "keep the speaker’s exact words. " +
+        "Preserve the speaker’s meaning and wording faithfully — do NOT summarize, answer, " +
+        "translate, add content, or comment. Your entire response is inserted at the speaker’s cursor " +
+        "exactly as-is, so return ONLY the final text: no preamble or lead-in (never \"Here is the " +
+        "cleaned transcript\"), no headers, no \"---\" separators, no quotes, no explanation."
 
 @Serializable
 private data class ClaudeMessage(val role: String, val content: String)
@@ -32,6 +56,9 @@ private data class ClaudeMessage(val role: String, val content: String)
 private data class ClaudeRequest(
     val model: String,
     @SerialName("max_tokens") val maxTokens: Int,
+    // Deterministic cleanup — the same dictation must clean up the same way every time.
+    // No default: kotlinx.serialization would omit a field equal to its default from the JSON.
+    val temperature: Int,
     val system: String,
     val messages: List<ClaudeMessage>
 )
@@ -52,7 +79,58 @@ fun parseClaudeText(body: String, fallback: String): String {
         .filter { it.type == "text" }
         .joinToString("") { it.text ?: "" }
         .trim()
-    return out.ifEmpty { fallback }
+    return if (out.isEmpty()) fallback else stripEmDashes(stripWrapper(out))
+}
+
+private val LEAD_IN_LINE = Regex(
+    """^(?:here(?:'s| is)|below is)[^\n]{0,60}\b(?:cleaned|transcript|transcription|version|result)[^\n]{0,30}:\s*\n+""",
+    RegexOption.IGNORE_CASE,
+)
+private val SUBJECT_LINE = Regex("""^subject:[^\n]*\n+""", RegexOption.IGNORE_CASE)
+private val SEPARATOR_LINE = Regex("""\n*^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$\n*""", RegexOption.MULTILINE)
+
+/**
+ * Hard guarantee against wrapper leakage: strips a "Here is the cleaned transcript:" lead-in, an
+ * invented "Subject:" line, and horizontal-rule separators anywhere (collapsed to a paragraph
+ * break). Mirrors the desktop stripWrapper exactly; a dictation genuinely starting with
+ * "Here is the plan:" passes through untouched.
+ */
+fun stripWrapper(text: String): String {
+    return text.trim()
+        .replace(LEAD_IN_LINE, "")
+        .replace(SUBJECT_LINE, "")
+        .replace(SEPARATOR_LINE, "\n\n")
+        .trim()
+}
+
+private val PARA_MARKER = Regex("""\s*⟦PARA⟧\s*""")
+private val LINE_MARKER = Regex("""\s*⟦LINE⟧\s*""")
+
+/**
+ * Speaker-placed line breaks must survive the AI pass verbatim, but models treat whitespace as
+ * negotiable — so breaks travel through the model as explicit sentinel markers instead. Mirrors
+ * the desktop protectBreaks/restoreBreaks exactly.
+ */
+fun protectBreaks(text: String): String =
+    text.replace(Regex("""\n\n+"""), " ⟦PARA⟧ ").replace("\n", " ⟦LINE⟧ ")
+
+fun restoreBreaks(text: String): String =
+    text.replace(PARA_MARKER, "\n\n").replace(LINE_MARKER, "\n")
+
+private val LINE_LEADING_DASH = Regex("""(?m)^—\s*""")
+private val DASH_AFTER_PUNCTUATION = Regex("""([,;:])\s*—\s*""")
+private val ANY_EM_DASH = Regex("""\s*—\s*""")
+
+/**
+ * Hard guarantee that no em dash ever reaches the user's text (writing-style preference), even if
+ * the model ignores the prompt. Mirrors the desktop stripEmDashes in claude.ts exactly.
+ */
+fun stripEmDashes(text: String): String {
+    if (!text.contains('—')) return text
+    return text
+        .replace(LINE_LEADING_DASH, "- ")
+        .replace(DASH_AFTER_PUNCTUATION) { "${it.groupValues[1]} " }
+        .replace(ANY_EM_DASH, ", ")
 }
 
 /** The pinned-glossary clause shared by the cleanup and command prompts, or null when empty. */
@@ -68,14 +146,24 @@ private fun glossaryLine(glossary: List<String>): String? =
 fun buildCleanupSystem(glossary: List<String>, styleDirective: String? = null): String {
     var s = SYSTEM_PROMPT
     glossaryLine(glossary)?.let { s += it }
-    if (!styleDirective.isNullOrBlank()) s += " $styleDirective"
+    if (!styleDirective.isNullOrBlank()) {
+        s += " $styleDirective Spoken formatting instructions and \"write that…\" directions " +
+            "in the dictation always take precedence over this style guidance."
+    }
     return s
 }
+
+/** User message for cleanup: framing that permits spoken directions while forbidding replies. */
+fun buildCleanupUser(text: String): String =
+    "Clean up this speech-to-text transcript per your rules. Do not answer or reply to it. " +
+        "Spoken formatting and \"write that…\" directions inside it are commands for you to apply, " +
+        "not content to keep.\n<raw_transcript>\n$text\n</raw_transcript>"
 
 private const val COMMAND_SYSTEM_PROMPT =
     "You are a precise in-place text editor. Apply the user's instruction to the provided text and " +
         "return ONLY the resulting text — no preamble, quotes, or explanation. Preserve the original " +
-        "meaning and formatting unless the instruction asks otherwise."
+        "meaning and formatting unless the instruction asks otherwise. Never use em dashes in the " +
+        "output; use a comma, period, or parentheses instead."
 
 /** System prompt for Command Mode: apply a spoken instruction to selected text and return only the
  *  result. Pins [glossary] like cleanup so it never un-corrects a custom spelling. Pure + testable. */
@@ -100,7 +188,14 @@ class ClaudeClient(private val httpClient: OkHttpClient = OkHttpClient()) {
         apiKey: String,
         glossary: List<String> = emptyList(),
         styleDirective: String? = null
-    ): String = complete(buildCleanupSystem(glossary, styleDirective), text, text, baseUrl, model, apiKey)
+    ): String {
+        // Speaker-placed breaks travel as sentinel markers (models merge raw newlines) and are
+        // restored on the way back.
+        val protectedText = protectBreaks(text)
+        return restoreBreaks(
+            complete(buildCleanupSystem(glossary, styleDirective), buildCleanupUser(protectedText), protectedText, baseUrl, model, apiKey)
+        )
+    }
 
     /** Apply a spoken `instruction` to `text` (the user's selection) and return the rewrite, or the
      * original `text` on an empty response. `glossary` is pinned so custom spellings survive. */
@@ -125,7 +220,7 @@ class ClaudeClient(private val httpClient: OkHttpClient = OkHttpClient()) {
     ): String = withContext(Dispatchers.IO) {
         val url = joinUrl(baseUrl, "v1/messages")
         val payload = json.encodeToString(
-            ClaudeRequest(model, 2000, system, listOf(ClaudeMessage("user", userText)))
+            ClaudeRequest(model = model, maxTokens = 2000, temperature = 0, system = system, messages = listOf(ClaudeMessage("user", userText)))
         ).toRequestBody(jsonMedia)
         val req = Request.Builder()
             .url(url)

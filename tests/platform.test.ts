@@ -13,8 +13,8 @@ describe('pasteModifier', () => {
 })
 
 describe('defaultTriggerKey', () => {
-  it('defaults to Right Command on macOS (no Right Ctrl on Apple keyboards)', () => {
-    expect(defaultTriggerKey('darwin')).toBe('RightCommand')
+  it('defaults to either Option key on macOS', () => {
+    expect(defaultTriggerKey('darwin')).toBe('EitherOption')
   })
   it('defaults to Right Ctrl on Windows/Linux', () => {
     expect(defaultTriggerKey('win32')).toBe('RightControl')
@@ -23,9 +23,10 @@ describe('defaultTriggerKey', () => {
 })
 
 describe('triggerOptions', () => {
-  it('leads with the ⌘/⌥ keys on macOS and omits Right/Left Ctrl', () => {
+  it('leads with Option keys on macOS and omits Right/Left Ctrl', () => {
     const opts = triggerOptions('darwin')
-    expect(opts[0]).toBe('RightCommand')
+    expect(opts[0]).toBe('EitherOption')
+    expect(opts).toContain('LeftOption')
     expect(opts).toContain('RightOption')
     expect(opts).not.toContain('RightControl')
     expect(opts).not.toContain('LeftControl')
@@ -48,6 +49,8 @@ describe('triggerOptions', () => {
 describe('triggerLabel', () => {
   it('renders the Mac modifier glyphs', () => {
     expect(triggerLabel('RightCommand')).toBe('Right ⌘')
+    expect(triggerLabel('EitherOption')).toBe('Left or Right ⌥')
+    expect(triggerLabel('LeftOption')).toBe('Left ⌥')
     expect(triggerLabel('RightOption')).toBe('Right ⌥')
   })
   it('renders the Windows keys', () => {
