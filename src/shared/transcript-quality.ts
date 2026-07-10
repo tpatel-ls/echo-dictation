@@ -177,25 +177,23 @@ function hasAssistantReply(text: string): boolean {
 
 function hasExtendedLatinReject(text: string): boolean {
   const tokenList = words(text)
-  const functionWordCount = countFunctionWords(tokenList)
-  let tokensWithExtendedLatin = 0
+  let lowercaseAccentedTokens = 0
   let totalExtendedLatinLetters = 0
 
   for (const token of tokenList) {
-    let tokenHasExtendedLatin = false
+    let tokenExtendedLatinLetters = 0
     for (const char of token) {
       if (!/\p{L}/u.test(char)) continue
       if (!/[^\x00-\x7F]/.test(char)) continue
-      tokenHasExtendedLatin = true
-      totalExtendedLatinLetters++
+      tokenExtendedLatinLetters++
     }
-    if (tokenHasExtendedLatin) tokensWithExtendedLatin++
+    if (!tokenExtendedLatinLetters) continue
+
+    totalExtendedLatinLetters += tokenExtendedLatinLetters
+    if (/^\p{Ll}/u.test(token)) lowercaseAccentedTokens++
   }
 
-  if (functionWordCount > 0) return false
-  if (tokensWithExtendedLatin < 2 || totalExtendedLatinLetters < 3) return false
-
-  return tokensWithExtendedLatin / Math.max(tokenList.length, 1) >= 0.5 || totalExtendedLatinLetters >= 5
+  return lowercaseAccentedTokens >= 2 && totalExtendedLatinLetters >= 3
 }
 
 function hasDecoderGarbage(text: string): boolean {
