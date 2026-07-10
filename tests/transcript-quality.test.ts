@@ -6,6 +6,8 @@ describe('assessTranscript', () => {
     expect(assessTranscript('Einn snop og þá minn ekki röggli og feitsið gís.', { language: 'en' }).grade)
       .toBe('reject')
     expect(assessTranscript('Oddváey, Foss, sýttir á.', { language: 'en' }).grade).toBe('reject')
+    expect(assessTranscript('Einn snop and sýttir á röggli feitsí gís.', { language: 'en' }).grade)
+      .toBe('reject')
   })
 
   it('flags broken multiword English as suspicious', () => {
@@ -44,6 +46,7 @@ describe('assessTranscript', () => {
     expect(assessTranscript('Here is the plan: deploy after lunch.', { language: 'en' }).grade).toBe('clean')
     expect(assessTranscript('Jose met Zoe in Montreal.', { language: 'en' }).grade).toBe('clean')
     expect(assessTranscript('José met Zoë in Montréal.', { language: 'en' }).grade).toBe('clean')
+    expect(assessTranscript('Please email José and Zoë in Montréal.', { language: 'en' }).grade).toBe('clean')
   })
 })
 
