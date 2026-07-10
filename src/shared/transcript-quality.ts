@@ -157,14 +157,27 @@ function words(text: string): string[] {
   return text.match(/[\p{L}\p{N}']+/gu) ?? []
 }
 
+function countFunctionWords(tokens: string[]): number {
+  let count = 0
+  for (const token of tokens) {
+    if (FUNCTION_WORDS.has(token.toLowerCase())) count++
+  }
+  return count
+}
+
 function hasAssistantReply(text: string): boolean {
-  return /^\s*(?:(?:sure|certainly|absolutely|of course)[,:]?\s*)?(?:here(?:'s| is)\s+(?:the\s+)?(?:cleaned|corrected|revised)\s+transcript\b|(?:cleaned|corrected|revised)\s+transcript\b|transcript:)/iu.test(
+  const wrapperPattern =
+    /^\s*(?:(?:sure|certainly|absolutely|of course)[,:]?\s*)?(?:here(?:'s| is)\s+(?:the\s+)?(?:(?:cleaned|corrected|revised)\s+)?(?:transcript|transcription|result)\b|here(?:'s| is)\s+(?:the\s+)?(?:final\s+)?version\b|(?:cleaned|corrected|revised)\s+transcript\b|transcript:|transcription:|result:|version:)/iu
+  if (wrapperPattern.test(text)) return true
+
+  return /^\s*(?:you'?re welcome\b|let me know if\b|how can i help\b|how may i help\b|i can help\b|i can assist\b|happy to help\b|i'?d be happy to\b|sure[,! ]+i can\b|of course[,! ]+i can\b|certainly[,! ]+i can\b)/iu.test(
     text
   )
 }
 
 function hasExtendedLatinReject(text: string): boolean {
   const tokenList = words(text)
+  const functionWordCount = countFunctionWords(tokenList)
   let tokensWithExtendedLatin = 0
   let totalExtendedLatinLetters = 0
 
@@ -179,7 +192,10 @@ function hasExtendedLatinReject(text: string): boolean {
     if (tokenHasExtendedLatin) tokensWithExtendedLatin++
   }
 
-  return tokensWithExtendedLatin >= 2 || totalExtendedLatinLetters >= 3
+  if (functionWordCount > 0) return false
+  if (tokensWithExtendedLatin < 2 || totalExtendedLatinLetters < 3) return false
+
+  return tokensWithExtendedLatin / Math.max(tokenList.length, 1) >= 0.5 || totalExtendedLatinLetters >= 5
 }
 
 function hasDecoderGarbage(text: string): boolean {
@@ -218,11 +234,10 @@ function hasBrokenQuestionPattern(text: string): boolean {
 function hasLowEnglishEvidence(text: string): boolean {
   const tokenList = words(text)
   if (tokenList.length < 6) return false
-  let functionWordCount = 0
+  const functionWordCount = countFunctionWords(tokenList)
   let technicalTokenCount = 0
 
   for (const token of tokenList) {
-    if (FUNCTION_WORDS.has(token.toLowerCase())) functionWordCount++
     if (/[A-Z]/.test(token) || /\d/.test(token)) technicalTokenCount++
   }
 
