@@ -22,6 +22,29 @@ describe('assessTranscript', () => {
     expect(assessTranscript('Sure, here is the cleaned transcript: It is not working correctly.', { language: 'en' }).grade)
       .toBe('reject')
   })
+
+  it('rejects plain transcript wrappers and known assistant-reply phrases', () => {
+    expect(assessTranscript('Here is the transcript: It is not working correctly.', { language: 'en' }).grade)
+      .toBe('reject')
+    expect(assessTranscript('Sure, here is the transcript: It is not working correctly.', { language: 'en' }).grade)
+      .toBe('reject')
+    expect(assessTranscript('Here is the transcription: It is not working correctly.', { language: 'en' }).grade)
+      .toBe('reject')
+    expect(assessTranscript('Here is the result: It is not working correctly.', { language: 'en' }).grade)
+      .toBe('reject')
+    expect(assessTranscript('Here is the final version: It is not working correctly.', { language: 'en' }).grade)
+      .toBe('reject')
+    expect(assessTranscript("You're welcome.", { language: 'en' }).grade).toBe('reject')
+    expect(assessTranscript('Let me know if you need anything else.', { language: 'en' }).grade).toBe('reject')
+    expect(assessTranscript('How can I help?', { language: 'en' }).grade).toBe('reject')
+    expect(assessTranscript("I'd be happy to help.", { language: 'en' }).grade).toBe('reject')
+  })
+
+  it('does not reject genuine dictation with accented names or plain here-is phrasing', () => {
+    expect(assessTranscript('Here is the plan: deploy after lunch.', { language: 'en' }).grade).toBe('clean')
+    expect(assessTranscript('Jose met Zoe in Montreal.', { language: 'en' }).grade).toBe('clean')
+    expect(assessTranscript('José met Zoë in Montréal.', { language: 'en' }).grade).toBe('clean')
+  })
 })
 
 describe('chooseTranscript', () => {
@@ -54,5 +77,17 @@ describe('chooseTranscript', () => {
       { source: 'remote-primary', text: 'Einn snop og þá minn ekki röggli.', elapsedMs: 300 },
       { source: 'native', text: 'Oddváey, Foss, sýttir á.', elapsedMs: 200 }
     ], { language: 'en' })).toBeNull()
+  })
+
+  it('ignores wrapper candidates and keeps accented-name dictation eligible', () => {
+    expect(chooseTranscript([
+      { source: 'remote-primary', text: 'Here is the transcript: It is not working correctly.', elapsedMs: 100 },
+      { source: 'native', text: 'Here is the plan: deploy after lunch.', elapsedMs: 200 }
+    ], { language: 'en' })?.source).toBe('native')
+
+    expect(chooseTranscript([
+      { source: 'remote-primary', text: 'Oddváey, Foss, sýttir á.', elapsedMs: 100 },
+      { source: 'native', text: 'José met Zoë in Montréal.', elapsedMs: 200 }
+    ], { language: 'en' })?.source).toBe('native')
   })
 })
