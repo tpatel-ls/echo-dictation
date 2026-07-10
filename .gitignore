@@ -10,5 +10,6 @@ secrets.local.json
 
 # design scratch
 .playwright-mcp/
+.superpowers/
 /overlay-*.png
 /echo-*.png
