@@ -1,8 +1,9 @@
-import { clipboard } from 'electron'
+import { app, clipboard } from 'electron'
 import { transcribe } from './transcription/whisper'
 import { cleanup } from './transcription/claude'
 import { floatToWav } from '@shared/wav'
 import { checkMacPermissions, checkNativeHelper, isMac } from './permissions'
+import { checkNativeSpeechStatus } from './transcription/native-speech'
 import type { DiagName, DiagResult } from '@shared/types'
 import type { SettingsStore } from './store/settings'
 
@@ -63,7 +64,8 @@ export async function runDiagnostic(
         const base = `Global keyboard hook running. Trigger: ${s.triggerKey}.`
         // On macOS the hook only receives keys once Input Monitoring is granted.
         const note = isMac() ? ' Requires Input Monitoring permission for EchoKeyHelper (quit & reopen after granting).' : ''
-        return result(name, true, base + note, t0)
+        const speech = isMac() ? await nativeSpeechDiagnostic() : ''
+        return result(name, true, base + note + speech, t0)
       }
       case 'mic':
         return result(name, false, 'Mic is tested directly from this window.', t0)
@@ -73,4 +75,14 @@ export async function runDiagnostic(
   } catch (e) {
     return result(name, false, (e as Error).message, t0)
   }
+}
+
+async function nativeSpeechDiagnostic(): Promise<string> {
+  const status = await checkNativeSpeechStatus({
+    platform: process.platform,
+    resourcesPath: app.isPackaged ? process.resourcesPath : undefined
+  })
+  if (!status || (status.type !== 'check' && status.type !== 'ready')) return ' Native speech: helper unavailable.'
+  const localeAvailable = status.localeAvailable === undefined ? 'unknown' : status.localeAvailable ? 'available' : 'unavailable'
+  return ` Native speech: authorization ${status.authorization}; engine ${status.engine}; en-US ${localeAvailable}.`
 }

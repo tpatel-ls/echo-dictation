@@ -61,6 +61,11 @@ export async function primeMacPermissions(): Promise<void> {
   } catch {
     /* ignore */
   }
+  try {
+    await runHelper('EchoSpeechHelper', ['--prompt'])
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function checkNativeHelper(name: string): Promise<boolean> {
@@ -72,7 +77,7 @@ export async function checkNativeHelper(name: string): Promise<boolean> {
   }
 }
 
-export type PrivacyPane = 'Accessibility' | 'ListenEvent' | 'Microphone'
+export type PrivacyPane = 'Accessibility' | 'ListenEvent' | 'Microphone' | 'SpeechRecognition'
 
 /** Open a specific macOS “Privacy & Security” pane in System Settings. */
 export function openPrivacyPane(pane: PrivacyPane): void {
@@ -96,11 +101,17 @@ export async function showMacOnboardingIfNeeded(): Promise<void> {
   if (!isMac()) return
   const p = checkMacPermissions()
   const pasteTrusted = await checkNativeHelper('EchoPasteHelper')
-  if (p.accessibility && pasteTrusted && p.microphone === 'granted') return
+  const speechTrusted = await checkNativeHelper('EchoSpeechHelper')
+  if (p.accessibility && pasteTrusted && speechTrusted && p.microphone === 'granted') return
 
   await primeMacPermissions()
   const after = checkMacPermissions()
-  if (after.accessibility && (await checkNativeHelper('EchoPasteHelper')) && after.microphone === 'granted') return
+  if (
+    after.accessibility &&
+    (await checkNativeHelper('EchoPasteHelper')) &&
+    (await checkNativeHelper('EchoSpeechHelper')) &&
+    after.microphone === 'granted'
+  ) return
 
   const res = await dialog.showMessageBox({
     type: 'info',
@@ -111,14 +122,16 @@ export async function showMacOnboardingIfNeeded(): Promise<void> {
       'reopen Echo from the menu-bar icon (Input Monitoring needs a restart to take effect):\n\n' +
       '•  Accessibility — Echo and EchoPasteHelper paste text into other apps\n' +
       '•  Input Monitoring — EchoKeyHelper detects your hold-to-talk key\n' +
-      '•  Microphone — hear you\n\n' +
+      '•  Microphone — hear you\n' +
+      '•  Speech Recognition — EchoSpeechHelper checks Apple Speech as a secondary recognizer\n\n' +
       'Echo lives in the menu bar (top-right), not the Dock.',
-    buttons: ['Open Accessibility', 'Open Input Monitoring', 'Later'],
+    buttons: ['Open Accessibility', 'Open Input Monitoring', 'Open Speech Recognition', 'Later'],
     defaultId: 0,
-    cancelId: 2
+    cancelId: 3
   })
   if (res.response === 0) openPrivacyPane('Accessibility')
   else if (res.response === 1) openPrivacyPane('ListenEvent')
+  else if (res.response === 2) openPrivacyPane('SpeechRecognition')
 }
 
 function runHelper(name: string, args: string[]): Promise<number> {

@@ -52,3 +52,5 @@ mac:
     LSUIElement: 1
     # Shown in the macOS microphone-permission prompt.
     NSMicrophoneUsageDescription: Echo transcribes your speech using the Whisper endpoint you configure.
+    # Shown if Apple Speech is used as the optional native accuracy fallback.
+    NSSpeechRecognitionUsageDescription: Echo uses Apple Speech only as a secondary accuracy check for existing dictation audio.
