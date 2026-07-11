@@ -29,8 +29,6 @@ if check {
 
 _ = inputMonitoringTrusted(prompt: false)
 
-var optionDown = false
-
 func emitKey(_ key: String, down: Bool, anyOption: Bool) {
   jsonLine([
     "type": "key",
@@ -42,13 +40,59 @@ func emitKey(_ key: String, down: Bool, anyOption: Bool) {
 
 jsonLine(["type": "ready"])
 
-while true {
-  let down = CGEventSource.flagsState(.hidSystemState).contains(.maskAlternate)
-  if down != optionDown {
-    optionDown = down
-    // The app defaults to "Either Option"; emit a stable key name so the Electron
-    // state machine receives the same down/up shape regardless of keyboard side.
-    emitKey("rightOption", down: down, anyOption: down)
+let leftOptionCode = CGKeyCode(58)
+let rightOptionCode = CGKeyCode(61)
+var leftOptionDown = false
+var rightOptionDown = false
+var eventTap: CFMachPort?
+
+let callback: CGEventTapCallBack = { _, type, event, _ in
+  if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+    if let eventTap {
+      CGEvent.tapEnable(tap: eventTap, enable: true)
+    }
+    return Unmanaged.passUnretained(event)
   }
-  usleep(10_000)
+
+  let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+  guard keyCode == leftOptionCode || keyCode == rightOptionCode else {
+    return Unmanaged.passUnretained(event)
+  }
+
+  let anyOptionFlag = event.flags.contains(.maskAlternate)
+  let down: Bool
+  if !anyOptionFlag {
+    leftOptionDown = false
+    rightOptionDown = false
+    down = false
+  } else if keyCode == leftOptionCode {
+    leftOptionDown.toggle()
+    down = leftOptionDown
+  } else {
+    rightOptionDown.toggle()
+    down = rightOptionDown
+  }
+  let anyOption = leftOptionDown || rightOptionDown
+  emitKey(keyCode == leftOptionCode ? "leftOption" : "rightOption", down: down, anyOption: anyOption)
+  return Unmanaged.passUnretained(event)
 }
+
+let mask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+eventTap = CGEvent.tapCreate(
+  tap: .cgSessionEventTap,
+  place: .headInsertEventTap,
+  options: .listenOnly,
+  eventsOfInterest: mask,
+  callback: callback,
+  userInfo: nil
+)
+
+guard let eventTap else {
+  jsonLine(["type": "error", "message": "Unable to create keyboard event tap"])
+  exit(2)
+}
+
+let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
+CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
+CGEvent.tapEnable(tap: eventTap, enable: true)
+CFRunLoopRun()

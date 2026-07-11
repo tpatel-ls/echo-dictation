@@ -47,4 +47,10 @@ describe('mac signing helpers', () => {
     expect(buildScript).toContain('"Speech"')
     expect(buildScript).toContain('codesign')
   })
+
+  it('keeps the global Option helper event-driven while idle', () => {
+    const helper = readFileSync(join(process.cwd(), 'native', 'EchoKeyHelper.swift'), 'utf8')
+    expect(helper).toContain('CGEvent.tapCreate')
+    expect(helper).not.toContain('usleep')
+  })
 })
