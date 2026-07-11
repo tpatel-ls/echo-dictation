@@ -31,7 +31,10 @@ mistook a capitalized, punctuated wrong-language sentence for clean output and s
 
 Add a pure, deterministic evaluator on desktop and a mirrored Kotlin implementation on Android.
 It classifies a candidate as `clean`, `suspicious`, or `reject` and records reasons without trying
-to invent replacement words.
+to invent replacement words. `reject` is reserved for deterministic evidence such as empty output,
+explicit English-incompatible letters, decoder corruption, or assistant replies. Statistical or
+ambiguous language evidence is `suspicious`; the coordinator, not the scorer, guarantees that a
+non-clean candidate is never pasted without successful rescue.
 
 Signals include:
 
@@ -60,9 +63,9 @@ starts rescue work:
    assistant-reply guards;
 5. apply deterministic dictionary replacement, voice commands, snippets, and optional cleanup.
 
-If adjudication is unavailable, choose the highest-quality independent candidate. If every
-candidate is rejected, save the audio and failed history row, show a concise retryable error, and
-do not paste nonsense.
+If adjudication is unavailable, choose the highest-quality clean independent candidate. If no
+candidate is clean, save the audio and failed history row, show a concise retryable error, and do
+not paste nonsense.
 
 For maximum-accuracy mode on desktop, the native and remote recognizers run concurrently after key
 release. A clearly clean primary result may finish without waiting for a slow secondary result;

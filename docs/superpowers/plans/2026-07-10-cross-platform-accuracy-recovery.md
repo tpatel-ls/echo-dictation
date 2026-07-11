@@ -12,7 +12,7 @@
 
 - Trigger-to-listening UI response targets less than 50 ms on a warm process; final transcription has no dishonest 50 ms guarantee.
 - English-only mode is the default on macOS, Windows, and Android.
-- Obvious non-English or assistant-reply output must never be silently pasted.
+- Obvious non-English or assistant-reply output must never be silently pasted; any non-clean final candidate is a safe failure.
 - All-candidate failure retains audio and creates a retryable history row.
 - Idle background work remains event-driven with no polling and no resident ML model.
 - Dictionary spellings and aliases remain deterministic and are applied after candidate selection.
@@ -35,8 +35,8 @@
 
 ```ts
 expect(assessTranscript('Einn snop og þá minn ekki röggli og feitsið gís.', { language: 'en' }).grade)
-  .toBe('reject')
-expect(assessTranscript('Oddváey, Foss, sýttir á.', { language: 'en' }).grade).toBe('reject')
+  .not.toBe('clean')
+expect(assessTranscript('Oddváey, Foss, sýttir á.', { language: 'en' }).grade).not.toBe('clean')
 expect(assessTranscript('How do I force figure out?', { language: 'en' }).grade).toBe('suspicious')
 expect(assessTranscript('Deploy PostgreSQL on GB10.', { language: 'en', glossary: ['GB10'] }).grade)
   .toBe('clean')
@@ -64,9 +64,10 @@ export function assessTranscript(text: string, options: QualityOptions): Transcr
 export function chooseTranscript(candidates: TranscriptCandidate[], options: QualityOptions): TranscriptCandidate | null
 ```
 
-Implement explicit rejection for empty/punctuation-only content, `ð`/`þ`, multiple unexplained
-extended-Latin letters, assistant-reply phrases, and decoder garbage. Mark grammatically broken
-multiword English as suspicious without rejecting technical phrases or glossary terms. Ranking is
+Implement explicit rejection for empty/punctuation-only content, `ð`/`þ`, assistant-reply phrases,
+and decoder garbage. Mark multiple unexplained extended-Latin letters, low English evidence in four
+or more words, and grammatically broken multiword English as suspicious without rejecting accented
+names, technical phrases, or glossary terms. Ranking is
 stable by score, then source priority `adjudicated`, `native`, `remote-primary`, `remote-recovery`.
 
 - [ ] **Step 4: Verify GREEN and the existing formatting tests**
@@ -202,7 +203,8 @@ export interface RecognitionOutcome { winner: TranscriptCandidate; candidates: T
 
 `maximum` starts native and primary concurrently, waits at most 1,500 ms for native, and adjudicates
 meaningful disagreement. `balanced` uses native/recovery only for a non-clean primary. `fast` uses
-primary plus rejection guard. `dictation.ts` writes one temporary WAV before recognition, always
+primary plus rejection guard. Only a `clean` winner may be returned for insertion; all-suspicious or
+all-rejected candidates throw the low-confidence error. `dictation.ts` writes one temporary WAV before recognition, always
 deletes it after the pipeline, and copies it into retained history storage on success or low-confidence
 failure. Remove the punctuation-only fast-path assumption: cleanup can still skip only after quality is
 `clean`. Store the winning source in `model` metadata. Add `accuracyMode: AccuracyMode` to Settings
