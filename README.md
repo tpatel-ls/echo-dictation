@@ -129,7 +129,8 @@ src/
 ## Install & run always-on — Windows (autostart at boot)
 
 ```bash
-npm run pack
+npm install
+npm run pack:win
 ```
 
 Produces a self-contained app at `dist/win-unpacked/Echo.exe` (no installer, no admin
@@ -138,14 +139,20 @@ needed). Copy that folder somewhere stable (e.g. `%LOCALAPPDATA%\Programs\Echo`)
 and runs the hotkey in the background. Quit only via the tray. Toggle autostart in
 Settings → Launch at login.
 
+Building requires the .NET 8 SDK or newer. Echo cross-publishes three self-contained
+`win-x64` helpers into `out/native`: an event-driven global key hook, a `SendInput`
+copy/paste helper, and an optional `System.Speech` recognizer for independent accuracy
+checks. The target PC does not need a separate .NET runtime. For native speech, install
+the **English (United States)** speech pack in Windows Settings → Time & language → Speech.
+
 If a `secrets.local.json` exists at the project root when you build, it's bundled into the
 app's resources and seeds your keys on first run (see `electron-builder.yml` — remove that
 block if you'd rather type keys into Settings).
 
-### NSIS installer (optional, needs elevation)
+### NSIS installer
 
 ```bash
-npm run dist   # produces dist/Echo-0.1.0-setup.exe
+npm run dist:win   # produces dist/Echo-0.1.0-setup.exe
 ```
 
 electron-builder's `winCodeSign` toolchain contains macOS symlinks that can't unpack

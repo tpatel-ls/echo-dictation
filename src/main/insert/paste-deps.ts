@@ -4,6 +4,7 @@ import { appendFileSync, existsSync, statSync, truncateSync } from 'node:fs'
 import { join } from 'node:path'
 import type { PasteDeps } from './paste'
 import type { SelectionDeps } from './selection'
+import { helperPath } from '../native/helper-path'
 
 // Shared backing for both dependency sets — Electron's clipboard and the macOS helper chord — so the
 // two real* factories can't drift on clipboard access.
@@ -32,6 +33,7 @@ function sendHelper(action: 'copy' | 'paste'): () => Promise<void> {
       `${action} helper failed code=${result.code ?? 'signal'} mainAccessibility=${mainAccessibilityTrusted()} message=${JSON.stringify(result.message)} stdout=${JSON.stringify(result.stdout)} stderr=${JSON.stringify(result.stderr)}`
     )
     if (result.code === 2) {
+      if (process.platform !== 'darwin') throw new Error(result.message || `${action} helper failed`)
       try {
         systemPreferences.isTrustedAccessibilityClient(true)
       } catch {
@@ -52,7 +54,7 @@ function runHelper(
   args: string[]
 ): Promise<{ code: number | null; message: string; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(helper, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(helper, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
     let stdout = ''
     let stderr = ''
     child.stdout.setEncoding('utf8')
@@ -86,8 +88,12 @@ function helperMessage(stdout: string): string {
 }
 
 function nativeHelperPath(name: string): string {
-  if (app.isPackaged) return join(process.resourcesPath, 'native', name)
-  return join(process.cwd(), 'out', 'native', name)
+  return helperPath(
+    name as 'EchoPasteHelper',
+    process.platform,
+    app.isPackaged ? process.resourcesPath : undefined,
+    process.cwd()
+  )
 }
 
 function mainAccessibilityTrusted(): boolean {

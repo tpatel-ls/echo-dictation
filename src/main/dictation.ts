@@ -88,6 +88,7 @@ export class DictationController {
    * Returns null — no probe — when any gate fails.
    */
   private startSelectionProbe(): Promise<string | null> | null {
+    if (process.platform === 'win32') return null
     const s = this.settings.getSettings()
     const sec = this.settings.getSecrets()
     if (!s.commandModeEnabled) return null

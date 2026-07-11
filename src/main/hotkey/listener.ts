@@ -4,6 +4,7 @@ import { appendFileSync, existsSync, statSync, truncateSync } from 'node:fs'
 import { join } from 'node:path'
 import { HotkeyMachine, type MachineOptions } from './machine'
 import type { TriggerKey } from '@shared/types'
+import { helperPath } from '../native/helper-path'
 
 export interface HotkeyCallbacks {
   onStart: () => void
@@ -13,7 +14,7 @@ export interface HotkeyCallbacks {
 
 interface NativeKeyEvent {
   type: 'key'
-  key: 'leftOption' | 'rightOption'
+  key: 'leftOption' | 'rightOption' | 'leftControl' | 'rightControl' | 'capsLock' | 'f8'
   down: boolean
   anyOption?: boolean
 }
@@ -54,7 +55,7 @@ export class HotkeyListener {
     const helper = nativeHelperPath('EchoKeyHelper')
     if (!existsSync(helper)) throw new Error(`Keyboard helper is not built at ${helper}`)
     diagnosticLog(`starting helper ${helper}; trigger=${this.triggerKey}`)
-    const child = spawn(helper, [], { stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(helper, [], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
     this.child = child
     child.stdout?.setEncoding('utf8')
     child.stderr?.setEncoding('utf8')
@@ -124,12 +125,20 @@ function matchesTrigger(triggerKey: TriggerKey, event: NativeKeyEvent): boolean 
   if (triggerKey === 'EitherOption') return true
   if (triggerKey === 'LeftOption') return event.key === 'leftOption'
   if (triggerKey === 'RightOption') return event.key === 'rightOption'
+  if (triggerKey === 'LeftControl') return event.key === 'leftControl'
+  if (triggerKey === 'RightControl') return event.key === 'rightControl'
+  if (triggerKey === 'CapsLock') return event.key === 'capsLock'
+  if (triggerKey === 'F8') return event.key === 'f8'
   return false
 }
 
 function nativeHelperPath(name: string): string {
-  if (app.isPackaged) return join(process.resourcesPath, 'native', name)
-  return join(process.cwd(), 'out', 'native', name)
+  return helperPath(
+    name as 'EchoKeyHelper',
+    process.platform,
+    app.isPackaged ? process.resourcesPath : undefined,
+    process.cwd()
+  )
 }
 
 function diagnosticLog(message: string): void {
