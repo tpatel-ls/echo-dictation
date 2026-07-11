@@ -35,6 +35,7 @@ android {
         buildConfigField("String", "DEFAULT_CLAUDE_BASE_URL", "\"${echoDefault("claudeBaseUrl")}\"")
         buildConfigField("String", "DEFAULT_CLAUDE_API_KEY", "\"${echoDefault("claudeApiKey")}\"")
         buildConfigField("String", "DEFAULT_CLAUDE_MODEL", "\"${echoDefault("claudeModel")}\"")
+        buildConfigField("String", "DEFAULT_ACCURACY_MODEL", "\"${echoDefault("accuracyModel")}\"")
         buildConfigField("String", "DEFAULT_SYNC_BASE_URL", "\"${echoDefault("syncBaseUrl")}\"")
         buildConfigField("String", "DEFAULT_SYNC_TOKEN", "\"${echoDefault("syncToken")}\"")
     }

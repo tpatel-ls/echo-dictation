@@ -16,12 +16,17 @@ import com.tanay.echo.snippet.expandSnippet
 import com.tanay.echo.settings.EchoSettings
 import com.tanay.echo.sync.PrefsSyncState
 import com.tanay.echo.sync.SyncClient
+import com.tanay.echo.transcription.AdjudicatorClient
 import com.tanay.echo.transcription.ClaudeClient
+import com.tanay.echo.transcription.LowConfidenceRecognitionException
 import com.tanay.echo.transcription.Register
 import com.tanay.echo.transcription.StyleProfile
+import com.tanay.echo.transcription.TranscriptGrade
 import com.tanay.echo.transcription.WhisperClient
 import com.tanay.echo.transcription.applyVoiceCommands
+import com.tanay.echo.transcription.assessTranscript
 import com.tanay.echo.transcription.languageParam
+import com.tanay.echo.transcription.recognizeAccurately
 import com.tanay.echo.transcription.styleDirective
 import com.tanay.echo.transcription.needsAiCleanup
 import com.tanay.echo.transcription.styleForPackage
@@ -51,6 +56,7 @@ class DictationController(context: Context) {
     private val http = OkHttpClient() // pooled keep-alive, shared by Whisper + Claude + sync
     private val whisper = WhisperClient(http)
     private val claude = ClaudeClient(http)
+    private val adjudicator = AdjudicatorClient(http)
     private val syncState = PrefsSyncState(app.getSharedPreferences("echo_sync", Context.MODE_PRIVATE))
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val syncing = AtomicBoolean(false)
@@ -111,7 +117,9 @@ class DictationController(context: Context) {
         val baseUrl = settings.whisperBaseUrl
         val model = settings.whisperModel
         val apiKey = settings.whisperApiKey
-        val language = languageParam(settings.language)
+        val language = languageParam(settings.language) ?: "en"
+        val accuracyMode = settings.accuracyMode
+        val accuracyModel = settings.accuracyModel
         val whisperMode = settings.whisperMode
         val claudeBaseUrl = settings.claudeBaseUrl
         val claudeApiKey = settings.claudeApiKey
@@ -126,7 +134,34 @@ class DictationController(context: Context) {
                 val dict = withContext(Dispatchers.IO) { store.dictionaryEntries() }
                 val snippets = withContext(Dispatchers.IO) { snippetStore.active() }
                 val wav = pcm16ToWav(if (whisperMode) boostGain(pcm) else pcm, TARGET_RATE)
-                val heard = whisper.transcribe(wav, baseUrl, model, apiKey, prompt = buildBiasPrompt(dict), language = language)
+                val glossary = dict.map { it.word }
+                val prompt = buildBiasPrompt(dict)
+                val heard = recognizeAccurately(
+                    mode = accuracyMode,
+                    glossary = glossary,
+                    decode = { temperature ->
+                        whisper.transcribe(
+                            wav,
+                            baseUrl,
+                            model,
+                            apiKey,
+                            prompt = prompt,
+                            language = language,
+                            temperature = temperature,
+                        )
+                    },
+                    adjudicate = { candidates ->
+                        if (claudeBaseUrl.isBlank() || claudeApiKey.isBlank()) null
+                        else adjudicator.adjudicate(
+                            candidates = candidates,
+                            appContext = appContext,
+                            glossary = glossary,
+                            baseUrl = claudeBaseUrl,
+                            models = listOf(accuracyModel, claudeModel),
+                            apiKey = claudeApiKey,
+                        )
+                    },
+                ).winner.text
                 val applied = applyDictionary(heard, dict)
                 // Dictionary guarantees custom spellings; spoken formatting commands ("new paragraph",
                 // "leave space", "new line") become real breaks instantly, before any AI pass.
@@ -144,10 +179,13 @@ class DictationController(context: Context) {
                     finalText = expansion
                 } else if (profile.runCleanup && needsAiCleanup(corrected) && claudeBaseUrl.isNotEmpty() && claudeApiKey.isNotEmpty()) {
                     // (short dictations Whisper already punctuated cleanly skip the AI pass — instant insert)
-                    cleaned = runCatching {
+                    val cleanupCandidate = runCatching {
                         claude.cleanup(corrected, claudeBaseUrl, claudeModel, claudeApiKey, dict.map { it.word }, styleDirective = directive)
                     }.getOrNull() // cleanup is best-effort — never block insertion on it
-                    if (cleaned != null) finalText = cleaned
+                    if (cleanupCandidate != null && assessTranscript(cleanupCandidate, glossary).grade == TranscriptGrade.CLEAN) {
+                        cleaned = cleanupCandidate
+                        finalText = cleanupCandidate
+                    }
                 }
                 onText(finalText)
                 onPhase(DictationPhase.INSERTED, null)
@@ -170,6 +208,8 @@ class DictationController(context: Context) {
                     }
                 }
                 triggerSync()
+            } catch (_: LowConfidenceRecognitionException) {
+                onPhase(DictationPhase.EMPTY, "Low confidence; nothing inserted")
             } catch (e: Exception) {
                 onPhase(DictationPhase.ERROR, e.message)
             }
@@ -196,20 +236,50 @@ class DictationController(context: Context) {
         val baseUrl = settings.whisperBaseUrl
         val model = settings.whisperModel
         val apiKey = settings.whisperApiKey
-        val language = languageParam(settings.language)
+        val language = languageParam(settings.language) ?: "en"
+        val accuracyMode = settings.accuracyMode
+        val accuracyModel = settings.accuracyModel
         val whisperMode = settings.whisperMode
         scope.launch {
             try {
                 val dict = withContext(Dispatchers.IO) { store.dictionaryEntries() }
                 val wav = pcm16ToWav(if (whisperMode) boostGain(pcm) else pcm, TARGET_RATE)
+                val glossary = dict.map { it.word }
+                val prompt = buildBiasPrompt(dict)
                 // The spoken audio is the instruction (e.g. "make this more formal"), not content.
-                val instruction = whisper.transcribe(wav, baseUrl, model, apiKey, prompt = buildBiasPrompt(dict), language = language).trim()
+                val instruction = recognizeAccurately(
+                    mode = accuracyMode,
+                    glossary = glossary,
+                    decode = { temperature ->
+                        whisper.transcribe(
+                            wav,
+                            baseUrl,
+                            model,
+                            apiKey,
+                            prompt = prompt,
+                            language = language,
+                            temperature = temperature,
+                        )
+                    },
+                    adjudicate = { candidates ->
+                        adjudicator.adjudicate(
+                            candidates = candidates,
+                            appContext = "command mode",
+                            glossary = glossary,
+                            baseUrl = claudeBaseUrl,
+                            models = listOf(accuracyModel, claudeModel),
+                            apiKey = claudeApiKey,
+                        )
+                    },
+                ).winner.text.trim()
                 if (instruction.isBlank()) {
                     onPhase(DictationPhase.EMPTY, null)
                     return@launch
                 }
                 val rewrite = claude.command(instruction, selectedText, claudeBaseUrl, claudeModel, claudeApiKey, dict.map { it.word })
                 onReplace(selectedText, rewrite) // host swaps the selection and arms tap-to-undo
+            } catch (_: LowConfidenceRecognitionException) {
+                onPhase(DictationPhase.EMPTY, "Low confidence; nothing changed")
             } catch (e: Exception) {
                 onPhase(DictationPhase.ERROR, e.message)
             }

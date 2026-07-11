@@ -13,11 +13,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.textfield.TextInputEditText
 import com.tanay.echo.R
 import com.tanay.echo.floating.EchoAccessibilityService
 import com.tanay.echo.floating.FloatingButtonService
+import com.tanay.echo.transcription.AccuracyMode
 
 /**
  * One-screen setup: point Echo at your Whisper (and optional Claude) + sync endpoints, then the
@@ -38,6 +40,8 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var whisperApiKey: TextInputEditText
     private lateinit var whisperModel: TextInputEditText
     private lateinit var language: TextInputEditText
+    private lateinit var accuracyMode: MaterialButtonToggleGroup
+    private lateinit var accuracyModel: TextInputEditText
     private lateinit var whisperMode: MaterialSwitch
     private lateinit var syncBaseUrl: TextInputEditText
     private lateinit var syncToken: TextInputEditText
@@ -60,6 +64,8 @@ class SettingsActivity : AppCompatActivity() {
         whisperApiKey = findViewById(R.id.whisper_api_key)
         whisperModel = findViewById(R.id.whisper_model)
         language = findViewById(R.id.language)
+        accuracyMode = findViewById(R.id.accuracy_mode)
+        accuracyModel = findViewById(R.id.accuracy_model)
         whisperMode = findViewById(R.id.whisper_mode)
         syncBaseUrl = findViewById(R.id.sync_base_url)
         syncToken = findViewById(R.id.sync_token)
@@ -137,6 +143,14 @@ class SettingsActivity : AppCompatActivity() {
         whisperApiKey.setText(settings.whisperApiKey)
         whisperModel.setText(settings.whisperModel)
         language.setText(settings.language)
+        accuracyMode.check(
+            when (settings.accuracyMode) {
+                AccuracyMode.FAST -> R.id.accuracy_fast
+                AccuracyMode.BALANCED -> R.id.accuracy_balanced
+                AccuracyMode.MAXIMUM -> R.id.accuracy_maximum
+            },
+        )
+        accuracyModel.setText(settings.accuracyModel)
         whisperMode.isChecked = settings.whisperMode
         syncBaseUrl.setText(settings.syncBaseUrl)
         syncToken.setText(settings.syncToken)
@@ -152,6 +166,12 @@ class SettingsActivity : AppCompatActivity() {
         settings.whisperApiKey = text(whisperApiKey)
         settings.whisperModel = text(whisperModel)
         settings.language = text(language)
+        settings.accuracyMode = when (accuracyMode.checkedButtonId) {
+            R.id.accuracy_fast -> AccuracyMode.FAST
+            R.id.accuracy_balanced -> AccuracyMode.BALANCED
+            else -> AccuracyMode.MAXIMUM
+        }
+        settings.accuracyModel = text(accuracyModel)
         settings.whisperMode = whisperMode.isChecked
         settings.syncBaseUrl = text(syncBaseUrl)
         settings.syncToken = text(syncToken)
