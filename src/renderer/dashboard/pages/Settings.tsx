@@ -11,12 +11,30 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
   const [whisperKey, setWhisperKey] = useState('')
   const [claudeKey, setClaudeKey] = useState('')
   const [syncToken, setSyncToken] = useState('')
+  const [audioInputs, setAudioInputs] = useState<Array<{ deviceId: string; label: string }>>([])
 
   useEffect(() => {
     void (async () => {
       setS(await api.settings.get())
       setMasked(await api.settings.getSecretsMasked())
     })()
+  }, [])
+
+  useEffect(() => {
+    const refresh = async (): Promise<void> => {
+      const devices = await navigator.mediaDevices?.enumerateDevices().catch(() => [])
+      setAudioInputs(
+        (devices ?? [])
+          .filter((device) => device.kind === 'audioinput' && device.deviceId !== 'default')
+          .map((device, index) => ({
+            deviceId: device.deviceId,
+            label: device.label || `Microphone ${index + 1}`
+          }))
+      )
+    }
+    void refresh()
+    navigator.mediaDevices?.addEventListener('devicechange', refresh)
+    return () => navigator.mediaDevices?.removeEventListener('devicechange', refresh)
   }, [])
 
   if (!s) return <div className="p-7 text-muted text-sm">Loading…</div>
@@ -80,6 +98,20 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
               hint="If you press another key while holding, treat it as a shortcut and cancel dictation."
             >
               <Toggle checked={s.cancelOnOtherKey} onChange={(v) => void patch({ cancelOnOtherKey: v })} />
+            </Field>
+            <Field
+              label="Accuracy"
+              hint="Maximum compares several decodes with Apple Speech. Balanced uses rescue only when needed."
+            >
+              <Select
+                value={s.accuracyMode}
+                onChange={(v) => void patch({ accuracyMode: v })}
+                options={[
+                  { value: 'maximum', label: 'Maximum' },
+                  { value: 'balanced', label: 'Balanced' },
+                  { value: 'fast', label: 'Fast' }
+                ]}
+              />
             </Field>
           </Section>
 
@@ -147,7 +179,24 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
               <Toggle checked={s.launchAtLogin} onChange={(v) => void patch({ launchAtLogin: v })} />
             </Field>
             <Field
-              label="Microphone"
+              label="Microphone input"
+              hint={
+                s.audioInputDeviceId && !audioInputs.some((device) => device.deviceId === s.audioInputDeviceId)
+                  ? 'Saved microphone is unavailable; using the system default.'
+                  : 'Choose the input Echo records for dictation.'
+              }
+            >
+              <Select
+                value={s.audioInputDeviceId}
+                onChange={(v) => void patch({ audioInputDeviceId: v })}
+                options={[
+                  { value: '', label: 'System default' },
+                  ...audioInputs.map((device) => ({ value: device.deviceId, label: device.label }))
+                ]}
+              />
+            </Field>
+            <Field
+              label="Mic activation"
               hint="On-demand opens the mic only while dictating. Keep warm removes first-press latency — the mic stays active in the background."
             >
               <Select

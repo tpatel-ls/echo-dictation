@@ -38,6 +38,7 @@ const api: EchoApi = {
     polish: (id: number) => ipcRenderer.invoke(IPC.HISTORY_POLISH, id),
     edit: (id: number, text: string) => ipcRenderer.invoke(IPC.HISTORY_EDIT, id, text),
     reinsert: (id: number) => ipcRenderer.invoke(IPC.HISTORY_REINSERT, id),
+    retry: (id: number) => ipcRenderer.invoke(IPC.HISTORY_RETRY, id),
     copy: (id: number) => ipcRenderer.invoke(IPC.HISTORY_COPY, id),
     getAudio: (id: number) => ipcRenderer.invoke(IPC.HISTORY_AUDIO, id)
   },

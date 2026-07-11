@@ -3,6 +3,8 @@
 // the waveform. Supports "warm" mode: keep the mic + context open between dictations
 // so the first key-press has zero acquisition latency.
 
+import { resolveAudioDevice } from './audio-device'
+
 const WORKLET_SRC = `
 class PCMProcessor extends AudioWorkletProcessor {
   process(inputs) {
@@ -24,12 +26,25 @@ export class MicCapture {
   private moduleAdded = false
   private warm = false
   private recording = false
+  private preferredDeviceId = ''
+  private deviceChangedWhileRecording = false
   private levelCb: (level: number) => void = () => {}
 
   sampleRate = 48000
 
   onLevel(cb: (level: number) => void): void {
     this.levelCb = cb
+  }
+
+  setPreferredDevice(deviceId: string): void {
+    if (deviceId === this.preferredDeviceId) return
+    this.preferredDeviceId = deviceId
+    if (this.recording) {
+      this.deviceChangedWhileRecording = true
+      return
+    }
+    this.releaseStream()
+    if (this.warm) void this.prewarm().catch(() => {})
   }
 
   async setWarm(warm: boolean): Promise<void> {
@@ -90,7 +105,13 @@ export class MicCapture {
     this.node = null
     this.sink = null
     this.levelCb(0)
-    if (!this.warm) this.releaseStream()
+    if (this.deviceChangedWhileRecording) {
+      this.deviceChangedWhileRecording = false
+      this.releaseStream()
+      if (this.warm) void this.prewarm().catch(() => {})
+    } else if (!this.warm) {
+      this.releaseStream()
+    }
     return { frames, sampleRate: this.sampleRate }
   }
 
@@ -109,15 +130,18 @@ export class MicCapture {
 
   private async ensureStream(): Promise<void> {
     if (this.stream) return
-    // Non-exact constraints (no mandatory channelCount) for maximum device
-    // compatibility; we take channel 0 in the worklet, so input channels don't matter.
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      }
-    })
+    const devices = await navigator.mediaDevices.enumerateDevices().catch(() => [])
+    const inputs = devices
+      .filter((device) => device.kind === 'audioinput')
+      .map((device) => ({ deviceId: device.deviceId, label: device.label }))
+    const resolved = resolveAudioDevice(this.preferredDeviceId, inputs)
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: constraints(resolved.deviceId) })
+    } catch (error) {
+      const name = (error as Error)?.name
+      if (!resolved.deviceId || (name !== 'OverconstrainedError' && name !== 'NotFoundError')) throw error
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: constraints() })
+    }
   }
 
   private releaseStream(): void {
@@ -125,5 +149,15 @@ export class MicCapture {
       for (const track of this.stream.getTracks()) track.stop()
       this.stream = null
     }
+  }
+}
+
+function constraints(deviceId?: string): MediaTrackConstraints {
+  return {
+    ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+    channelCount: { ideal: 1 },
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true
   }
 }

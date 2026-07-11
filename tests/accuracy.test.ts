@@ -212,6 +212,26 @@ describe('recognizeAccurately', () => {
     expect(outcome.winner).toMatchObject({ source: 'adjudicated', text: 'It is not a funny necktie.' })
   })
 
+  it('requires two remote votes when the configured native recognizer cannot hear the audio', async () => {
+    const primary = vi
+      .fn<RecognitionDeps['primary']>()
+      .mockResolvedValueOnce("I'm a home, I'm a coffee.")
+      .mockResolvedValueOnce("I'm going home, I'm going.")
+      .mockResolvedValueOnce("I'm not a guy.")
+      .mockResolvedValueOnce("How's it going?")
+      .mockResolvedValueOnce("Don't hold the coffee.")
+    const secondary: SecondaryRecognizer = { transcribe: vi.fn(async () => null) }
+    const adjudicator = vi.fn(async () => "I'm going home, I'm going.")
+
+    await expect(
+      recognizeAccurately(
+        wav,
+        request({ settings: { ...settings, accuracyMode: 'maximum' } }),
+        deps({ primary, secondary, adjudicator })
+      )
+    ).rejects.toThrow(LowConfidenceRecognitionError)
+  })
+
   it('maximum mode fails safely when a lone clean outlier cannot be adjudicated', async () => {
     const primary = vi.fn<RecognitionDeps['primary']>(async (_wav, _request, opts) => {
       if (opts.temperature === 0) return 'Einn snop og þá minn ekki röggli og feitsið gís.'

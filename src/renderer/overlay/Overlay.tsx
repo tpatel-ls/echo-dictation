@@ -23,14 +23,19 @@ export function Overlay(): JSX.Element {
     window.api.settings
       .get()
       .then((s) => {
+        cap.setPreferredDevice(s.audioInputDeviceId)
         if (s.micMode === 'warm') void cap.setWarm(true)
       })
       .catch(() => {})
     const offState = window.api.onDictationState(onState)
-    const offSettings = window.api.onSettingsChanged((s) => void cap.setWarm(s.micMode === 'warm'))
+    const offSettings = window.api.onSettingsChanged((s) => {
+      cap.setPreferredDevice(s.audioInputDeviceId)
+      void cap.setWarm(s.micMode === 'warm')
+    })
     return () => {
       offState()
       offSettings()
+      void cap.setWarm(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

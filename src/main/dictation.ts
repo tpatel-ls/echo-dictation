@@ -1,6 +1,6 @@
 import { app, type BrowserWindow } from 'electron'
 import { join } from 'node:path'
-import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import {
   IPC,
   type AudioMeta,
@@ -10,6 +10,7 @@ import {
   type NewTranscript,
   type Secrets,
   type Settings,
+  type Transcript,
   type TranscriptStatus
 } from '@shared/types'
 import { applyDictionary, buildBiasPrompt } from '@shared/dictionary'
@@ -239,6 +240,59 @@ export class DictationController {
       this.selectionProbe = null
       if (tempAudioPath) deleteTemporaryAudio(tempAudioPath)
     }
+  }
+
+  async retryTranscript(id: number): Promise<Transcript> {
+    const existing = this.history.get(id)
+    if (!existing) throw new Error('Transcript not found')
+    if (!existing.audio_path || !existsSync(existing.audio_path)) throw new Error('Retained audio is unavailable')
+
+    const started = Date.now()
+    const s = this.settings.getSettings()
+    const sec = this.settings.getSecrets()
+    const dict = this.dictionary.list()
+    const glossary = dict.map((entry) => entry.word)
+    const file = readFileSync(existing.audio_path)
+    const buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer
+    const outcome = await recognizeAccurately(
+      { path: existing.audio_path, buffer },
+      {
+        settings: s,
+        whisperApiKey: sec.whisperApiKey,
+        claudeApiKey: sec.claudeApiKey,
+        appContext: existing.app_context,
+        glossary,
+        prompt: buildBiasPrompt(dict)
+      },
+      { secondary: this.secondaryRecognizer }
+    )
+
+    const raw = applyVoiceCommands(this.correct(outcome.winner.text, dict))
+    if (!raw) throw new Error('No speech detected')
+    let cleaned: string | null = null
+    if (s.cleanupMode === 'auto' && needsAiCleanup(raw)) {
+      try {
+        cleaned = await cleanup(
+          raw,
+          s,
+          sec.claudeApiKey,
+          undefined,
+          glossary,
+          styleDirective(registerForTitle(existing.app_context))
+        )
+      } catch {
+        /* keep the recovered raw transcript */
+      }
+    }
+
+    const updated = this.history.updateRetried(id, {
+      rawText: raw,
+      cleanedText: cleaned,
+      model: outcome.winner.source,
+      latencyMs: Date.now() - started
+    })
+    if (!updated) throw new Error('Transcript not found')
+    return updated
   }
 
   /**
