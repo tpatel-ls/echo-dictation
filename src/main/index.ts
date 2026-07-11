@@ -13,6 +13,7 @@ import { registerIpc } from './ipc'
 import { createTray } from './tray'
 import { showMacOnboardingIfNeeded } from './permissions'
 import { NativeSpeechRecognizer } from './transcription/native-speech'
+import { shouldExitHiddenStartup, shouldOpenSecondInstance, usesMachineWideStartup } from './startup'
 import { IPC, type Settings } from '@shared/types'
 
 // Keep the always-on app alive through stray errors — one unhandled exception must
@@ -55,6 +56,11 @@ async function main(): Promise<void> {
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => allowMic(permission))
 
   const settings = new SettingsStore()
+  const openedHidden = process.argv.includes('--hidden')
+  if (shouldExitHiddenStartup(openedHidden, settings.getSettings().launchAtLogin)) {
+    app.quit()
+    return
+  }
 
   // Sync: a store mutation nudges the runner, but the runner is built after the DB opens,
   // so the change hook forwards through a mutable indirection set just below.
@@ -88,7 +94,6 @@ async function main(): Promise<void> {
   syncRunner.trigger() // reconcile once on launch
   syncRunner.startInterval(SYNC_INTERVAL_MS) // periodic catch-up
 
-  const openedHidden = process.argv.includes('--hidden')
   let quitting = false
   let onboardingShown = false
 
@@ -171,7 +176,9 @@ async function main(): Promise<void> {
 
   applyLoginItem(settings.getSettings().launchAtLogin)
 
-  app.on('second-instance', openDashboard)
+  app.on('second-instance', (_event, argv) => {
+    if (shouldOpenSecondInstance(argv)) openDashboard()
+  })
   app.on('activate', openDashboard)
   app.on('window-all-closed', () => {
     /* tray app — keep running with no visible windows */
@@ -196,6 +203,12 @@ async function main(): Promise<void> {
  */
 function applyLoginItem(enabled: boolean): void {
   if (!app.isPackaged) {
+    app.setLoginItemSettings({ openAtLogin: false })
+    return
+  }
+  if (usesMachineWideStartup(process.platform, app.isPackaged)) {
+    // The NSIS installer owns the all-user HKLM entry. Remove a stale HKCU entry so Windows
+    // does not launch a second hidden instance and accidentally reveal the dashboard at sign-in.
     app.setLoginItemSettings({ openAtLogin: false })
     return
   }

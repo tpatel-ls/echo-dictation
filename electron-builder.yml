@@ -18,8 +18,10 @@ extraResources:
     to: native
   # Seeds API keys on first run so the packaged app works out of the box (personal
   # build). Remove this + secrets.local.json to require entering keys in Settings.
-  - from: secrets.local.json
-    to: secrets.local.json
+  - from: .
+    to: .
+    filter:
+      - secrets.local.json
 win:
   # Skip signing + rcedit editing — both need the winCodeSign toolchain, whose macOS
   # symlinks can't unpack without symlink privilege on this machine. The exe keeps the
@@ -30,10 +32,13 @@ win:
   artifactName: ${productName}-${version}-setup.${ext}
 nsis:
   oneClick: false
-  perMachine: false
+  perMachine: true
+  allowElevation: true
   allowToChangeInstallationDirectory: true
-  createDesktopShortcut: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
   shortcutName: Echo
+  include: build/installer.nsh
 mac:
   category: public.app-category.productivity
   icon: build/icon-mac.png
