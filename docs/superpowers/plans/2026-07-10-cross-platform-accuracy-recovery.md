@@ -204,10 +204,13 @@ export interface SecondaryRecognizer { transcribe(wavPath: string, locale: 'en-U
 export interface RecognitionOutcome { winner: TranscriptCandidate; candidates: TranscriptCandidate[] }
 ```
 
-`maximum` starts temperature 0, temperature 0.8, and native recognition concurrently, waits at most
+`maximum` starts temperature 0, three independent temperature-0.3 samples, temperature 0.8, and
+native recognition concurrently, waits at most
 1,500 ms for native, and adjudicates meaningful disagreement even when the primary looks clean.
-The fluent mismatch regression uses primary `"I'm a home, I'm a coffee."`, recovery `"How's it going?"`,
-and adjudicated `"How's it going?"`. `balanced` uses native/recovery only for a non-clean primary. `fast` uses
+The fluent mismatch regression uses temperature-0 `"I'm a home, I'm a coffee."`, three temperature-0.3
+`"How's it going?"` samples, temperature-0.8 `"How's it away?"`, and adjudicated `"How's it going?"`.
+The adjudicator reconstructs the faithful English utterance from phonetic agreement across candidates;
+it does not merely choose the most fluent candidate. `balanced` uses native/recovery only for a non-clean primary. `fast` uses
 primary plus rejection guard. Only a `clean` winner may be returned for insertion; all-suspicious or
 all-rejected candidates throw the low-confidence error. `dictation.ts` writes one temporary WAV before recognition, always
 deletes it after the pipeline, and copies it into retained history storage on success or low-confidence

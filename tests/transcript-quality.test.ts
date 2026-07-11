@@ -29,6 +29,15 @@ describe('assessTranscript', () => {
       .toBe('reject')
   })
 
+  it('rejects non-Latin script leakage in English-only mode unless it is a glossary term', () => {
+    expect(assessTranscript('Another хожу guy.', { language: 'en' })).toMatchObject({
+      grade: 'reject',
+      reasons: expect.arrayContaining(['non-latin-script'])
+    })
+    expect(assessTranscript('Open 東京 now.', { language: 'en' }).grade).toBe('reject')
+    expect(assessTranscript('Open 東京 now.', { language: 'en', glossary: ['東京'] }).grade).toBe('clean')
+  })
+
   it('rejects plain transcript wrappers and known assistant-reply phrases', () => {
     expect(assessTranscript('Here is the transcript: It is not working correctly.', { language: 'en' }).grade)
       .toBe('reject')

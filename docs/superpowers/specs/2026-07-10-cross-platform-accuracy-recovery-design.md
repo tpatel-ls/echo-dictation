@@ -55,19 +55,22 @@ The primary remote request remains deterministic: `language=en`, `temperature=0`
 and the configured model. A clean result proceeds immediately. A suspicious or rejected result
 starts rescue work:
 
-1. request a second remote decode at a controlled recovery temperature;
+1. request controlled remote decodes at medium and high recovery temperatures;
 2. include the platform secondary recognizer when available;
 3. send only the candidate texts, focused-app context, and dictionary terms to the configured
    OpenAI-compatible Responses endpoint using `gpt-5.4-mini` by default;
-4. demand transcript-only English output and validate the response through the same quality and
+4. require a transcript-only English reconstruction based on phonetic agreement across the
+   candidates, never a conversational reply or a blind preference for the most fluent candidate;
+5. validate the response through the same quality and
    assistant-reply guards;
-5. apply deterministic dictionary replacement, voice commands, snippets, and optional cleanup.
+6. apply deterministic dictionary replacement, voice commands, snippets, and optional cleanup.
 
 If adjudication is unavailable, choose the highest-quality clean independent candidate. If no
 candidate is clean, save the audio and failed history row, show a concise retryable error, and do
 not paste nonsense.
 
-For maximum-accuracy mode on desktop, deterministic and recovery remote decodes plus the native
+For maximum-accuracy mode on desktop, one temperature `0` decode, three independent temperature `0.3`
+samples, one temperature `0.8` outlier, and the native
 recognizer run concurrently after key release. Even a clean-looking primary is adjudicated when an
 independent candidate disagrees, because fluent decoder errors can pass surface heuristics. Balanced
 mode only rescues a non-clean primary. Android uses the remote rescue

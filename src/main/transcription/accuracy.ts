@@ -21,7 +21,7 @@ export interface RecognitionAudio {
 export interface AccuracyRequest {
   settings: Pick<
     Settings,
-    'accuracyMode' | 'whisperBaseUrl' | 'whisperModel' | 'claudeBaseUrl' | 'accuracyModel'
+    'accuracyMode' | 'whisperBaseUrl' | 'whisperModel' | 'claudeBaseUrl' | 'claudeModel' | 'accuracyModel'
   >
   whisperApiKey: string
   claudeApiKey: string
@@ -36,7 +36,7 @@ export interface RecognitionOutcome {
 }
 
 export interface RemoteDecodeOptions {
-  temperature: 0 | 0.8
+  temperature: 0 | 0.3 | 0.8
   prompt?: string
 }
 
@@ -85,6 +85,9 @@ export async function recognizeAccurately(
   if (mode === 'maximum') {
     const settled = await Promise.allSettled([
       decodeRemote(wav, request, primary, 'remote-primary', 0, deps.now),
+      decodeRemote(wav, request, primary, 'remote-recovery', 0.3, deps.now),
+      decodeRemote(wav, request, primary, 'remote-recovery', 0.3, deps.now),
+      decodeRemote(wav, request, primary, 'remote-recovery', 0.3, deps.now),
       decodeRemote(wav, request, primary, 'remote-recovery', 0.8, deps.now),
       nativeWithTimeout(wav, deps)
     ])
@@ -98,7 +101,7 @@ export async function recognizeAccurately(
   if (mode === 'fast' || primaryGrade === 'clean') return finalize(candidates, request, deps, errors)
 
   const settled = await Promise.allSettled([
-    decodeRemote(wav, request, primary, 'remote-recovery', 0.8, deps.now),
+    decodeRemote(wav, request, primary, 'remote-recovery', 0.3, deps.now),
     nativeWithTimeout(wav, deps)
   ])
   collectSettled(settled, candidates, errors)
@@ -110,7 +113,7 @@ async function decodeRemote(
   request: AccuracyRequest,
   primary: PrimaryRecognizer,
   source: 'remote-primary' | 'remote-recovery',
-  temperature: 0 | 0.8,
+  temperature: 0 | 0.3 | 0.8,
   now: (() => number) | undefined
 ): Promise<TranscriptCandidate> {
   const started = timestamp(now)
@@ -163,18 +166,47 @@ async function finalize(
 ): Promise<RecognitionOutcome> {
   const options = qualityOptions(request)
   const clean = candidates.filter((candidate) => assessTranscript(candidate.text, options).grade === 'clean')
-  if (clean.length && hasMeaningfulDisagreement(clean)) {
-    const adjudicated = await runAdjudicator(clean, request, deps).catch(() => null)
+  const disagreement = candidates.length > 1 && hasMeaningfulDisagreement(candidates)
+  let acceptedAdjudication = false
+
+  if (disagreement) {
+    const adjudicated = await runAdjudicator([...candidates], request, deps).catch(() => null)
     if (adjudicated && assessTranscript(adjudicated, options).grade === 'clean') {
-      clean.push({ source: 'adjudicated', text: adjudicated, elapsedMs: 0 })
-      candidates.push(clean[clean.length - 1])
+      const candidate: TranscriptCandidate = { source: 'adjudicated', text: adjudicated, elapsedMs: 0 }
+      clean.push(candidate)
+      candidates.push(candidate)
+      acceptedAdjudication = true
     }
+  }
+
+  if (request.settings.accuracyMode === 'maximum' && disagreement && !acceptedAdjudication) {
+    const consensus = chooseExactConsensus(clean, options)
+    if (consensus) return { winner: consensus, candidates }
+    throw new LowConfidenceRecognitionError()
   }
 
   const winner = chooseTranscript(clean, options)
   if (winner) return { winner, candidates }
   if (!candidates.length && errors.length) throw errors[0]
   throw new LowConfidenceRecognitionError()
+}
+
+function chooseExactConsensus(
+  candidates: TranscriptCandidate[],
+  options: { language: 'en'; glossary: string[] }
+): TranscriptCandidate | null {
+  const groups = new Map<string, TranscriptCandidate[]>()
+  for (const candidate of candidates) {
+    const key = normalize(candidate.text)
+    if (!key) continue
+    const group = groups.get(key) ?? []
+    group.push(candidate)
+    groups.set(key, group)
+  }
+
+  const consensusGroups = [...groups.values()].filter((group) => group.length >= 2)
+  consensusGroups.sort((a, b) => b.length - a.length)
+  return consensusGroups.length ? chooseTranscript(consensusGroups[0], options) : null
 }
 
 async function runAdjudicator(

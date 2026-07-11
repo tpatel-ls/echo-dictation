@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { adjudicate } from '../src/main/transcription/adjudicator'
 import type { TranscriptCandidate } from '@shared/transcript-quality'
 
-const settings = { claudeBaseUrl: 'https://proxy.example/v1', accuracyModel: 'gpt-5.4-mini' }
+const settings = {
+  claudeBaseUrl: 'https://proxy.example/v1',
+  accuracyModel: 'gpt-5.4-mini',
+  claudeModel: 'claude-sonnet-4-6'
+}
 const deps = (mock: unknown): { fetch: typeof fetch } => ({ fetch: mock as typeof fetch })
 
 const candidates: TranscriptCandidate[] = [
@@ -25,6 +29,8 @@ describe('adjudicate', () => {
       expect(JSON.stringify(body.input)).toContain('Candidate A')
       expect(JSON.stringify(body.input)).toContain('Candidate B')
       expect(JSON.stringify(body.input)).toContain('Glossary')
+      expect(JSON.stringify(body.input)).toContain('phonetic')
+      expect(JSON.stringify(body.input)).toContain('reconstruct')
 
       return new Response(
         JSON.stringify({
@@ -83,5 +89,27 @@ describe('adjudicate', () => {
     )
 
     await expect(adjudicate(candidates, 'Visual Studio Code', settings, 'KEY', deps(fetchMock))).resolves.toBeNull()
+  })
+
+  it('falls back to the configured Claude model when the primary adjudicator is cooling down', async () => {
+    const models: string[] = []
+    const fetchMock = vi.fn(async (_url: unknown, init: any) => {
+      const body = JSON.parse(init.body)
+      models.push(body.model)
+      if (body.model === 'gpt-5.4-mini') {
+        return new Response(JSON.stringify({ error: { message: 'model cooldown' } }), { status: 429 })
+      }
+      return new Response(
+        JSON.stringify({
+          output: [{ type: 'message', content: [{ type: 'output_text', text: 'It is not working correctly.' }] }]
+        }),
+        { status: 200 }
+      )
+    })
+
+    await expect(adjudicate(candidates, 'Visual Studio Code', settings, 'KEY', deps(fetchMock))).resolves.toBe(
+      'It is not working correctly.'
+    )
+    expect(models).toEqual(['gpt-5.4-mini', 'claude-sonnet-4-6'])
   })
 })
