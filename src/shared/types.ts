@@ -22,6 +22,7 @@ export type NewTranscript = Omit<Transcript, 'id'>
 
 export type CleanupMode = 'off' | 'auto' | 'on-demand'
 export type MicMode = 'on-demand' | 'warm'
+export type AccuracyMode = 'fast' | 'balanced' | 'maximum'
 export type TriggerKey =
   | 'RightControl'
   | 'LeftControl'
@@ -44,6 +45,7 @@ export interface Settings {
   whisperBaseUrl: string
   whisperModel: string
   cleanupMode: CleanupMode
+  accuracyMode: AccuracyMode
   claudeBaseUrl: string
   claudeModel: string
   accuracyModel: string
@@ -67,6 +69,7 @@ export const DEFAULT_SETTINGS: Settings = {
   whisperBaseUrl: '',
   whisperModel: 'whisper-1',
   cleanupMode: 'auto',
+  accuracyMode: 'maximum',
   claudeBaseUrl: '',
   claudeModel: 'claude-sonnet-4-6',
   accuracyModel: 'gpt-5.4-mini',

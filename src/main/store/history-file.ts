@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { join } from 'node:path'
-import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs'
 import initSqlJs from 'sql.js'
 import type { Database } from 'sql.js'
 import { HistoryStore } from './history'
@@ -29,6 +29,27 @@ export interface OpenHistoryOptions {
   /** Fired (alongside the debounced disk persist) whenever a store mutates, so the caller
    * can kick a sync. Store writes already debounce the DB persist; sync coalesces itself. */
   onChange?: () => void
+}
+
+export interface RetainAudioOptions {
+  now?: () => number
+  random?: () => number
+}
+
+/** Copy a temporary dictation WAV into the retained history audio directory. */
+export function retainAudioCopy(tempWavPath: string, opts: RetainAudioOptions = {}): string | null {
+  try {
+    const dir = join(app.getPath('userData'), 'audio')
+    mkdirSync(dir, { recursive: true })
+    const now = opts.now ?? Date.now
+    const random = opts.random ?? Math.random
+    const name = `${now()}-${Math.floor(random() * 1e6)}.wav`
+    const path = join(dir, name)
+    copyFileSync(tempWavPath, path)
+    return path
+  } catch {
+    return null
+  }
 }
 
 /**

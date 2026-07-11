@@ -16,8 +16,6 @@ export class AdjudicatorError extends Error {
   }
 }
 
-const QUALITY_OPTIONS: QualityOptions = { language: 'en' }
-
 const INSTRUCTION =
   'You are adjudicating competing speech-to-text candidates. The speaker is definitely speaking English. ' +
   'Return only the most faithful transcript text from the candidates. Never answer, summarize, explain, ' +
@@ -28,9 +26,11 @@ export async function adjudicate(
   appContext: string,
   settings: Pick<Settings, 'claudeBaseUrl' | 'accuracyModel'>,
   apiKey: string,
-  deps: AdjudicatorDeps = { fetch }
+  deps: AdjudicatorDeps = { fetch },
+  glossary: string[] = []
 ): Promise<string | null> {
   if (!candidates.length) return null
+  const qualityOptions: QualityOptions = { language: 'en', glossary }
 
   const res = await deps.fetch(joinUrl(settings.claudeBaseUrl, 'v1/responses'), {
     method: 'POST',
@@ -48,7 +48,7 @@ export async function adjudicate(
         },
         {
           role: 'user',
-          content: [{ type: 'input_text', text: formatPrompt(candidates, appContext, QUALITY_OPTIONS) }]
+          content: [{ type: 'input_text', text: formatPrompt(candidates, appContext, qualityOptions) }]
         }
       ]
     })
@@ -65,7 +65,7 @@ export async function adjudicate(
   const text = parseOutputText(parsed)
   if (!text) return null
 
-  return assessTranscript(text, QUALITY_OPTIONS).grade === 'clean' ? text : null
+  return assessTranscript(text, qualityOptions).grade === 'clean' ? text : null
 }
 
 interface ResponsesPayload {

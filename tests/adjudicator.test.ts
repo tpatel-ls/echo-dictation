@@ -39,6 +39,24 @@ describe('adjudicate', () => {
     )
   })
 
+  it('passes glossary terms into the prompt and output quality gate', async () => {
+    const fetchMock = vi.fn(async (_url: unknown, init: any) => {
+      const body = JSON.parse(init.body)
+      expect(JSON.stringify(body.input)).toContain('Glossary: Þór')
+
+      return new Response(
+        JSON.stringify({
+          output: [{ type: 'message', content: [{ type: 'output_text', text: 'Deploy Þór now.' }] }]
+        }),
+        { status: 200 }
+      )
+    })
+
+    await expect(adjudicate(candidates, 'Terminal', settings, 'KEY', deps(fetchMock), ['Þór'])).resolves.toBe(
+      'Deploy Þór now.'
+    )
+  })
+
   it('returns null for assistant-style or wrapped adjudicator output', async () => {
     const replyMock = vi.fn(async () =>
       new Response(
