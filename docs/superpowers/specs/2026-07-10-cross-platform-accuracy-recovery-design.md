@@ -67,9 +67,10 @@ If adjudication is unavailable, choose the highest-quality clean independent can
 candidate is clean, save the audio and failed history row, show a concise retryable error, and do
 not paste nonsense.
 
-For maximum-accuracy mode on desktop, the native and remote recognizers run concurrently after key
-release. A clearly clean primary result may finish without waiting for a slow secondary result;
-disagreement or a suspicious primary waits for candidate selection. Android uses the remote rescue
+For maximum-accuracy mode on desktop, deterministic and recovery remote decodes plus the native
+recognizer run concurrently after key release. Even a clean-looking primary is adjudicated when an
+independent candidate disagrees, because fluent decoder errors can pass surface heuristics. Balanced
+mode only rescues a non-clean primary. Android uses the remote rescue
 path because `SpeechRecognizer` owns microphone capture and cannot consume Echo's existing PCM
 buffer without replacing the IME recording architecture.
 
