@@ -169,7 +169,7 @@ describe('recognizeAccurately', () => {
     expect(outcome.winner).toMatchObject({ source: 'remote-recovery', text: 'Turn off captions.' })
   })
 
-  it('maximum mode adjudicates every hypothesis when the lone English-looking decode is an outlier', async () => {
+  it('maximum mode adjudicates every hypothesis but rejects an unsupported reconstruction', async () => {
     const primary = vi.fn<RecognitionDeps['primary']>(async (_wav, _request, opts) => {
       if (opts.temperature === 0) return 'Einn snop og þá minn ekki röggli og feitsið gís.'
       if (opts.temperature === 0.3) return 'Eitt snobt og famið nekkarri klimófeyddshyllis.'
@@ -177,14 +177,38 @@ describe('recognizeAccurately', () => {
     })
     const adjudicator = vi.fn(async (_candidates: TranscriptCandidate[]) => 'It is not a funny necktie.')
 
-    const outcome = await recognizeAccurately(
+    const pending = recognizeAccurately(
       wav,
       request({ settings: { ...settings, accuracyMode: 'maximum' } }),
       deps({ primary, adjudicator })
     )
 
+    await expect(pending).rejects.toThrow(LowConfidenceRecognitionError)
     expect(adjudicator).toHaveBeenCalledOnce()
     expect((adjudicator.mock.calls[0]?.[0] ?? []).map((candidate) => candidate.text)).toHaveLength(5)
+  })
+
+  it('accepts a reconstructed transcript when the independent native candidate supports it', async () => {
+    const primary = vi.fn<RecognitionDeps['primary']>(async (_wav, _request, opts) => {
+      if (opts.temperature === 0) return 'Einn snop og þá minn ekki röggli og feitsið gís.'
+      if (opts.temperature === 0.3) return 'Eitt snobt og famið nekkarri klimófeyddshyllis.'
+      return 'It is not or phonetic and heavy stuff.'
+    })
+    const secondary: SecondaryRecognizer = {
+      transcribe: vi.fn(async () => ({
+        source: 'native',
+        text: 'It is not a funny necktie.',
+        elapsedMs: 800
+      }))
+    }
+    const adjudicator = vi.fn(async () => 'It is not a funny necktie.')
+
+    const outcome = await recognizeAccurately(
+      wav,
+      request({ settings: { ...settings, accuracyMode: 'maximum' } }),
+      deps({ primary, secondary, adjudicator })
+    )
+
     expect(outcome.winner).toMatchObject({ source: 'adjudicated', text: 'It is not a funny necktie.' })
   })
 
