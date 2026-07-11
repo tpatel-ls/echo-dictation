@@ -2,6 +2,7 @@ import { app, systemPreferences, shell, dialog } from 'electron'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { speechHelperPath } from './transcription/native-speech'
 
 /**
  * macOS privacy onboarding. To dictate into any app, Echo needs three permissions the
@@ -145,6 +146,13 @@ function runHelper(name: string, args: string[]): Promise<number> {
 }
 
 function nativeHelperPath(name: string): string {
+  if (name === 'EchoSpeechHelper') {
+    return speechHelperPath(
+      process.platform,
+      app.isPackaged ? process.resourcesPath : undefined,
+      process.cwd()
+    ) ?? join(process.cwd(), 'out', 'native', name)
+  }
   if (app.isPackaged) return join(process.resourcesPath, 'native', name)
   return join(process.cwd(), 'out', 'native', name)
 }

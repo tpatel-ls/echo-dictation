@@ -80,14 +80,15 @@ buffer without replacing the IME recording architecture.
 
 ### 3. macOS Secondary Recognizer
 
-Add a signed, long-running `EchoSpeechHelper` written in Swift. It accepts newline-delimited JSON
-requests containing a temporary WAV path and locale, uses macOS 26 `SpeechAnalyzer` and
-`SpeechTranscriber` with `en-US`, and falls back to `SFSpeechRecognizer` where the newer analyzer
+Add a signed, long-running `EchoSpeechHelper` app bundle written in Swift. It accepts newline-delimited JSON
+requests containing a temporary WAV path and locale, uses macOS 26 `SpeechAnalyzer` and the
+on-device `DictationTranscriber` with `en-US`, and falls back to `SFSpeechRecognizer` where the newer analyzer
 is unavailable. It returns structured `ready`, `result`, and `error` events. Echo starts it lazily
 and terminates it with the app, so idle cost is negligible.
 
-The helper embeds bundle metadata, links the Speech framework, and requests Speech Recognition
-authorization once per macOS user. The helper checks analyzer model-asset availability and reports
+The helper has a real signed bundle and privacy metadata and links the Speech framework. The on-device
+macOS 26 analyzer needs no Speech Recognition authorization; only the legacy server-backed fallback
+requests it once per macOS user. The helper checks analyzer model-asset availability and reports
 when macOS must download the English asset. The main app adds
 `NSSpeechRecognitionUsageDescription`. Permission denial or an unavailable asset is a soft
 failure: remote recognition continues and Diagnostics explains the exact setting to grant.

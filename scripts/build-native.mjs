@@ -23,6 +23,7 @@ const helpers = [
   {
     source: "native/EchoSpeechHelper.swift",
     output: "EchoSpeechHelper",
+    bundleName: "EchoSpeechHelper.app",
     swiftOptions: ["-parse-as-library"],
     frameworks: ["Speech", "AVFoundation"],
     infoPlist: {
@@ -37,7 +38,15 @@ const helpers = [
 const identity = findLocalIdentity() ? localIdentity : "-";
 
 for (const helper of helpers) {
-  const outputPath = join(outDir, helper.output);
+  const bundlePath = helper.bundleName ? join(outDir, helper.bundleName) : null;
+  if (bundlePath) {
+    rmSync(bundlePath, { recursive: true, force: true });
+    rmSync(join(outDir, helper.output), { force: true });
+    mkdirSync(join(bundlePath, "Contents", "MacOS"), { recursive: true });
+  }
+  const outputPath = bundlePath
+    ? join(bundlePath, "Contents", "MacOS", helper.output)
+    : join(outDir, helper.output);
   const tempDir = mkdtempSync(join(tmpdir(), "echo-native-"));
   try {
     const args = [...(helper.swiftOptions ?? []), "-O"];
@@ -45,13 +54,17 @@ for (const helper of helpers) {
       args.push("-framework", framework);
     }
     if (helper.infoPlist) {
-      const plistPath = join(tempDir, `${helper.output}-Info.plist`);
+      const infoRelativePath = "Contents/Info.plist";
+      const plistPath = bundlePath
+        ? join(bundlePath, infoRelativePath)
+        : join(tempDir, `${helper.output}-Info.plist`);
       writeFileSync(plistPath, infoPlist(helper.infoPlist));
       args.push("-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist", "-Xlinker", plistPath);
     }
     args.push("-o", outputPath, join(root, helper.source));
     run("swiftc", args);
     sign(outputPath, identity);
+    if (bundlePath) sign(bundlePath, identity);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

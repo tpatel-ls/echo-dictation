@@ -276,8 +276,9 @@ The helper protocol is:
 {"type":"error","id":"uuid","code":"not-authorized","message":"Speech Recognition permission is not granted"}
 ```
 
-Use macOS 26 `SpeechAnalyzer`/`SpeechTranscriber` where available and legacy
-`SFSpeechURLRecognitionRequest` as fallback. Embed helper bundle metadata during `swiftc`, link
+Use macOS 26 `SpeechAnalyzer`/`DictationTranscriber` on-device where available and legacy
+`SFSpeechURLRecognitionRequest` as fallback. The local analyzer does not require legacy Speech
+Recognition authorization. Build a real signed `EchoSpeechHelper.app` bundle with Info.plist, link
 `Speech`, and preserve existing stable code signing. Add the usage string to Electron Info.plist.
 The adapter owns one child process, request map, 1,500 ms deadline, and graceful shutdown.
 Diagnostics reports authorization and English asset/locale availability without requesting access.
@@ -286,7 +287,7 @@ Diagnostics reports authorization and English asset/locale availability without 
 
 Run: `npm run build:native`
 
-Run: `printf '{"type":"check"}\n' | out/native/EchoSpeechHelper`
+Run: `out/native/EchoSpeechHelper.app/Contents/MacOS/EchoSpeechHelper --check`
 
 Expected: valid single-line JSON with authorization and engine status; no crash.
 

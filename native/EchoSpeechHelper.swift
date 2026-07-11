@@ -44,9 +44,9 @@ func legacyLocaleAvailable(_ localeIdentifier: String) -> Bool {
 @available(macOS 26.0, *)
 func speechAnalyzerStatus(localeIdentifier: String) async -> (available: Bool, localeAvailable: Bool, installedLocales: [String]) {
   let locale = Locale(identifier: localeIdentifier)
-  let installed = await SpeechTranscriber.installedLocales.map(localeID)
-  let equivalent = await SpeechTranscriber.supportedLocale(equivalentTo: locale)
-  return (SpeechTranscriber.isAvailable, equivalent != nil, installed)
+  let installed = await DictationTranscriber.installedLocales.map(localeID)
+  let equivalent = await DictationTranscriber.supportedLocale(equivalentTo: locale)
+  return (equivalent != nil, equivalent != nil, installed)
 }
 
 func statusPayload(type: String, localeIdentifier: String = "en-US") async -> [String: Any] {
@@ -94,12 +94,14 @@ func ensureAuthorized() throws {
 @available(macOS 26.0, *)
 func transcribeWithSpeechAnalyzer(url: URL, localeIdentifier: String) async throws -> String {
   let locale = Locale(identifier: localeIdentifier)
-  guard SpeechTranscriber.isAvailable,
-        await SpeechTranscriber.supportedLocale(equivalentTo: locale) != nil else {
+  guard let supportedLocale = await DictationTranscriber.supportedLocale(equivalentTo: locale) else {
     throw HelperFailure.unavailable("SpeechAnalyzer is unavailable for \(localeIdentifier)")
   }
 
-  let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+  let transcriber = DictationTranscriber(locale: supportedLocale, preset: .longDictation)
+  if let installation = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+    try await installation.downloadAndInstall()
+  }
   let audioFile = try AVAudioFile(forReading: url)
   let analyzer = SpeechAnalyzer(modules: [transcriber])
   let resultTask = Task<String, Error> {
@@ -114,7 +116,12 @@ func transcribeWithSpeechAnalyzer(url: URL, localeIdentifier: String) async thro
   }
 
   do {
-    try await analyzer.start(inputAudioFile: audioFile, finishAfterFile: true)
+    let lastSampleTime = try await analyzer.analyzeSequence(from: audioFile)
+    if let lastSampleTime {
+      try await analyzer.finalizeAndFinish(through: lastSampleTime)
+    } else {
+      await analyzer.cancelAndFinishNow()
+    }
     let text = (try await resultTask.value).trimmingCharacters(in: .whitespacesAndNewlines)
     if text.isEmpty {
       throw HelperFailure.emptyResult
@@ -169,21 +176,33 @@ func transcribeWithLegacyRecognizer(url: URL, localeIdentifier: String) async th
 }
 
 func transcribe(path: String, localeIdentifier: String) async throws -> (text: String, engine: String) {
-  try ensureAuthorized()
   let url = URL(fileURLWithPath: path)
   guard FileManager.default.fileExists(atPath: url.path) else {
     throw HelperFailure.invalidRequest("Audio file does not exist")
   }
 
+  var analyzerFailure: Error?
   if #available(macOS 26.0, *) {
     do {
       return (try await transcribeWithSpeechAnalyzer(url: url, localeIdentifier: localeIdentifier), "SpeechAnalyzer")
     } catch {
+      analyzerFailure = error
       // Fall through to the mature URL recognizer. Native speech is optional, so a
       // SpeechAnalyzer asset/runtime miss should not prevent a usable fallback.
     }
   }
 
+  // SpeechAnalyzer is entirely on-device and does not require the legacy
+  // SFSpeechRecognizer authorization. Only request that permission when the
+  // machine actually needs the server-backed compatibility path.
+  do {
+    try ensureAuthorized()
+  } catch {
+    if let analyzerFailure {
+      throw HelperFailure.unavailable("SpeechAnalyzer failed: \(analyzerFailure)")
+    }
+    throw error
+  }
   return (try await transcribeWithLegacyRecognizer(url: url, localeIdentifier: localeIdentifier), "SFSpeechRecognizer")
 }
 
@@ -266,6 +285,13 @@ struct EchoSpeechHelper {
   static func main() async {
     let args = CommandLine.arguments
     if args.contains("--prompt") {
+      let status = await statusPayload(type: "check")
+      let analyzerReady = (status["speechAnalyzerAvailable"] as? Bool) == true &&
+        (status["localeAvailable"] as? Bool) == true
+      if analyzerReady {
+        jsonLine(status)
+        return
+      }
       _ = await requestAuthorization()
       jsonLine(await statusPayload(type: "check"))
       return
@@ -275,7 +301,8 @@ struct EchoSpeechHelper {
       jsonLine(status)
       let authorized = (status["authorization"] as? String) == "authorized"
       let available = (status["localeAvailable"] as? Bool) == true
-      exit(authorized && available ? 0 : 2)
+      let analyzerReady = (status["speechAnalyzerAvailable"] as? Bool) == true && available
+      exit(analyzerReady || (authorized && available) ? 0 : 2)
     }
     if args.contains("--server") {
       jsonLine(await statusPayload(type: "ready"))
