@@ -174,7 +174,7 @@ async function finalize(
     if (
       adjudicated &&
       assessTranscript(adjudicated, options).grade === 'clean' &&
-      isSupportedAdjudication(adjudicated, candidates)
+      isSupportedAdjudication(adjudicated, candidates, Boolean(deps.secondary))
     ) {
       const candidate: TranscriptCandidate = { source: 'adjudicated', text: adjudicated, elapsedMs: 0 }
       clean.push(candidate)
@@ -195,10 +195,28 @@ async function finalize(
   throw new LowConfidenceRecognitionError()
 }
 
-function isSupportedAdjudication(text: string, candidates: TranscriptCandidate[]): boolean {
+function isSupportedAdjudication(
+  text: string,
+  candidates: TranscriptCandidate[],
+  secondaryExpected: boolean
+): boolean {
   const adjudicated = normalizeForSupport(text)
   if (!adjudicated) return false
-  return candidates.some((candidate) => supportSimilarity(adjudicated, normalizeForSupport(candidate.text)) >= 0.72)
+  let remoteSupport = 0
+  let nativeSupport = false
+  let hasNativeCandidate = false
+  for (const candidate of candidates) {
+    const supported = supportSimilarity(adjudicated, normalizeForSupport(candidate.text)) >= 0.72
+    if (candidate.source === 'native') {
+      hasNativeCandidate = true
+      nativeSupport ||= supported
+    } else if (candidate.source !== 'adjudicated' && supported) {
+      remoteSupport++
+    }
+  }
+
+  if (hasNativeCandidate) return nativeSupport || remoteSupport >= 2
+  return remoteSupport >= (secondaryExpected ? 2 : 1)
 }
 
 function normalizeForSupport(text: string): string {

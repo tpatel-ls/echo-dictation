@@ -88,6 +88,29 @@ describe('HistoryStore', () => {
     expect(store.updateCleaned(t.id, 'Hello, world.')?.cleaned_text).toBe('Hello, world.')
   })
 
+  it('replaces a failed transcript after retry while preserving its retained audio', () => {
+    const store = newStore()
+    const t = store.insert(
+      base({ status: 'failed', raw_text: 'Low confidence transcription', audio_path: '/tmp/retry.wav' })
+    )
+    const retried = store.updateRetried(t.id, {
+      rawText: 'How is it going today?',
+      cleanedText: null,
+      model: 'native',
+      latencyMs: 420
+    })
+
+    expect(retried).toMatchObject({
+      status: 'ok',
+      raw_text: 'How is it going today?',
+      cleaned_text: null,
+      word_count: 5,
+      model: 'native',
+      latency_ms: 420,
+      audio_path: '/tmp/retry.wav'
+    })
+  })
+
   it('deletes a row', () => {
     const store = newStore()
     const t = store.insert(base())

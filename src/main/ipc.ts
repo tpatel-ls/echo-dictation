@@ -77,6 +77,7 @@ export function registerIpc(ctx: IpcContext): void {
     await pasteText(t.cleaned_text ?? t.raw_text, realPasteDeps())
     return { ok: true, transcript: t }
   })
+  ipcMain.handle(IPC.HISTORY_RETRY, (_e, id: number) => ctx.controller.retryTranscript(id))
   ipcMain.handle(IPC.HISTORY_POLISH, async (_e, id: number) => {
     const t = ctx.history.get(id)
     if (!t) throw new Error('Transcript not found')

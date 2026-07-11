@@ -53,6 +53,8 @@ export interface Settings {
   commandModeEnabled: boolean
   launchAtLogin: boolean
   micMode: MicMode
+  /** Per-user preferred microphone device id. Empty follows the macOS system default. */
+  audioInputDeviceId: string
   retainAudio: boolean
   insertMode: 'paste'
   overlayOffsetBottom: number
@@ -76,6 +78,7 @@ export const DEFAULT_SETTINGS: Settings = {
   commandModeEnabled: false,
   launchAtLogin: true,
   micMode: 'on-demand',
+  audioInputDeviceId: '',
   retainAudio: true,
   insertMode: 'paste',
   overlayOffsetBottom: 28,
@@ -183,6 +186,7 @@ export const IPC = {
   HISTORY_POLISH: 'history:polish',
   HISTORY_EDIT: 'history:edit',
   HISTORY_REINSERT: 'history:reinsert',
+  HISTORY_RETRY: 'history:retry',
   HISTORY_COPY: 'history:copy',
   HISTORY_AUDIO: 'history:audio',
   DICT_LIST: 'dict:list',
@@ -228,6 +232,7 @@ export interface EchoApi {
     polish(id: number): Promise<Transcript>
     edit(id: number, text: string): Promise<EditResult>
     reinsert(id: number): Promise<InsertResult>
+    retry(id: number): Promise<Transcript>
     copy(id: number): Promise<void>
     getAudio(id: number): Promise<ArrayBuffer | null>
   }
