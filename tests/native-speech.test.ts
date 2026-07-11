@@ -59,7 +59,9 @@ describe('native speech helper protocol', () => {
     expect(speechHelperPath('darwin', '/resources')).toBe(
       '/resources/native/EchoSpeechHelper.app/Contents/MacOS/EchoSpeechHelper'
     )
-    expect(speechHelperPath('win32', '/resources')).toBeNull()
+    expect(speechHelperPath('win32', 'C:\\resources')).toBe(
+      'C:\\resources\\native\\EchoSpeechHelper.exe'
+    )
     expect(speechHelperPath('darwin', undefined, '/repo')).toBe(
       '/repo/out/native/EchoSpeechHelper.app/Contents/MacOS/EchoSpeechHelper'
     )

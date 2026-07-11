@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { EventEmitter } from 'node:events'
 import type { TranscriptCandidate } from '@shared/transcript-quality'
 import type { SecondaryRecognizer } from './accuracy'
+import { helperPath } from '../native/helper-path'
 
 export type SpeechHelperLine =
   | {
@@ -113,9 +114,8 @@ export function speechHelperPath(
   resourcesPath?: string,
   cwd = process.cwd()
 ): string | null {
-  if (platform !== 'darwin') return null
-  const base = resourcesPath ? join(resourcesPath, 'native') : join(cwd, 'out', 'native')
-  return join(base, 'EchoSpeechHelper.app', 'Contents', 'MacOS', 'EchoSpeechHelper')
+  if (platform !== 'darwin' && platform !== 'win32') return null
+  return helperPath('EchoSpeechHelper', platform, resourcesPath, cwd)
 }
 
 export class NativeSpeechRecognizer implements SecondaryRecognizer {
@@ -268,7 +268,7 @@ export function checkNativeSpeechStatus(opts: NativeSpeechRecognizerOptions = {}
 }
 
 function defaultSpawnHelper(path: string, args: string[]): SpeechHelperProcess {
-  return spawn(path, args, { stdio: ['pipe', 'pipe', 'ignore'] }) as unknown as SpeechHelperProcess
+  return spawn(path, args, { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true }) as unknown as SpeechHelperProcess
 }
 
 function stringArray(value: unknown): string[] | undefined {
