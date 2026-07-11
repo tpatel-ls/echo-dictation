@@ -46,6 +46,7 @@ export interface Settings {
   cleanupMode: CleanupMode
   claudeBaseUrl: string
   claudeModel: string
+  accuracyModel: string
   /** Command Mode: when text is selected, treat a dictation as a spoken instruction on it (needs Claude). */
   commandModeEnabled: boolean
   launchAtLogin: boolean
@@ -68,6 +69,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cleanupMode: 'auto',
   claudeBaseUrl: '',
   claudeModel: 'claude-sonnet-4-6',
+  accuracyModel: 'gpt-5.4-mini',
   commandModeEnabled: false,
   launchAtLogin: true,
   micMode: 'on-demand',
