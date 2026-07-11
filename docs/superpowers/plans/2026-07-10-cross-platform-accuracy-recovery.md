@@ -164,11 +164,13 @@ git commit -m "feat: add guarded transcription recovery"
 
 **Files:**
 - Create: `src/main/transcription/accuracy.ts`
+- Modify: `src/main/transcription/adjudicator.ts`
 - Modify: `src/main/dictation.ts`
 - Modify: `src/main/store/history.ts`
 - Modify: `src/main/store/history-file.ts`
 - Modify: `src/shared/types.ts`
 - Create: `tests/accuracy.test.ts`
+- Modify: `tests/adjudicator.test.ts`
 - Modify: `tests/history.test.ts`
 
 **Interfaces:**
@@ -181,6 +183,7 @@ git commit -m "feat: add guarded transcription recovery"
 expect((await recognizeAccurately(wav, request, depsClean)).winner.source).toBe('remote-primary')
 expect((await recognizeAccurately(wav, request, depsNative)).winner.source).toBe('native')
 expect((await recognizeAccurately(wav, request, depsAdjudicated)).winner.source).toBe('adjudicated')
+expect((await recognizeAccurately(wav, requestMaximum, depsFluentMismatch)).winner.text).toBe("How's it going?")
 await expect(recognizeAccurately(wav, request, depsRejected)).rejects.toThrow('low confidence')
 ```
 
@@ -201,13 +204,16 @@ export interface SecondaryRecognizer { transcribe(wavPath: string, locale: 'en-U
 export interface RecognitionOutcome { winner: TranscriptCandidate; candidates: TranscriptCandidate[] }
 ```
 
-`maximum` starts native and primary concurrently, waits at most 1,500 ms for native, and adjudicates
-meaningful disagreement. `balanced` uses native/recovery only for a non-clean primary. `fast` uses
+`maximum` starts temperature 0, temperature 0.8, and native recognition concurrently, waits at most
+1,500 ms for native, and adjudicates meaningful disagreement even when the primary looks clean.
+The fluent mismatch regression uses primary `"I'm a home, I'm a coffee."`, recovery `"How's it going?"`,
+and adjudicated `"How's it going?"`. `balanced` uses native/recovery only for a non-clean primary. `fast` uses
 primary plus rejection guard. Only a `clean` winner may be returned for insertion; all-suspicious or
 all-rejected candidates throw the low-confidence error. `dictation.ts` writes one temporary WAV before recognition, always
 deletes it after the pipeline, and copies it into retained history storage on success or low-confidence
 failure. Remove the punctuation-only fast-path assumption: cleanup can still skip only after quality is
-`clean`. Store the winning source in `model` metadata. Add `accuracyMode: AccuracyMode` to Settings
+`clean`. Pass live glossary terms into adjudication and quality assessment. Store the winning source
+in `model` metadata. Add `accuracyMode: AccuracyMode` to Settings
 with default `'maximum'` so the coordinator and UI share one source of truth.
 
 - [ ] **Step 4: Verify GREEN and full desktop unit suite**
@@ -219,7 +225,7 @@ Expected: all Vitest files pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/main/transcription/accuracy.ts src/main/dictation.ts src/main/store/history.ts src/main/store/history-file.ts src/shared/types.ts tests/accuracy.test.ts tests/history.test.ts
+git add src/main/transcription/accuracy.ts src/main/transcription/adjudicator.ts src/main/dictation.ts src/main/store/history.ts src/main/store/history-file.ts src/shared/types.ts tests/accuracy.test.ts tests/adjudicator.test.ts tests/history.test.ts
 git commit -m "feat: coordinate accurate desktop dictation"
 ```
 
