@@ -12,6 +12,7 @@ import { HotkeyListener } from './hotkey/listener'
 import { registerIpc } from './ipc'
 import { createTray } from './tray'
 import { showMacOnboardingIfNeeded } from './permissions'
+import { NativeSpeechRecognizer } from './transcription/native-speech'
 import { IPC, type Settings } from '@shared/types'
 
 // Keep the always-on app alive through stray errors — one unhandled exception must
@@ -124,7 +125,11 @@ async function main(): Promise<void> {
   // Auto-launch at login passes --hidden so we boot straight to the tray.
   if (!openedHidden) openDashboard()
 
-  const controller = new DictationController(overlay, settings, history, dictionary, snippets)
+  const nativeSpeech = new NativeSpeechRecognizer({
+    platform: process.platform,
+    resourcesPath: app.isPackaged ? process.resourcesPath : undefined
+  })
+  const controller = new DictationController(overlay, settings, history, dictionary, snippets, nativeSpeech)
 
   const opts = (): { minHoldMs: number; cancelOnOtherKey: boolean } => {
     const s = settings.getSettings()
@@ -158,6 +163,7 @@ async function main(): Promise<void> {
     quit: () => {
       quitting = true
       syncRunner.stop()
+      nativeSpeech.shutdown()
       flush()
       app.exit(0)
     }
@@ -178,6 +184,7 @@ async function main(): Promise<void> {
     } catch {
       /* ignore */
     }
+    nativeSpeech.shutdown()
     flush()
   })
 }

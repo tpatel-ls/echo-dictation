@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 // @ts-expect-error Node installer helpers are ESM scripts without TS declarations.
 import { codesignArgs, findIdentityHash, hasAdhocSignature } from '../scripts/mac-signing.mjs'
 
@@ -30,5 +32,18 @@ describe('mac signing helpers', () => {
   it('detects ad-hoc signatures from codesign details', () => {
     expect(hasAdhocSignature('Signature=adhoc\nIdentifier=com.tanay.echo')).toBe(true)
     expect(hasAdhocSignature('Authority=Echo Local Code Signing\nIdentifier=com.tanay.echo')).toBe(false)
+  })
+
+  it('packages the speech recognition usage description for macOS TCC', () => {
+    const builderConfig = readFileSync(join(process.cwd(), 'electron-builder.yml'), 'utf8')
+    expect(builderConfig).toContain('NSSpeechRecognitionUsageDescription')
+  })
+
+  it('builds and signs the macOS speech helper with the Speech framework', () => {
+    const buildScript = readFileSync(join(process.cwd(), 'scripts', 'build-native.mjs'), 'utf8')
+    expect(buildScript).toContain('native/EchoSpeechHelper.swift')
+    expect(buildScript).toContain('EchoSpeechHelper')
+    expect(buildScript).toContain('"Speech"')
+    expect(buildScript).toContain('codesign')
   })
 })
