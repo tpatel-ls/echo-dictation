@@ -195,7 +195,7 @@ describe('recognizeAccurately', () => {
       return 'It is not or phonetic and heavy stuff.'
     })
     const secondary: SecondaryRecognizer = {
-      transcribe: vi.fn(async () => ({
+      transcribe: vi.fn(async (): Promise<TranscriptCandidate> => ({
         source: 'native',
         text: 'It is not a funny necktie.',
         elapsedMs: 800

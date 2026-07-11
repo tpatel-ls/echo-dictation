@@ -42,7 +42,8 @@ describe('mac signing helpers', () => {
   it('builds and signs the macOS speech helper with the Speech framework', () => {
     const buildScript = readFileSync(join(process.cwd(), 'scripts', 'build-native.mjs'), 'utf8')
     expect(buildScript).toContain('native/EchoSpeechHelper.swift')
-    expect(buildScript).toContain('EchoSpeechHelper')
+    expect(buildScript).toContain('EchoSpeechHelper.app')
+    expect(buildScript).toContain('Contents/Info.plist')
     expect(buildScript).toContain('"Speech"')
     expect(buildScript).toContain('codesign')
   })

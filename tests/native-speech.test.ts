@@ -56,9 +56,13 @@ describe('native speech helper protocol', () => {
   })
 
   it('resolves packaged and development helper paths without invoking Electron', () => {
-    expect(speechHelperPath('darwin', '/resources')).toBe('/resources/native/EchoSpeechHelper')
+    expect(speechHelperPath('darwin', '/resources')).toBe(
+      '/resources/native/EchoSpeechHelper.app/Contents/MacOS/EchoSpeechHelper'
+    )
     expect(speechHelperPath('win32', '/resources')).toBeNull()
-    expect(speechHelperPath('darwin', undefined, '/repo')).toBe('/repo/out/native/EchoSpeechHelper')
+    expect(speechHelperPath('darwin', undefined, '/repo')).toBe(
+      '/repo/out/native/EchoSpeechHelper.app/Contents/MacOS/EchoSpeechHelper'
+    )
   })
 })
 

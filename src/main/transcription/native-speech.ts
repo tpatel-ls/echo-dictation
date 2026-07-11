@@ -114,8 +114,8 @@ export function speechHelperPath(
   cwd = process.cwd()
 ): string | null {
   if (platform !== 'darwin') return null
-  if (resourcesPath) return join(resourcesPath, 'native', 'EchoSpeechHelper')
-  return join(cwd, 'out', 'native', 'EchoSpeechHelper')
+  const base = resourcesPath ? join(resourcesPath, 'native') : join(cwd, 'out', 'native')
+  return join(base, 'EchoSpeechHelper.app', 'Contents', 'MacOS', 'EchoSpeechHelper')
 }
 
 export class NativeSpeechRecognizer implements SecondaryRecognizer {
