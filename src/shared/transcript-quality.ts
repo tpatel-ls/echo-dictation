@@ -175,8 +175,9 @@ function hasAssistantReply(text: string): boolean {
   )
 }
 
-function hasExtendedLatinReject(text: string): boolean {
+function hasExtendedLatinSuspicion(text: string): boolean {
   const tokenList = words(text)
+  const functionWordCount = countFunctionWords(tokenList)
   let lowercaseAccentedTokens = 0
   let totalExtendedLatinLetters = 0
 
@@ -193,7 +194,7 @@ function hasExtendedLatinReject(text: string): boolean {
     if (/^\p{Ll}/u.test(token)) lowercaseAccentedTokens++
   }
 
-  return lowercaseAccentedTokens >= 2 && totalExtendedLatinLetters >= 3
+  return functionWordCount < 2 && lowercaseAccentedTokens >= 2 && totalExtendedLatinLetters >= 3
 }
 
 function hasDecoderGarbage(text: string): boolean {
@@ -231,7 +232,7 @@ function hasBrokenQuestionPattern(text: string): boolean {
 
 function hasLowEnglishEvidence(text: string): boolean {
   const tokenList = words(text)
-  if (tokenList.length < 6) return false
+  if (tokenList.length < 4) return false
   const functionWordCount = countFunctionWords(tokenList)
   let technicalTokenCount = 0
 
@@ -251,10 +252,10 @@ export function assessTranscript(text: string, options: QualityOptions): Transcr
   if (!trimmed || !/[\p{L}\p{N}]/u.test(trimmed)) rejectReasons.push('empty')
   if (/[ðþÐÞ]/u.test(glossaryStripped)) rejectReasons.push('forbidden-script')
   if (hasAssistantReply(trimmed)) rejectReasons.push('assistant-reply')
-  if (hasExtendedLatinReject(glossaryStripped)) rejectReasons.push('extended-latin')
   if (hasDecoderGarbage(glossaryStripped)) rejectReasons.push('decoder-garbage')
 
   if (!rejectReasons.length) {
+    if (hasExtendedLatinSuspicion(glossaryStripped)) suspiciousReasons.push('extended-latin')
     if (hasBrokenQuestionPattern(trimmed)) suspiciousReasons.push('broken-question')
     if (hasLowEnglishEvidence(glossaryStripped)) suspiciousReasons.push('low-english-evidence')
   }

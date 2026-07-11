@@ -2,16 +2,20 @@ import { describe, expect, it } from 'vitest'
 import { assessTranscript, chooseTranscript } from '@shared/transcript-quality'
 
 describe('assessTranscript', () => {
-  it('rejects obvious wrong-language output', () => {
+  it('keeps deterministic forbidden letters rejected and marks other wrong-language output non-clean', () => {
     expect(assessTranscript('Einn snop og þá minn ekki röggli og feitsið gís.', { language: 'en' }).grade)
       .toBe('reject')
-    expect(assessTranscript('Oddváey, Foss, sýttir á.', { language: 'en' }).grade).toBe('reject')
+    expect(assessTranscript('Oddváey, Foss, sýttir á.', { language: 'en' }).grade).toBe('suspicious')
     expect(assessTranscript('Einn snop and sýttir á röggli feitsí gís.', { language: 'en' }).grade)
-      .toBe('reject')
+      .toBe('suspicious')
   })
 
   it('flags broken multiword English as suspicious', () => {
     expect(assessTranscript('How do I force figure out?', { language: 'en' }).grade).toBe('suspicious')
+  })
+
+  it('flags short low-english-evidence garble at four words', () => {
+    expect(assessTranscript('einn snop gisi takk', { language: 'en' }).grade).toBe('suspicious')
   })
 
   it('keeps technical phrases and glossary terms clean', () => {
@@ -46,7 +50,7 @@ describe('assessTranscript', () => {
     expect(assessTranscript('Here is the plan: deploy after lunch.', { language: 'en' }).grade).toBe('clean')
     expect(assessTranscript('Jose met Zoe in Montreal.', { language: 'en' }).grade).toBe('clean')
     expect(assessTranscript('José met Zoë in Montréal.', { language: 'en' }).grade).toBe('clean')
-    expect(assessTranscript('Please email José and Zoë in Montréal.', { language: 'en' }).grade).toBe('clean')
+    expect(assessTranscript('please email josé and zoë in montréal', { language: 'en' }).grade).toBe('clean')
   })
 })
 
@@ -75,10 +79,10 @@ describe('chooseTranscript', () => {
     expect(chooseTranscript([], { language: 'en' })).toBeNull()
   })
 
-  it('returns null when every candidate is rejected', () => {
+  it('returns null when every candidate is deterministically rejected', () => {
     expect(chooseTranscript([
-      { source: 'remote-primary', text: 'Einn snop og þá minn ekki röggli.', elapsedMs: 300 },
-      { source: 'native', text: 'Oddváey, Foss, sýttir á.', elapsedMs: 200 }
+      { source: 'remote-primary', text: ' ... ', elapsedMs: 300 },
+      { source: 'native', text: "You're welcome.", elapsedMs: 200 }
     ], { language: 'en' })).toBeNull()
   })
 
