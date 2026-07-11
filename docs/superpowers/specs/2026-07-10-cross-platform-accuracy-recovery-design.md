@@ -62,7 +62,8 @@ starts rescue work:
 4. require a transcript-only English reconstruction based on phonetic agreement across the
    candidates, never a conversational reply or a blind preference for the most fluent candidate;
 5. validate the response through the same quality and
-   assistant-reply guards;
+   assistant-reply guards, and require close wording support from at least one recognizer so the
+   adjudicator cannot invent a polished new sentence;
 6. apply deterministic dictionary replacement, voice commands, snippets, and optional cleanup.
 
 If adjudication is unavailable, choose the highest-quality clean independent candidate. If no

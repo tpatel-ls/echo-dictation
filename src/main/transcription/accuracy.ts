@@ -171,7 +171,11 @@ async function finalize(
 
   if (disagreement) {
     const adjudicated = await runAdjudicator([...candidates], request, deps).catch(() => null)
-    if (adjudicated && assessTranscript(adjudicated, options).grade === 'clean') {
+    if (
+      adjudicated &&
+      assessTranscript(adjudicated, options).grade === 'clean' &&
+      isSupportedAdjudication(adjudicated, candidates)
+    ) {
       const candidate: TranscriptCandidate = { source: 'adjudicated', text: adjudicated, elapsedMs: 0 }
       clean.push(candidate)
       candidates.push(candidate)
@@ -189,6 +193,64 @@ async function finalize(
   if (winner) return { winner, candidates }
   if (!candidates.length && errors.length) throw errors[0]
   throw new LowConfidenceRecognitionError()
+}
+
+function isSupportedAdjudication(text: string, candidates: TranscriptCandidate[]): boolean {
+  const adjudicated = normalizeForSupport(text)
+  if (!adjudicated) return false
+  return candidates.some((candidate) => supportSimilarity(adjudicated, normalizeForSupport(candidate.text)) >= 0.72)
+}
+
+function normalizeForSupport(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[’]/g, "'")
+    .replace(/\bi'm\b/g, 'i am')
+    .replace(/\b(he|how|it|she|that|there|what|where|who)'s\b/g, '$1 is')
+    .replace(/\bcan't\b/g, 'cannot')
+    .replace(/\bwon't\b/g, 'will not')
+    .replace(/n't\b/g, ' not')
+    .replace(/'re\b/g, ' are')
+    .replace(/'ve\b/g, ' have')
+    .replace(/'ll\b/g, ' will')
+    .match(/[\p{L}\p{N}]+/gu)
+    ?.join(' ') ?? ''
+}
+
+function supportSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0
+  if (a === b) return 1
+  const aTokens = a.split(' ')
+  const bTokens = b.split(' ')
+  const remaining = new Map<string, number>()
+  for (const token of bTokens) remaining.set(token, (remaining.get(token) ?? 0) + 1)
+  let overlap = 0
+  for (const token of aTokens) {
+    const count = remaining.get(token) ?? 0
+    if (count > 0) {
+      overlap++
+      remaining.set(token, count - 1)
+    }
+  }
+  const tokenDice = (2 * overlap) / (aTokens.length + bTokens.length)
+  const charSimilarity = 1 - editDistance(a, b) / Math.max(a.length, b.length)
+  return Math.max(tokenDice, charSimilarity)
+}
+
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index)
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i]
+    for (let j = 1; j <= b.length; j++) {
+      current[j] = Math.min(
+        (current[j - 1] ?? 0) + 1,
+        (previous[j] ?? 0) + 1,
+        (previous[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1)
+      )
+    }
+    previous = current
+  }
+  return previous[b.length] ?? b.length
 }
 
 function chooseExactConsensus(

@@ -210,7 +210,8 @@ native recognition concurrently, waits at most
 The fluent mismatch regression uses temperature-0 `"I'm a home, I'm a coffee."`, three temperature-0.3
 `"How's it going?"` samples, temperature-0.8 `"How's it away?"`, and adjudicated `"How's it going?"`.
 The adjudicator reconstructs the faithful English utterance from phonetic agreement across candidates;
-it does not merely choose the most fluent candidate. `balanced` uses native/recovery only for a non-clean primary. `fast` uses
+it does not merely choose the most fluent candidate. Its result must remain closely supported by at
+least one recognizer candidate or the coordinator fails safely. `balanced` uses native/recovery only for a non-clean primary. `fast` uses
 primary plus rejection guard. Only a `clean` winner may be returned for insertion; all-suspicious or
 all-rejected candidates throw the low-confidence error. `dictation.ts` writes one temporary WAV before recognition, always
 deletes it after the pipeline, and copies it into retained history storage on success or low-confidence
