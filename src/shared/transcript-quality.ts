@@ -243,6 +243,13 @@ function hasLowEnglishEvidence(text: string): boolean {
   return functionWordCount === 0 && technicalTokenCount < 2
 }
 
+function hasNonLatinScript(text: string): boolean {
+  for (const char of text) {
+    if (/\p{L}/u.test(char) && !/\p{Script=Latin}/u.test(char)) return true
+  }
+  return false
+}
+
 export function assessTranscript(text: string, options: QualityOptions): TranscriptAssessment {
   const trimmed = text.trim()
   const glossaryStripped = stripGlossary(trimmed, options.glossary)
@@ -250,6 +257,7 @@ export function assessTranscript(text: string, options: QualityOptions): Transcr
   const suspiciousReasons: string[] = []
 
   if (!trimmed || !/[\p{L}\p{N}]/u.test(trimmed)) rejectReasons.push('empty')
+  if (hasNonLatinScript(glossaryStripped)) rejectReasons.push('non-latin-script')
   if (/[ðþÐÞ]/u.test(glossaryStripped)) rejectReasons.push('forbidden-script')
   if (hasAssistantReply(trimmed)) rejectReasons.push('assistant-reply')
   if (hasDecoderGarbage(glossaryStripped)) rejectReasons.push('decoder-garbage')

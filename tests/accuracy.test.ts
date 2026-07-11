@@ -17,12 +17,13 @@ const wav: RecognitionAudio = { path: '/tmp/echo-input.wav', buffer: new ArrayBu
 
 const settings: Pick<
   Settings,
-  'accuracyMode' | 'whisperBaseUrl' | 'whisperModel' | 'claudeBaseUrl' | 'accuracyModel'
+  'accuracyMode' | 'whisperBaseUrl' | 'whisperModel' | 'claudeBaseUrl' | 'claudeModel' | 'accuracyModel'
 > = {
   accuracyMode: 'balanced',
   whisperBaseUrl: 'https://whisper.example/v1',
   whisperModel: 'whisper-1',
   claudeBaseUrl: 'https://claude.example/v1',
+  claudeModel: 'claude-sonnet-4-6',
   accuracyModel: 'gpt-5.4-mini'
 }
 
@@ -97,7 +98,7 @@ describe('recognizeAccurately', () => {
     const outcome = await recognizeAccurately(wav, request(), deps({ primary, secondary }))
 
     expect(outcome.winner.source).toBe('native')
-    expect(primary.mock.calls.map((call) => call[2].temperature)).toEqual([0, 0.8])
+    expect(primary.mock.calls.map((call) => call[2].temperature)).toEqual([0, 0.3])
     expect(secondary.transcribe).toHaveBeenCalledWith('/tmp/echo-input.wav', 'en-US')
   })
 
@@ -124,11 +125,13 @@ describe('recognizeAccurately', () => {
     })
   })
 
-  it('maximum mode always dual-decodes so a fluent wrong primary cannot bypass rescue', async () => {
-    const primary = vi.fn<RecognitionDeps['primary']>(async (_wav, _request, opts) =>
-      opts.temperature === 0 ? "I'm a home, I'm a coffee." : "How's it going?"
-    )
-    const adjudicator = vi.fn(async () => "How's it going?")
+  it('maximum mode uses a sampling ensemble so phonetic agreement can beat a fluent wrong primary', async () => {
+    const primary = vi.fn<RecognitionDeps['primary']>(async (_wav, _request, opts) => {
+      if (opts.temperature === 0) return "I'm a home, I'm a coffee."
+      if (opts.temperature === 0.3) return "How's it going?"
+      return "How's it away?"
+    })
+    const adjudicator = vi.fn(async (_candidates: TranscriptCandidate[]) => "How's it going?")
 
     const outcome = await recognizeAccurately(
       wav,
@@ -136,8 +139,16 @@ describe('recognizeAccurately', () => {
       deps({ primary, adjudicator })
     )
 
-    expect(primary.mock.calls.map((call) => call[2].temperature)).toEqual([0, 0.8])
+    expect(primary.mock.calls.map((call) => call[2].temperature)).toEqual([0, 0.3, 0.3, 0.3, 0.8])
     expect(adjudicator).toHaveBeenCalledOnce()
+    const adjudicatedCandidates = adjudicator.mock.calls[0]?.[0] ?? []
+    expect(adjudicatedCandidates.map((candidate) => candidate.text)).toEqual([
+      "I'm a home, I'm a coffee.",
+      "How's it going?",
+      "How's it going?",
+      "How's it going?",
+      "How's it away?"
+    ])
     expect(outcome.winner).toMatchObject({ source: 'adjudicated', text: "How's it going?" })
   })
 
@@ -155,7 +166,43 @@ describe('recognizeAccurately', () => {
       deps({ primary, adjudicator })
     )
 
-    expect(outcome.winner).toMatchObject({ source: 'remote-primary', text: 'Turn on captions.' })
+    expect(outcome.winner).toMatchObject({ source: 'remote-recovery', text: 'Turn off captions.' })
+  })
+
+  it('maximum mode adjudicates every hypothesis when the lone English-looking decode is an outlier', async () => {
+    const primary = vi.fn<RecognitionDeps['primary']>(async (_wav, _request, opts) => {
+      if (opts.temperature === 0) return 'Einn snop og þá minn ekki röggli og feitsið gís.'
+      if (opts.temperature === 0.3) return 'Eitt snobt og famið nekkarri klimófeyddshyllis.'
+      return 'It is not or phonetic and heavy stuff.'
+    })
+    const adjudicator = vi.fn(async (_candidates: TranscriptCandidate[]) => 'It is not a funny necktie.')
+
+    const outcome = await recognizeAccurately(
+      wav,
+      request({ settings: { ...settings, accuracyMode: 'maximum' } }),
+      deps({ primary, adjudicator })
+    )
+
+    expect(adjudicator).toHaveBeenCalledOnce()
+    expect((adjudicator.mock.calls[0]?.[0] ?? []).map((candidate) => candidate.text)).toHaveLength(5)
+    expect(outcome.winner).toMatchObject({ source: 'adjudicated', text: 'It is not a funny necktie.' })
+  })
+
+  it('maximum mode fails safely when a lone clean outlier cannot be adjudicated', async () => {
+    const primary = vi.fn<RecognitionDeps['primary']>(async (_wav, _request, opts) => {
+      if (opts.temperature === 0) return 'Einn snop og þá minn ekki röggli og feitsið gís.'
+      if (opts.temperature === 0.3) return 'Eitt snobt og famið nekkarri klimófeyddshyllis.'
+      return 'It is not or phonetic and heavy stuff.'
+    })
+    const adjudicator = vi.fn(async () => null)
+
+    await expect(
+      recognizeAccurately(
+        wav,
+        request({ settings: { ...settings, accuracyMode: 'maximum' } }),
+        deps({ primary, adjudicator })
+      )
+    ).rejects.toThrow(LowConfidenceRecognitionError)
   })
 
   it('uses glossary terms during quality assessment', async () => {
