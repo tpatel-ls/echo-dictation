@@ -13,6 +13,7 @@ import { defaultTriggerKey } from '@shared/trigger'
 import { writeFileAtomic } from './atomic-file'
 import { readJsonWithRecovery } from './json-recovery'
 import { applySeedEndpoints, parseSeed, type SeedFile } from './seed'
+import { normalizeSettings } from './settings-migration'
 
 /**
  * Plain settings live as JSON in userData. API keys are stored separately in a local
@@ -39,8 +40,8 @@ export class SettingsStore {
     const seeded = applySeedEndpoints(this.settings, this.loadSeed(), { seedSync: !hadSettings })
     if (seeded) {
       this.settings = seeded
-      this.persistSettings()
     }
+    if (hadSettings || seeded) this.persistSettings()
   }
 
   getSettings(): Settings {
@@ -48,7 +49,7 @@ export class SettingsStore {
   }
 
   setSettings(patch: Partial<Settings>): Settings {
-    this.settings = { ...this.settings, ...patch }
+    this.settings = normalizeSettings({ ...this.settings, ...patch }, this.settings)
     this.persistSettings()
     return this.getSettings()
   }
@@ -71,11 +72,13 @@ export class SettingsStore {
   }
 
   private loadSettings(): Settings {
-    const raw = readJsonWithRecovery<Partial<Settings>>(this.settingsPath)
-    if (raw) return { ...DEFAULT_SETTINGS, ...raw }
     // Fresh install: the default trigger key depends on the keyboard. macOS has no
     // Right Ctrl, so a Windows default of RightControl would be undictatable there.
-    return { ...DEFAULT_SETTINGS, triggerKey: defaultTriggerKey(process.platform as OSPlatform) }
+    const defaults = {
+      ...DEFAULT_SETTINGS,
+      triggerKey: defaultTriggerKey(process.platform as OSPlatform)
+    }
+    return normalizeSettings(readJsonWithRecovery(this.settingsPath), defaults)
   }
 
   private loadSecrets(): Secrets {
