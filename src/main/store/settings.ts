@@ -11,6 +11,7 @@ import {
 } from '@shared/types'
 import { defaultTriggerKey } from '@shared/trigger'
 import { writeFileAtomic } from './atomic-file'
+import { readJsonWithRecovery } from './json-recovery'
 import { applySeedEndpoints, parseSeed, type SeedFile } from './seed'
 
 /**
@@ -70,14 +71,8 @@ export class SettingsStore {
   }
 
   private loadSettings(): Settings {
-    try {
-      if (existsSync(this.settingsPath)) {
-        const raw = JSON.parse(readFileSync(this.settingsPath, 'utf8')) as Partial<Settings>
-        return { ...DEFAULT_SETTINGS, ...raw }
-      }
-    } catch {
-      /* fall through to defaults */
-    }
+    const raw = readJsonWithRecovery<Partial<Settings>>(this.settingsPath)
+    if (raw) return { ...DEFAULT_SETTINGS, ...raw }
     // Fresh install: the default trigger key depends on the keyboard. macOS has no
     // Right Ctrl, so a Windows default of RightControl would be undictatable there.
     return { ...DEFAULT_SETTINGS, triggerKey: defaultTriggerKey(process.platform as OSPlatform) }
