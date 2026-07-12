@@ -1,11 +1,12 @@
 import { app } from 'electron'
 import { spawn } from 'node:child_process'
-import { appendFileSync, existsSync, statSync, truncateSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { HotkeyMachine, type MachineOptions } from './machine'
 import type { TriggerKey } from '@shared/types'
 import { helperPath } from '../native/helper-path'
 import { NativeHelperSupervisor, type SupervisedProcess } from '../native/helper-supervisor'
+import { appendRotatingLog } from '../diagnostic-log'
 
 export interface HotkeyCallbacks {
   onStart: () => void
@@ -180,11 +181,6 @@ const defaultHotkeyDeps: HotkeyListenerDeps = {
 }
 
 function diagnosticLog(message: string): void {
-  try {
-    const file = join(app.getPath('userData'), 'hotkey.log')
-    if (existsSync(file) && statSync(file).size > 64 * 1024) truncateSync(file, 0)
-    appendFileSync(file, `${new Date().toISOString()} ${message}\n`)
-  } catch {
-    /* Diagnostics must never affect dictation. */
-  }
+  const file = join(app.getPath('userData'), 'hotkey.log')
+  appendRotatingLog(file, `${new Date().toISOString()} ${message}\n`)
 }
