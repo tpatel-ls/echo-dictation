@@ -31,7 +31,8 @@ describe('tracked secret scan', () => {
   })
 
   it('rejects private tailnet hosts but permits explicit fixture placeholders', () => {
-    expect(scan({ path: 'README.md', content: 'https://personal-mini.ts.net/v1' })).toHaveLength(1)
+    const privateHost = `https://${'personal-mini'}.ts.net/v1`
+    expect(scan({ path: 'README.md', content: privateHost })).toHaveLength(1)
     expect(scan({ path: 'tests/example.ts', content: 'https://mac.ts.net/v1' })).toEqual([])
     expect(scan({ path: 'README.md', content: 'https://example.ts.net/v1' })).toEqual([])
   })

@@ -57,4 +57,16 @@ describe('repository automation policy', () => {
     expect(config).toContain('update-types: [minor, patch]')
     expect(config).not.toContain('update-types: [major, minor, patch]')
   })
+
+  it('documents private vulnerability reporting and Echo data boundaries', () => {
+    const policy = repositoryFile('SECURITY.md')
+
+    expect(policy).toContain('Report a vulnerability')
+    expect(policy).toContain('privately')
+    expect(policy).toContain('three business days')
+    expect(policy).toContain('credentials')
+    expect(policy).toContain('audio')
+    expect(policy).toContain('Application Support/echo')
+    expect(policy).toContain('%APPDATA%')
+  })
 })
