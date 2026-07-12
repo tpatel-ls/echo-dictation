@@ -69,4 +69,21 @@ describe('repository automation policy', () => {
     expect(policy).toContain('Application Support/echo')
     expect(policy).toContain('%APPDATA%')
   })
+
+  it('defines tested contribution and pull request standards', () => {
+    const guide = repositoryFile('CONTRIBUTING.md')
+    const template = repositoryFile('.github/pull_request_template.md')
+
+    for (const text of [guide, template]) {
+      expect(text).toContain('npm run check:desktop')
+      expect(text).toContain('npm run check:android')
+      expect(text).toContain('npm run check:secrets')
+      expect(text).toContain('No credentials')
+    }
+    expect(guide).toContain('test first')
+    expect(guide).toContain('No AI attribution')
+    expect(template).toContain('macOS')
+    expect(template).toContain('Windows')
+    expect(template).toContain('Android')
+  })
 })
