@@ -71,6 +71,13 @@ export class HistoryStore {
     )
   }
 
+  listAll(): Transcript[] {
+    return this.query(
+      'SELECT * FROM transcripts WHERE deleted = 0 ORDER BY created_at DESC, id DESC',
+      []
+    )
+  }
+
   search(q: string, opts: ListOpts): Transcript[] {
     const like = `%${q}%`
     return this.query(

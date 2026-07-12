@@ -1,6 +1,7 @@
 import { ipcMain, clipboard, dialog } from 'electron'
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { serializeDictionary } from '@shared/dict-export'
+import { serializeTranscriptJson } from '@shared/transcript-export'
 import {
   IPC,
   type AudioMeta,
@@ -22,6 +23,7 @@ import { pasteText } from './insert/paste'
 import { runDiagnostic } from './diagnostics'
 import { createDiagnosticReport } from './diagnostic-report'
 import { learnFromEdit } from './learn'
+import { writeFileAtomic } from './store/atomic-file'
 
 export interface IpcContext {
   settings: SettingsStore
@@ -71,6 +73,17 @@ export function registerIpc(ctx: IpcContext): void {
   ipcMain.handle(IPC.HISTORY_COPY, (_e, id: number) => {
     const t = ctx.history.get(id)
     if (t) clipboard.writeText(t.cleaned_text ?? t.raw_text)
+  })
+  ipcMain.handle(IPC.HISTORY_EXPORT_JSON, async (): Promise<string | null> => {
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Export transcript history',
+      defaultPath: 'echo-transcripts.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    })
+    if (canceled || !filePath) return null
+    const exported = serializeTranscriptJson(ctx.history.listAll())
+    writeFileAtomic(filePath, JSON.stringify(exported, null, 2))
+    return filePath
   })
   ipcMain.handle(IPC.HISTORY_REINSERT, async (_e, id: number) => {
     const t = ctx.history.get(id)
