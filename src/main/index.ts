@@ -160,7 +160,7 @@ async function main(): Promise<void> {
     syncRunner.trigger() // picking up a newly-set sync endpoint reconciles right away
   }
 
-  registerIpc({ settings, history, dictionary, controller, listener, openDashboard, onSettingsChanged })
+  registerIpc({ settings, history, dictionary, snippets, controller, listener, openDashboard, onSettingsChanged })
   createTray({
     openDashboard,
     settings,

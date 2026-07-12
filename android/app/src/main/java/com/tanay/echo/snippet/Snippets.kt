@@ -15,6 +15,23 @@ fun expandSnippet(text: String, snippets: List<Snippet>): String? {
     return snippets.firstOrNull { normalizeCue(it.cue) == key }?.expansion
 }
 
+fun filterSnippets(snippets: List<Snippet>, query: String): List<Snippet> =
+    filterSnippetItems(snippets, query, { it.cue }, { it.expansion })
+
+fun <T> filterSnippetItems(
+    snippets: List<T>,
+    query: String,
+    cue: (T) -> String,
+    expansion: (T) -> String,
+): List<T> {
+    val needle = normalizeSearchText(query)
+    if (needle.isEmpty()) return snippets
+    return snippets.filter { normalizeSearchText("${cue(it)} ${expansion(it)}").contains(needle) }
+}
+
+private fun normalizeSearchText(value: String): String =
+    value.lowercase().trim().replace(Regex("\\s+"), " ")
+
 private fun normalizeCue(s: String): String =
     s.lowercase()
         .replace(Regex("\\s+"), " ")

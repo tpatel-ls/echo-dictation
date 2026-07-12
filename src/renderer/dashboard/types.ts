@@ -1,4 +1,4 @@
-export type Page = 'history' | 'dictionary' | 'stats' | 'settings' | 'diagnostics'
+export type Page = 'history' | 'dictionary' | 'snippets' | 'stats' | 'settings' | 'diagnostics'
 
 /** Optional one-click action on a toast (e.g. Undo for learned corrections). */
 export interface ToastAction {

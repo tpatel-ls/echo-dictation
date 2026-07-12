@@ -7,6 +7,8 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import android.text.Editable
+import android.text.TextWatcher
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
@@ -14,6 +16,7 @@ import com.tanay.echo.R
 import com.tanay.echo.data.SnippetDatabase
 import com.tanay.echo.data.SnippetEntity
 import com.tanay.echo.data.SnippetStore
+import com.tanay.echo.snippet.filterSnippetItems
 
 /**
  * Manage voice snippets (cue → expansion); speaking a cue during dictation pastes its expansion.
@@ -27,6 +30,8 @@ class SnippetsActivity : AppCompatActivity() {
     private lateinit var saveButton: MaterialButton
     private lateinit var list: LinearLayout
     private lateinit var empty: TextView
+    private lateinit var search: TextInputEditText
+    private var rows: List<SnippetEntity> = emptyList()
     private var editingId: Long? = null // null = adding new; set = editing that row
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,6 +42,12 @@ class SnippetsActivity : AppCompatActivity() {
         saveButton = findViewById(R.id.snippet_save)
         list = findViewById(R.id.snippet_list)
         empty = findViewById(R.id.snippet_empty)
+        search = findViewById(R.id.snippet_search)
+        search.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = bindFiltered()
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
         saveButton.setOnClickListener { save() }
         reload()
     }
@@ -59,9 +70,17 @@ class SnippetsActivity : AppCompatActivity() {
     }
 
     private fun reload() = Thread {
-        val rows = store.rows()
-        runOnUiThread { bind(rows) }
+        val loaded = store.rows()
+        runOnUiThread {
+            rows = loaded
+            bindFiltered()
+        }
     }.start()
+
+    private fun bindFiltered() {
+        val filtered = filterSnippetItems(rows, search.text?.toString().orEmpty(), { it.cue }, { it.expansion })
+        bind(filtered)
+    }
 
     private fun bind(rows: List<SnippetEntity>) {
         list.removeAllViews()

@@ -16,6 +16,7 @@ import {
 import type { SettingsStore } from './store/settings'
 import type { HistoryStore } from './store/history'
 import type { DictionaryStore } from './store/dictionary'
+import type { SnippetsStore } from './store/snippets'
 import type { DictationController } from './dictation'
 import type { HotkeyListener } from './hotkey/listener'
 import { cleanup } from './transcription/claude'
@@ -30,6 +31,7 @@ export interface IpcContext {
   settings: SettingsStore
   history: HistoryStore
   dictionary: DictionaryStore
+  snippets: SnippetsStore
   controller: DictationController
   listener: HotkeyListener
   openDashboard: () => void
@@ -190,6 +192,18 @@ export function registerIpc(ctx: IpcContext): void {
     }
     return { imported: parsed.entries.length, skipped: parsed.skipped }
   })
+
+  // ── Voice snippets ───────────────────────────────────────────────────────────
+  ipcMain.handle(IPC.SNIPPET_LIST, () => ctx.snippets.list())
+  ipcMain.handle(IPC.SNIPPET_ADD, (_e, cue: string, expansion: string) =>
+    ctx.snippets.add(cue, expansion)
+  )
+  ipcMain.handle(IPC.SNIPPET_UPDATE, (
+    _e,
+    id: number,
+    patch: { cue?: string; expansion?: string }
+  ) => ctx.snippets.update(id, patch))
+  ipcMain.handle(IPC.SNIPPET_DELETE, (_e, id: number) => ctx.snippets.delete(id))
 
   // ── Settings + secrets ────────────────────────────────────────────────────────
   ipcMain.handle(IPC.SETTINGS_GET, () => ctx.settings.getSettings())

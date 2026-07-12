@@ -3,6 +3,7 @@ import { Sidebar } from './components/Sidebar'
 import { Toast } from './components/Toast'
 import { History } from './pages/History'
 import { Dictionary } from './pages/Dictionary'
+import { Snippets } from './pages/Snippets'
 import { Stats } from './pages/Stats'
 import { Settings } from './pages/Settings'
 import { Diagnostics } from './pages/Diagnostics'
@@ -38,6 +39,7 @@ export function App(): JSX.Element {
       <main className="flex-1 min-w-0 bg-bg">
         {page === 'history' && <History notify={notify} />}
         {page === 'dictionary' && <Dictionary notify={notify} />}
+        {page === 'snippets' && <Snippets notify={notify} />}
         {page === 'stats' && <Stats />}
         {page === 'settings' && <Settings notify={notify} />}
         {page === 'diagnostics' && <Diagnostics notify={notify} />}
