@@ -6,6 +6,7 @@ import {
   type Settings,
   type TriggerKey
 } from '@shared/types'
+import { normalizeEndpointUrl } from './endpoint-url'
 
 const TRIGGER_KEYS = new Set<TriggerKey>([
   'RightControl', 'LeftControl', 'RightCommand', 'LeftCommand', 'EitherOption',
@@ -55,13 +56,13 @@ export function normalizeSettings(
     triggerKey: triggerKey(value.triggerKey, defaults.triggerKey),
     minHoldMs: boundedInteger(value.minHoldMs, defaults.minHoldMs, 50, 5_000),
     cancelOnOtherKey: booleanValue(value.cancelOnOtherKey, defaults.cancelOnOtherKey),
-    whisperBaseUrl: stringValue(value.whisperBaseUrl, defaults.whisperBaseUrl),
+    whisperBaseUrl: normalizeEndpointUrl(value.whisperBaseUrl, defaults.whisperBaseUrl),
     whisperModel: stringValue(value.whisperModel, defaults.whisperModel),
     cleanupMode: cleanupMode(value.cleanupMode, defaults.cleanupMode),
     accuracyMode: ACCURACY_MODES.has(value.accuracyMode as AccuracyMode)
       ? value.accuracyMode as AccuracyMode
       : defaults.accuracyMode,
-    claudeBaseUrl: stringValue(value.claudeBaseUrl, defaults.claudeBaseUrl),
+    claudeBaseUrl: normalizeEndpointUrl(value.claudeBaseUrl, defaults.claudeBaseUrl),
     claudeModel: stringValue(value.claudeModel, defaults.claudeModel),
     accuracyModel: stringValue(value.accuracyModel, defaults.accuracyModel),
     commandModeEnabled: booleanValue(value.commandModeEnabled, defaults.commandModeEnabled),
@@ -76,6 +77,6 @@ export function normalizeSettings(
       0,
       300
     ),
-    syncBaseUrl: stringValue(value.syncBaseUrl, defaults.syncBaseUrl)
+    syncBaseUrl: normalizeEndpointUrl(value.syncBaseUrl, defaults.syncBaseUrl)
   }
 }
