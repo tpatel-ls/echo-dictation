@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest'
 import path from 'node:path'
 import initSqlJs, { type SqlJsStatic, type Database } from 'sql.js'
 import { HistoryStore } from '../src/main/store/history'
@@ -16,6 +16,8 @@ let SQL: SqlJsStatic
 beforeAll(async () => {
   SQL = await initSqlJs({ locateFile: (f: string) => path.join(WASM, f) })
 })
+
+afterEach(() => vi.useRealTimers())
 
 function base(overrides: Partial<NewTranscript> = {}): NewTranscript {
   return {
@@ -230,5 +232,47 @@ describe('SyncClient', () => {
         .map((r) => r.raw_text)
         .sort()
     ).toEqual(['first', 'second'])
+  })
+
+  it('aborts a sync request after its configured timeout', async () => {
+    vi.useFakeTimers()
+    const hangingFetch = vi.fn((_input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+      }))
+    const db = device().db
+    const sync = new SyncClient(
+      [{ name: 'transcripts', table: new SyncTable(db, 'transcripts', [...SYNC_COLUMNS.transcripts]) }],
+      { baseUrl: 'http://sync', token: 'tok', timeoutMs: 5_000 },
+      new MemorySyncState(),
+      { fetch: hangingFetch as unknown as typeof fetch }
+    )
+
+    const pending = sync.syncOnce()
+    const rejection = expect(pending).rejects.toThrow(/timed out after 5000ms/)
+    await vi.advanceTimersByTimeAsync(5_000)
+
+    await rejection
+    expect((hangingFetch.mock.calls[0][1] as RequestInit).signal?.aborted).toBe(true)
+  })
+
+  it('honors caller cancellation immediately', async () => {
+    const hangingFetch = vi.fn((_input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+      }))
+    const db = device().db
+    const sync = new SyncClient(
+      [{ name: 'transcripts', table: new SyncTable(db, 'transcripts', [...SYNC_COLUMNS.transcripts]) }],
+      { baseUrl: 'http://sync', token: 'tok' },
+      new MemorySyncState(),
+      { fetch: hangingFetch as unknown as typeof fetch }
+    )
+    const controller = new AbortController()
+
+    const pending = sync.syncOnce(controller.signal)
+    controller.abort()
+
+    await expect(pending).rejects.toThrow(/cancelled/)
   })
 })

@@ -12,6 +12,7 @@ export class SyncError extends Error {}
 export interface SyncConfig {
   baseUrl: string
   token: string
+  timeoutMs?: number
 }
 
 export interface SyncDeps {
@@ -50,12 +51,13 @@ export class SyncClient {
   ) {}
 
   /** One full reconciliation: pull then push for every collection. */
-  async syncOnce(): Promise<void> {
+  async syncOnce(signal?: AbortSignal): Promise<void> {
     const errors: unknown[] = []
     for (const binding of this.bindings) {
       try {
-        await this.pull(binding)
-        await this.push(binding)
+        if (signal?.aborted) throw new SyncError('sync cancelled')
+        await this.pull(binding, signal)
+        await this.push(binding, signal)
       } catch (e) {
         // Isolate collections: a failure in one must not starve the others this pass.
         errors.push(e)
@@ -64,11 +66,11 @@ export class SyncClient {
     if (errors.length) throw errors[0]
   }
 
-  private async pull(binding: SyncBinding): Promise<void> {
+  private async pull(binding: SyncBinding, signal?: AbortSignal): Promise<void> {
     let cursor = this.state.getCursor(binding.name)
     for (;;) {
       const url = `${joinUrl(this.config.baseUrl, `sync/${binding.name}`)}?since=${cursor}&limit=${PAGE}`
-      const res = await this.deps.fetch(url, { headers: this.authHeader() })
+      const res = await this.request(url, { headers: this.authHeader() }, signal)
       if (!res.ok) throw new SyncError(`pull ${binding.name} failed: ${res.status}`)
       const body = (await res.json()) as PullBody
       for (const rec of body.records) {
@@ -91,7 +93,7 @@ export class SyncClient {
     }
   }
 
-  private async push(binding: SyncBinding): Promise<void> {
+  private async push(binding: SyncBinding, signal?: AbortSignal): Promise<void> {
     const watermark = this.state.getWatermark(binding.name)
     const changes = binding.table.changedSince(watermark)
     if (!changes.length) return
@@ -101,11 +103,11 @@ export class SyncClient {
       deleted: c.deleted,
       payload: JSON.stringify(c.data)
     }))
-    const res = await this.deps.fetch(joinUrl(this.config.baseUrl, `sync/${binding.name}`), {
+    const res = await this.request(joinUrl(this.config.baseUrl, `sync/${binding.name}`), {
       method: 'POST',
       headers: { ...this.authHeader(), 'content-type': 'application/json' },
       body: JSON.stringify({ records })
-    })
+    }, signal)
     if (!res.ok) throw new SyncError(`push ${binding.name} failed: ${res.status}`)
     const highest = changes.reduce((max, c) => Math.max(max, c.updatedAt), watermark)
     this.state.setWatermark(binding.name, highest)
@@ -113,6 +115,28 @@ export class SyncClient {
 
   private authHeader(): Record<string, string> {
     return { Authorization: `Bearer ${this.config.token}` }
+  }
+
+  private async request(url: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
+    const timeoutMs = this.config.timeoutMs ?? 15_000
+    const controller = new AbortController()
+    const cancel = (): void => controller.abort()
+    if (signal?.aborted) cancel()
+    else signal?.addEventListener('abort', cancel, { once: true })
+    const timer = setTimeout(cancel, timeoutMs)
+
+    try {
+      return await this.deps.fetch(url, { ...init, signal: controller.signal })
+    } catch (error) {
+      if (controller.signal.aborted) {
+        if (signal?.aborted) throw new SyncError('sync cancelled')
+        throw new SyncError(`sync request timed out after ${timeoutMs}ms`)
+      }
+      throw error
+    } finally {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', cancel)
+    }
   }
 }
 
