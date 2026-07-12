@@ -16,6 +16,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "check:secrets": "tsx scripts/check-tracked-secrets.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "pack": "npm run build:win && electron-builder --win --x64 --dir",
