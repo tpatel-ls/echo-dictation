@@ -28,6 +28,19 @@ describe('transcribe', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it('uses a per-request temperature override when provided', async () => {
+    const fetchMock = vi.fn(async (_url: unknown, init: any) => {
+      expect((init.body as FormData).get('temperature')).toBe('0.8')
+      return new Response(JSON.stringify({ text: 'override' }), { status: 200 })
+    })
+    expect(
+      await transcribe(new ArrayBuffer(8), settings, 'KEY', deps(fetchMock), {
+        ...fast,
+        temperature: 0.8
+      })
+    ).toBe('override')
+  })
+
   it('retries transient network failures, then succeeds', async () => {
     let n = 0
     const fetchMock = vi.fn(async () => {

@@ -11,15 +11,17 @@ files:
   - package.json
 asarUnpack:
   - '**/node_modules/sql.js/**'
-  - '**/node_modules/uiohook-napi/**'
-  - '**/node_modules/@nut-tree-fork/**'
 extraResources:
   - from: node_modules/sql.js/dist/sql-wasm.wasm
     to: sql-wasm/sql-wasm.wasm
+  - from: out/native
+    to: native
   # Seeds API keys on first run so the packaged app works out of the box (personal
   # build). Remove this + secrets.local.json to require entering keys in Settings.
-  - from: secrets.local.json
-    to: secrets.local.json
+  - from: .
+    to: .
+    filter:
+      - secrets.local.json
 win:
   # Skip signing + rcedit editing — both need the winCodeSign toolchain, whose macOS
   # symlinks can't unpack without symlink privilege on this machine. The exe keeps the
@@ -30,21 +32,24 @@ win:
   artifactName: ${productName}-${version}-setup.${ext}
 nsis:
   oneClick: false
-  perMachine: false
+  perMachine: true
+  allowElevation: true
   allowToChangeInstallationDirectory: true
-  createDesktopShortcut: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
   shortcutName: Echo
+  include: build/installer.nsh
 mac:
   category: public.app-category.productivity
   icon: build/icon-mac.png
   target:
     - dmg
     - zip
-  # Personal/unsigned build — no Apple Developer account required. Gatekeeper will ask
-  # you to right-click → Open the first time. To ship a signed build later, set a real
-  # `identity` and uncomment hardenedRuntime + entitlements below.
-  identity: null
-  # hardenedRuntime: true
+  # Personal local signing identity. This is intentionally not an Apple Developer ID,
+  # but it gives macOS privacy/TCC a stable designated requirement so Accessibility
+  # permissions survive rebuilds on this Mac.
+  identity: Echo Local Code Signing
+  hardenedRuntime: false
   # entitlements: build/entitlements.mac.plist
   # entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
@@ -52,3 +57,5 @@ mac:
     LSUIElement: 1
     # Shown in the macOS microphone-permission prompt.
     NSMicrophoneUsageDescription: Echo transcribes your speech using the Whisper endpoint you configure.
+    # Shown if Apple Speech is used as the optional native accuracy fallback.
+    NSSpeechRecognitionUsageDescription: Echo uses Apple Speech only as a secondary accuracy check for existing dictation audio.

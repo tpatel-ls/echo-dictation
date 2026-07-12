@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.tanay.echo.BuildConfig
+import com.tanay.echo.transcription.AccuracyMode
 
 /**
  * App configuration, stored in EncryptedSharedPreferences (keys/tokens are encrypted at rest via
@@ -53,6 +54,14 @@ class EchoSettings(context: Context) {
         get() = prefs.getString("claudeModel", "claude-sonnet-4-6") ?: "claude-sonnet-4-6"
         set(v) = prefs.edit().putString("claudeModel", v.trim().ifEmpty { "claude-sonnet-4-6" }).apply()
 
+    var accuracyModel: String
+        get() = prefs.getString("accuracyModel", "gpt-5.4-mini") ?: "gpt-5.4-mini"
+        set(v) = prefs.edit().putString("accuracyModel", v.trim().ifEmpty { "gpt-5.4-mini" }).apply()
+
+    var accuracyMode: AccuracyMode
+        get() = AccuracyMode.from(prefs.getString("accuracyMode", AccuracyMode.MAXIMUM.name).orEmpty())
+        set(v) = prefs.edit().putString("accuracyMode", v.name).apply()
+
     /** Context-aware AI formatting: adapt tone to the focused app (casual in chat, polished in email/
      *  docs), spending the Claude pass only where it helps. On by default; a no-op until Claude is
      *  configured. See [com.tanay.echo.transcription.styleForPackage]. */
@@ -60,9 +69,13 @@ class EchoSettings(context: Context) {
         get() = prefs.getBoolean("contextToneEnabled", true)
         set(v) = prefs.edit().putBoolean("contextToneEnabled", v).apply()
 
-    /** Whisper language as an ISO-639-1 code (e.g. "en", "hi", "es"); blank ⇒ auto-detect. */
+    /** Blank/auto values from older builds migrate to English so Whisper cannot drift languages. */
     var language: String
-        get() = prefs.getString("language", "") ?: ""
+        get() = prefs.getString("language", "en")
+            ?.trim()
+            ?.lowercase()
+            ?.takeUnless { it.isEmpty() || it == "auto" }
+            ?: "en"
         set(v) = prefs.edit().putString("language", v.trim()).apply()
 
     /** Whisper Mode: amplify quiet/whispered audio before transcription (see [com.tanay.echo.audio.boostGain]). */
@@ -121,9 +134,9 @@ class EchoSettings(context: Context) {
         seed("claudeBaseUrl", BuildConfig.DEFAULT_CLAUDE_BASE_URL)
         seed("claudeApiKey", BuildConfig.DEFAULT_CLAUDE_API_KEY)
         seed("claudeModel", BuildConfig.DEFAULT_CLAUDE_MODEL)
+        seed("accuracyModel", BuildConfig.DEFAULT_ACCURACY_MODEL)
         seed("syncBaseUrl", BuildConfig.DEFAULT_SYNC_BASE_URL)
         seed("syncToken", BuildConfig.DEFAULT_SYNC_TOKEN)
         if (changed) e.commit()
     }
 }
-

@@ -94,6 +94,57 @@
             android:textColor="@color/echo_muted"
             android:textSize="12sp" />
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="8dp"
+            android:text="@string/field_accuracy"
+            android:textColor="@color/echo_text"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <com.google.android.material.button.MaterialButtonToggleGroup
+            android:id="@+id/accuracy_mode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="4dp"
+            app:selectionRequired="true"
+            app:singleSelection="true">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/accuracy_fast"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/accuracy_fast" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/accuracy_balanced"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/accuracy_balanced" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/accuracy_maximum"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/accuracy_maximum" />
+        </com.google.android.material.button.MaterialButtonToggleGroup>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:text="@string/field_accuracy_hint"
+            android:textColor="@color/echo_muted"
+            android:textSize="12sp" />
+
         <com.google.android.material.materialswitch.MaterialSwitch
             android:id="@+id/whisper_mode"
             android:layout_width="match_parent"
@@ -194,6 +245,20 @@
             android:hint="@string/field_claude_model">
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/claude_model"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="4dp"
+            android:hint="@string/field_accuracy_model">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/accuracy_model"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inputType="text" />

@@ -77,6 +77,7 @@ class WhisperClient(
         apiKey: String,
         prompt: String? = null,
         language: String? = null,
+        temperature: Double = 0.0,
         retries: Int = 2,
         timeoutMs: Long = 20_000
     ): String {
@@ -86,7 +87,7 @@ class WhisperClient(
         var attempt = 0
         while (attempt <= retries) {
             try {
-                return postOnce(url, wav, model, apiKey, currentPrompt, language, timeoutMs)
+                return postOnce(url, wav, model, apiKey, currentPrompt, language, temperature, timeoutMs)
             } catch (e: TranscriptionException) {
                 lastError = e
                 // 4xx is a real client error (bad key/request) — retrying won't help. But the
@@ -113,14 +114,14 @@ class WhisperClient(
         apiKey: String,
         prompt: String?,
         language: String?,
+        temperature: Double,
         timeoutMs: Long
     ): String = withContext(Dispatchers.IO) {
         val form = MultipartBody.Builder().setType(MultipartBody.FORM)
             .addFormDataPart("file", "audio.wav", wav.toRequestBody("audio/wav".toMediaType()))
             .addFormDataPart("model", model)
             .addFormDataPart("response_format", "json")
-            // Deterministic decoding — greedy, no sampling drift between identical dictations.
-            .addFormDataPart("temperature", "0")
+            .addFormDataPart("temperature", temperature.toString())
             .apply { if (prompt != null) addFormDataPart("prompt", prompt) }
             .apply { if (!language.isNullOrEmpty()) addFormDataPart("language", language) }
             .build()

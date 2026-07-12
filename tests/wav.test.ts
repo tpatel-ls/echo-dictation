@@ -44,6 +44,21 @@ describe('resampleLinear', () => {
     expect(out.length).toBe(100)
     expect(out[50]).toBeCloseTo(0.5, 5)
   })
+
+  it('filters frequencies above the 16kHz Nyquist limit instead of aliasing them into speech', () => {
+    const inputRate = 48000
+    const frequency = 12000
+    const input = Float32Array.from(
+      { length: inputRate / 5 },
+      (_, index) => Math.sin((2 * Math.PI * frequency * index) / inputRate)
+    )
+
+    const out = resampleLinear(input, inputRate, 16000)
+    const middle = out.subarray(32, out.length - 32)
+    const rms = Math.sqrt(middle.reduce((sum, sample) => sum + sample * sample, 0) / middle.length)
+
+    expect(rms).toBeLessThan(0.08)
+  })
 })
 
 describe('encodeWav', () => {

@@ -1,4 +1,4 @@
-import { app, safeStorage } from 'electron'
+import { app } from 'electron'
 import { join } from 'node:path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import {
@@ -13,10 +13,12 @@ import { defaultTriggerKey } from '@shared/trigger'
 import { applySeedEndpoints, parseSeed, type SeedFile } from './seed'
 
 /**
- * Plain settings live as JSON in userData. API keys are stored separately, encrypted
- * via Electron's safeStorage (OS keychain). A gitignored `secrets.local.json` (project
- * root in dev, bundled resources when packaged) seeds keys on first run and fills any
- * endpoint URLs the user hasn't set — one file makes a fresh install fully working.
+ * Plain settings live as JSON in userData. API keys are stored separately in a local
+ * JSON file for this personal Mac build. Avoid Electron safeStorage here: when Echo
+ * starts hidden from launchd, Keychain can show an invisible prompt and block the
+ * hotkey listener before it starts. A gitignored `secrets.local.json` (project root in
+ * dev, bundled resources when packaged) seeds keys on first run and fills any endpoint
+ * URLs the user hasn't set — one file makes a fresh install fully working.
  */
 export class SettingsStore {
   private readonly settingsPath: string
@@ -29,9 +31,10 @@ export class SettingsStore {
     mkdirSync(dir, { recursive: true })
     this.settingsPath = join(dir, 'settings.json')
     this.secretsPath = join(dir, 'secrets.bin')
+    const hadSettings = existsSync(this.settingsPath)
     this.settings = this.loadSettings()
     this.secrets = this.loadSecrets()
-    const seeded = applySeedEndpoints(this.settings, this.loadSeed())
+    const seeded = applySeedEndpoints(this.settings, this.loadSeed(), { seedSync: !hadSettings })
     if (seeded) {
       this.settings = seeded
       writeFileSync(this.settingsPath, JSON.stringify(this.settings, null, 2))
@@ -80,24 +83,19 @@ export class SettingsStore {
   }
 
   private loadSecrets(): Secrets {
+    const seed = this.loadSeed()
     try {
       if (existsSync(this.secretsPath)) {
-        const buf = readFileSync(this.secretsPath)
-        const json = safeStorage.isEncryptionAvailable()
-          ? safeStorage.decryptString(buf)
-          : buf.toString('utf8')
-        return { ...EMPTY_SECRETS, ...(JSON.parse(json) as Partial<Secrets>) }
+        const raw = readFileSync(this.secretsPath, 'utf8').trim()
+        if (raw.startsWith('{')) {
+          return { ...EMPTY_SECRETS, ...seedSecrets(seed), ...(JSON.parse(raw) as Partial<Secrets>) }
+        }
       }
     } catch {
       /* fall through to seed */
     }
-    const seed = this.loadSeed()
     if (seed.whisperApiKey || seed.claudeApiKey || seed.syncToken) {
-      const merged: Secrets = {
-        whisperApiKey: seed.whisperApiKey ?? '',
-        claudeApiKey: seed.claudeApiKey ?? '',
-        syncToken: seed.syncToken ?? ''
-      }
+      const merged = seedSecrets(seed)
       this.persistSecrets(merged)
       return merged
     }
@@ -124,10 +122,15 @@ export class SettingsStore {
 
   private persistSecrets(s: Secrets): void {
     const json = JSON.stringify(s)
-    const buf = safeStorage.isEncryptionAvailable()
-      ? safeStorage.encryptString(json)
-      : Buffer.from(json, 'utf8')
-    writeFileSync(this.secretsPath, buf)
+    writeFileSync(this.secretsPath, json, { mode: 0o600 })
+  }
+}
+
+function seedSecrets(seed: SeedFile): Secrets {
+  return {
+    whisperApiKey: seed.whisperApiKey ?? '',
+    claudeApiKey: seed.claudeApiKey ?? '',
+    syncToken: seed.syncToken ?? ''
   }
 }
 

@@ -23,6 +23,10 @@ describe('parseSeed', () => {
 })
 
 describe('applySeedEndpoints', () => {
+  it('ships the recovery adjudicator default model', () => {
+    expect(DEFAULT_SETTINGS.accuracyModel).toBe('gpt-5.4-mini')
+  })
+
   it('fills an empty whisperBaseUrl from the seed', () => {
     const out = applySeedEndpoints(settings(), { whisperBaseUrl: 'https://w.example/v1' })
     expect(out?.whisperBaseUrl).toBe('https://w.example/v1')
@@ -38,6 +42,11 @@ describe('applySeedEndpoints', () => {
     expect(out?.syncBaseUrl).toBe('https://sync.example')
   })
 
+  it('can leave syncBaseUrl empty when an existing user disabled sync', () => {
+    const out = applySeedEndpoints(settings(), { syncBaseUrl: 'https://sync.example' }, { seedSync: false })
+    expect(out).toBeNull()
+  })
+
   it('never overrides a syncBaseUrl the user already set', () => {
     const s = settings({ syncBaseUrl: 'https://mine.sync' })
     const out = applySeedEndpoints(s, { syncBaseUrl: 'https://seed.sync' })
@@ -45,13 +54,14 @@ describe('applySeedEndpoints', () => {
   })
 
   it('never overrides an endpoint the user already set', () => {
-    const s = settings({ whisperBaseUrl: 'https://mine.example/v1' })
+    const s = settings({ whisperBaseUrl: 'https://mine.example/v1', accuracyModel: 'gpt-5.4' })
     const out = applySeedEndpoints(s, {
       whisperBaseUrl: 'https://seed.example/v1',
       claudeBaseUrl: 'https://c.example'
     })
     expect(out?.whisperBaseUrl).toBe('https://mine.example/v1')
     expect(out?.claudeBaseUrl).toBe('https://c.example')
+    expect(out?.accuracyModel).toBe('gpt-5.4')
   })
 
   it('returns null when the seed has no endpoints to offer', () => {

@@ -89,6 +89,16 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
     await api.history.reinsert(id)
     notify('Re-inserted at cursor')
   }
+  const onRetry = async (id: number): Promise<void> => {
+    try {
+      const updated = await api.history.retry(id)
+      setItems((cur) => cur.map((t) => (t.id === id ? updated : t)))
+      void loadStats()
+      notify('Transcription retried')
+    } catch (e) {
+      notify(`Retry failed: ${(e as Error).message.slice(0, 60)}`)
+    }
+  }
   const onPolish = async (id: number): Promise<void> => {
     try {
       const updated = await api.history.polish(id)
@@ -154,6 +164,7 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
                 t={t}
                 onCopy={onCopy}
                 onReinsert={onReinsert}
+                onRetry={onRetry}
                 onPolish={onPolish}
                 onEdit={onEdit}
                 onDelete={onDelete}

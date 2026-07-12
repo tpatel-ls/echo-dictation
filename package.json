@@ -7,23 +7,28 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build:native": "node scripts/build-native.mjs",
+    "build:native:win": "node scripts/build-native.mjs --target=win32",
+    "build": "npm run build:native && electron-vite build",
+    "build:win": "npm run build:native:win && electron-vite build",
     "preview": "electron-vite preview",
+    "install:mac:all-users": "node scripts/install-mac-all-users.mjs",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "test": "vitest run",
     "test:watch": "vitest",
-    "pack": "electron-vite build && electron-builder --win --dir",
-    "dist": "electron-vite build && electron-builder --win",
-    "pack:mac": "electron-vite build && electron-builder --mac --dir",
-    "dist:mac": "electron-vite build && electron-builder --mac",
+    "pack": "npm run build:win && electron-builder --win --x64 --dir",
+    "dist": "npm run build:win && electron-builder --win --x64",
+    "pack:win": "npm run pack",
+    "dist:win": "npm run dist",
+    "ensure:mac-signing": "node scripts/ensure-local-codesign-identity.mjs",
+    "pack:mac": "npm run ensure:mac-signing && npm run build && electron-builder --mac --dir",
+    "dist:mac": "npm run ensure:mac-signing && npm run build && electron-builder --mac",
     "sync-server": "tsx src/server/index.ts"
   },
   "dependencies": {
-    "@nut-tree-fork/nut-js": "^4.2.0",
-    "sql.js": "^1.12.0",
-    "uiohook-napi": "^1.5.4"
+    "sql.js": "^1.12.0"
   },
   "devDependencies": {
     "@electron-toolkit/utils": "^3.0.0",
@@ -31,19 +36,19 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/sql.js": "^1.4.9",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.4.20",
-    "electron": "^33.3.1",
-    "electron-builder": "^25.1.8",
-    "electron-vite": "^2.3.0",
+    "electron": "^42.5.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
     "lucide-react": "^0.468.0",
     "postcss": "^8.4.49",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwindcss": "^3.4.16",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
-    "vite": "^5.4.11",
-    "vitest": "^2.1.8"
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.9"
   }
 }

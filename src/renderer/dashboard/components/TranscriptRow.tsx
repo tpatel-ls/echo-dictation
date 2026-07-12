@@ -1,12 +1,24 @@
 import { useState, type KeyboardEvent } from 'react'
 import type { Transcript } from '@shared/types'
-import { Copy, CornerDownLeft, Pencil, Sparkles, Trash2, Loader2, Play, Check, type LucideIcon } from 'lucide-react'
+import {
+  Copy,
+  CornerDownLeft,
+  Pencil,
+  Sparkles,
+  Trash2,
+  Loader2,
+  Play,
+  Check,
+  RotateCcw,
+  type LucideIcon
+} from 'lucide-react'
 import { api } from '../lib/api'
 
 export function TranscriptRow({
   t,
   onCopy,
   onReinsert,
+  onRetry,
   onPolish,
   onEdit,
   onDelete
@@ -14,6 +26,7 @@ export function TranscriptRow({
   t: Transcript
   onCopy: (id: number) => void
   onReinsert: (id: number) => void
+  onRetry: (id: number) => Promise<void>
   onPolish: (id: number) => Promise<void>
   onEdit: (id: number, text: string) => Promise<void>
   onDelete: (id: number) => void
@@ -24,6 +37,7 @@ export function TranscriptRow({
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [retrying, setRetrying] = useState(false)
   const display = t.cleaned_text ?? t.raw_text ?? ''
   const created = new Date(t.created_at)
   const time = created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -86,6 +100,16 @@ export function TranscriptRow({
     audio.onerror = cleanup
     setPlaying(true)
     void audio.play()
+  }
+
+  const handleRetry = async (): Promise<void> => {
+    if (retrying) return
+    setRetrying(true)
+    try {
+      await onRetry(t.id)
+    } finally {
+      setRetrying(false)
+    }
   }
 
   return (
@@ -153,7 +177,16 @@ export function TranscriptRow({
       {!editing && (
         <div className="flex items-center gap-1 mt-3 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition">
           {t.audio_path && (
-            <RowBtn Icon={playing ? Loader2 : Play} spin={playing} label="Play" onClick={() => void handlePlay()} />
+            <>
+              <RowBtn Icon={playing ? Loader2 : Play} spin={playing} label="Play" onClick={() => void handlePlay()} />
+              <RowBtn
+                Icon={retrying ? Loader2 : RotateCcw}
+                spin={retrying}
+                label="Retry transcription"
+                onClick={() => void handleRetry()}
+                disabled={retrying}
+              />
+            </>
           )}
           <RowBtn Icon={copied ? Check : Copy} label={copied ? 'Copied' : 'Copy'} onClick={handleCopy} />
           <RowBtn Icon={CornerDownLeft} label="Re-insert" onClick={() => onReinsert(t.id)} />
