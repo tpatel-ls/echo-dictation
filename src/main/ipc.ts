@@ -95,6 +95,29 @@ export function registerIpc(ctx: IpcContext): void {
     writeFileAtomic(filePath, serializeTranscriptCsv(ctx.history.listAll()))
     return filePath
   })
+  ipcMain.handle(IPC.HISTORY_CLEAR_UNSUCCESSFUL, async (): Promise<number | null> => {
+    const { response } = await dialog.showMessageBox({
+      type: 'warning',
+      title: 'Clear unsuccessful attempts?',
+      message: 'Clear all failed and empty transcript attempts?',
+      detail: 'Successful transcripts will not be changed.',
+      buttons: ['Clear attempts', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true
+    })
+    if (response !== 0) return null
+    const removed = ctx.history.clearUnsuccessful()
+    for (const transcript of removed) {
+      if (!transcript.audio_path) continue
+      try {
+        unlinkSync(transcript.audio_path)
+      } catch {
+        /* file already gone */
+      }
+    }
+    return removed.length
+  })
   ipcMain.handle(IPC.HISTORY_REINSERT, async (_e, id: number) => {
     const t = ctx.history.get(id)
     if (!t) return { ok: false, error: 'Transcript not found' }
