@@ -9,6 +9,7 @@ import {
   Cloud,
   Sparkles,
   ClipboardPaste,
+  Copy,
   type LucideIcon
 } from 'lucide-react'
 import { api } from '../lib/api'
@@ -23,7 +24,7 @@ const CHECKS: { name: DiagName; label: string; Icon: LucideIcon; desc: string }[
 
 type State = DiagResult | 'running' | undefined
 
-export function Diagnostics(): JSX.Element {
+export function Diagnostics({ notify }: { notify: (message: string) => void }): JSX.Element {
   const [results, setResults] = useState<Record<string, State>>({})
 
   const run = async (name: DiagName): Promise<void> => {
@@ -34,17 +35,33 @@ export function Diagnostics(): JSX.Element {
   const runAll = (): void => {
     for (const c of CHECKS) void run(c.name)
   }
+  const copyReport = async (): Promise<void> => {
+    const completed = Object.values(results).filter(
+      (value): value is DiagResult => Boolean(value && value !== 'running')
+    )
+    await api.diag.copyReport(completed)
+    notify('Redacted diagnostics copied')
+  }
 
   return (
     <div className="flex flex-col h-full">
       <header className="px-7 pt-6 pb-4 border-b border-border flex items-center justify-between">
         <h1 className="text-lg font-semibold">Diagnostics</h1>
-        <button
-          onClick={runAll}
-          className="px-3 py-1.5 rounded-lg bg-accent text-white text-sm font-medium shadow-sm hover:bg-accent2 active:scale-[0.98] transition"
-        >
-          Run all
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void copyReport()}
+            className="px-3 py-1.5 rounded-lg border border-border bg-surface text-sm font-medium hover:bg-surface2 transition flex items-center gap-1.5"
+          >
+            <Copy className="w-3.5 h-3.5" />
+            Copy report
+          </button>
+          <button
+            onClick={runAll}
+            className="px-3 py-1.5 rounded-lg bg-accent text-white text-sm font-medium shadow-sm hover:bg-accent2 active:scale-[0.98] transition"
+          >
+            Run all
+          </button>
+        </div>
       </header>
       <div className="flex-1 overflow-y-auto px-7 py-5">
         <div className="flex flex-col gap-2.5 max-w-2xl">

@@ -58,7 +58,8 @@ const api: EchoApi = {
     setSecrets: (patch: Partial<Secrets>) => ipcRenderer.invoke(IPC.SECRETS_SET, patch)
   },
   diag: {
-    run: (name: DiagName) => ipcRenderer.invoke(IPC.DIAG_RUN, name)
+    run: (name: DiagName) => ipcRenderer.invoke(IPC.DIAG_RUN, name),
+    copyReport: (results) => ipcRenderer.invoke(IPC.DIAG_COPY_REPORT, results)
   }
 }
 

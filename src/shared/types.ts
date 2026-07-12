@@ -201,6 +201,7 @@ export const IPC = {
   SECRETS_GET_MASKED: 'secrets:getMasked',
   SECRETS_SET: 'secrets:set',
   DIAG_RUN: 'diag:run',
+  DIAG_COPY_REPORT: 'diag:copyReport',
   OPEN_DASHBOARD: 'app:openDashboard'
 } as const
 
@@ -253,5 +254,6 @@ export interface EchoApi {
   }
   diag: {
     run(name: DiagName): Promise<DiagResult>
+    copyReport(results: DiagResult[]): Promise<void>
   }
 }
