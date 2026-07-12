@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { serializeTranscriptJson } from '../src/shared/transcript-export'
+import { serializeTranscriptCsv, serializeTranscriptJson } from '../src/shared/transcript-export'
 import type { Transcript } from '@shared/types'
 
 const transcript: Transcript = {
@@ -42,5 +42,31 @@ describe('serializeTranscriptJson', () => {
   it('uses raw text when no cleaned transcript exists', () => {
     const exported = serializeTranscriptJson([{ ...transcript, cleaned_text: null }], 0)
     expect(exported.transcripts[0].text).toBe('raw words')
+  })
+})
+
+describe('serializeTranscriptCsv', () => {
+  it('writes stable headers and quotes commas, quotes, and newlines', () => {
+    const csv = serializeTranscriptCsv([{
+      ...transcript,
+      cleaned_text: 'Hello, "team"\nNext line'
+    }])
+
+    expect(csv.split('\r\n')[0]).toBe(
+      'created_at,status,text,raw_text,duration_ms,word_count,latency_ms,app_context,model'
+    )
+    expect(csv).toContain('"Hello, ""team""\nNext line"')
+    expect(csv.endsWith('\r\n')).toBe(true)
+  })
+
+  it('neutralizes values that spreadsheet programs could interpret as formulas', () => {
+    const csv = serializeTranscriptCsv([{
+      ...transcript,
+      cleaned_text: '=HYPERLINK("bad")',
+      app_context: '+cmd'
+    }])
+
+    expect(csv).toContain('"\'=HYPERLINK(""bad"")"')
+    expect(csv).toContain("'+cmd")
   })
 })

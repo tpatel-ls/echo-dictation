@@ -1,7 +1,7 @@
 import { ipcMain, clipboard, dialog } from 'electron'
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { serializeDictionary } from '@shared/dict-export'
-import { serializeTranscriptJson } from '@shared/transcript-export'
+import { serializeTranscriptCsv, serializeTranscriptJson } from '@shared/transcript-export'
 import {
   IPC,
   type AudioMeta,
@@ -83,6 +83,16 @@ export function registerIpc(ctx: IpcContext): void {
     if (canceled || !filePath) return null
     const exported = serializeTranscriptJson(ctx.history.listAll())
     writeFileAtomic(filePath, JSON.stringify(exported, null, 2))
+    return filePath
+  })
+  ipcMain.handle(IPC.HISTORY_EXPORT_CSV, async (): Promise<string | null> => {
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Export transcript history',
+      defaultPath: 'echo-transcripts.csv',
+      filters: [{ name: 'CSV', extensions: ['csv'] }]
+    })
+    if (canceled || !filePath) return null
+    writeFileAtomic(filePath, serializeTranscriptCsv(ctx.history.listAll()))
     return filePath
   })
   ipcMain.handle(IPC.HISTORY_REINSERT, async (_e, id: number) => {

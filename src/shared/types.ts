@@ -190,6 +190,7 @@ export const IPC = {
   HISTORY_COPY: 'history:copy',
   HISTORY_AUDIO: 'history:audio',
   HISTORY_EXPORT_JSON: 'history:exportJson',
+  HISTORY_EXPORT_CSV: 'history:exportCsv',
   DICT_LIST: 'dict:list',
   DICT_ADD: 'dict:add',
   DICT_UPDATE: 'dict:update',
@@ -238,6 +239,7 @@ export interface EchoApi {
     copy(id: number): Promise<void>
     getAudio(id: number): Promise<ArrayBuffer | null>
     exportJson(): Promise<string | null>
+    exportCsv(): Promise<string | null>
   }
   dictionary: {
     list(): Promise<DictionaryEntry[]>

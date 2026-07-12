@@ -127,8 +127,8 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
       notify('Transcript updated')
     }
   }
-  const onExportJson = async (): Promise<void> => {
-    const path = await api.history.exportJson()
+  const onExport = async (format: 'json' | 'csv'): Promise<void> => {
+    const path = format === 'json' ? await api.history.exportJson() : await api.history.exportCsv()
     if (path) notify('Transcript history exported')
   }
 
@@ -152,14 +152,19 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
                 {stats.streakDays}-day streak
               </span>
             </div>}
-            <button
-              type="button"
-              onClick={() => void onExportJson()}
-              className="px-2.5 py-1.5 rounded-lg border border-border bg-surface text-xs font-medium hover:bg-surface2 transition flex items-center gap-1.5 shrink-0"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Export JSON
-            </button>
+            <div className="relative shrink-0">
+              <Download className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <select
+                aria-label="Export transcript history"
+                value=""
+                onChange={(event) => void onExport(event.target.value as 'json' | 'csv')}
+                className="pl-7 pr-7 py-1.5 rounded-lg border border-border bg-surface text-xs font-medium hover:bg-surface2 transition appearance-none"
+              >
+                <option value="" disabled>Export</option>
+                <option value="json">JSON</option>
+                <option value="csv">CSV</option>
+              </select>
+            </div>
           </div>
         </div>
         <SearchBar value={query} onChange={setQuery} inputRef={searchRef} />
