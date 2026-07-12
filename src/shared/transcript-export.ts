@@ -38,3 +38,37 @@ export function serializeTranscriptJson(
     }))
   }
 }
+
+const CSV_HEADERS = [
+  'created_at',
+  'status',
+  'text',
+  'raw_text',
+  'duration_ms',
+  'word_count',
+  'latency_ms',
+  'app_context',
+  'model'
+]
+
+export function serializeTranscriptCsv(transcripts: Transcript[]): string {
+  const rows = transcripts.map((transcript) => [
+    new Date(transcript.created_at).toISOString(),
+    transcript.status,
+    transcript.cleaned_text ?? transcript.raw_text,
+    transcript.raw_text,
+    transcript.duration_ms,
+    transcript.word_count,
+    transcript.latency_ms,
+    transcript.app_context,
+    transcript.model
+  ].map(csvCell).join(','))
+  return [CSV_HEADERS.join(','), ...rows].join('\r\n') + '\r\n'
+}
+
+function csvCell(value: string | number): string {
+  let text = String(value)
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`
+  if (/[",\r\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`
+  return text
+}

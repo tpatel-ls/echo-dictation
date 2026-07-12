@@ -41,7 +41,8 @@ const api: EchoApi = {
     retry: (id: number) => ipcRenderer.invoke(IPC.HISTORY_RETRY, id),
     copy: (id: number) => ipcRenderer.invoke(IPC.HISTORY_COPY, id),
     getAudio: (id: number) => ipcRenderer.invoke(IPC.HISTORY_AUDIO, id),
-    exportJson: () => ipcRenderer.invoke(IPC.HISTORY_EXPORT_JSON)
+    exportJson: () => ipcRenderer.invoke(IPC.HISTORY_EXPORT_JSON),
+    exportCsv: () => ipcRenderer.invoke(IPC.HISTORY_EXPORT_CSV)
   },
   dictionary: {
     list: () => ipcRenderer.invoke(IPC.DICT_LIST),
