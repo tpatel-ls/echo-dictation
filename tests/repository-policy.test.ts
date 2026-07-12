@@ -47,4 +47,15 @@ describe('repository automation policy', () => {
     expect(workflow).toContain('github/codeql-action/analyze@v3')
     expect(workflow).toContain('schedule:')
   })
+
+  it('keeps npm Gradle and Actions dependencies current without grouping majors', () => {
+    const config = repositoryFile('.github/dependabot.yml')
+
+    expect(config).toContain('package-ecosystem: npm')
+    expect(config).toContain('package-ecosystem: gradle')
+    expect(config).toContain('package-ecosystem: github-actions')
+    expect(config.match(/open-pull-requests-limit: 5/g)).toHaveLength(3)
+    expect(config).toContain('update-types: [minor, patch]')
+    expect(config).not.toContain('update-types: [major, minor, patch]')
+  })
 })
