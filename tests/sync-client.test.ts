@@ -243,7 +243,7 @@ describe('SyncClient', () => {
     const db = device().db
     const sync = new SyncClient(
       [{ name: 'transcripts', table: new SyncTable(db, 'transcripts', [...SYNC_COLUMNS.transcripts]) }],
-      { baseUrl: 'http://sync', token: 'tok', timeoutMs: 5_000 },
+      { baseUrl: 'http://sync', token: 'tok', timeoutMs: 5_000, retryCount: 0 },
       new MemorySyncState(),
       { fetch: hangingFetch as unknown as typeof fetch }
     )
@@ -274,5 +274,52 @@ describe('SyncClient', () => {
     controller.abort()
 
     await expect(pending).rejects.toThrow(/cancelled/)
+  })
+
+  it('retries transient server failures with bounded exponential backoff', async () => {
+    const delays: number[] = []
+    const responses = [503, 502, 200]
+    const retryingFetch = vi.fn(async () => {
+      const status = responses.shift() ?? 500
+      return {
+        ok: status === 200,
+        status,
+        json: async () => ({ records: [], cursor: 0, hasMore: false })
+      } as Response
+    })
+    const db = device().db
+    const sync = new SyncClient(
+      [{ name: 'transcripts', table: new SyncTable(db, 'transcripts', [...SYNC_COLUMNS.transcripts]) }],
+      { baseUrl: 'http://sync', token: 'tok', retryCount: 2, retryBaseMs: 100 },
+      new MemorySyncState(),
+      { fetch: retryingFetch as unknown as typeof fetch, delay: async (ms) => { delays.push(ms) } }
+    )
+
+    await expect(sync.syncOnce()).resolves.toBeUndefined()
+    expect(retryingFetch).toHaveBeenCalledTimes(3)
+    expect(delays).toEqual([100, 200])
+  })
+
+  it('does not retry client errors and never exceeds the configured retry count', async () => {
+    const db = device().db
+    const unauthorized = vi.fn(async () => ({ ok: false, status: 401 }) as Response)
+    const noRetry = new SyncClient(
+      [{ name: 'transcripts', table: new SyncTable(db, 'transcripts', [...SYNC_COLUMNS.transcripts]) }],
+      { baseUrl: 'http://sync', token: 'bad', retryCount: 3 },
+      new MemorySyncState(),
+      { fetch: unauthorized as unknown as typeof fetch, delay: async () => {} }
+    )
+    await expect(noRetry.syncOnce()).rejects.toThrow(/401/)
+    expect(unauthorized).toHaveBeenCalledTimes(1)
+
+    const unavailable = vi.fn(async () => ({ ok: false, status: 503 }) as Response)
+    const bounded = new SyncClient(
+      [{ name: 'transcripts', table: new SyncTable(db, 'transcripts', [...SYNC_COLUMNS.transcripts]) }],
+      { baseUrl: 'http://sync', token: 'tok', retryCount: 2 },
+      new MemorySyncState(),
+      { fetch: unavailable as unknown as typeof fetch, delay: async () => {} }
+    )
+    await expect(bounded.syncOnce()).rejects.toThrow(/503/)
+    expect(unavailable).toHaveBeenCalledTimes(3)
   })
 })
