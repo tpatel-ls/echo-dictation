@@ -40,7 +40,8 @@ const api: EchoApi = {
     reinsert: (id: number) => ipcRenderer.invoke(IPC.HISTORY_REINSERT, id),
     retry: (id: number) => ipcRenderer.invoke(IPC.HISTORY_RETRY, id),
     copy: (id: number) => ipcRenderer.invoke(IPC.HISTORY_COPY, id),
-    getAudio: (id: number) => ipcRenderer.invoke(IPC.HISTORY_AUDIO, id)
+    getAudio: (id: number) => ipcRenderer.invoke(IPC.HISTORY_AUDIO, id),
+    exportJson: () => ipcRenderer.invoke(IPC.HISTORY_EXPORT_JSON)
   },
   dictionary: {
     list: () => ipcRenderer.invoke(IPC.DICT_LIST),

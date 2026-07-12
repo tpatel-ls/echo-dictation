@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type UIEvent } from 'react'
 import type { Stats, Transcript, TriggerKey } from '@shared/types'
 import { formatDuration } from '@shared/format'
 import { triggerLabel, defaultTriggerKey } from '@shared/trigger'
-import { Flame, Clock, Type } from 'lucide-react'
+import { Download, Flame, Clock, Type } from 'lucide-react'
 import { api } from '../lib/api'
 import { SearchBar } from '../components/SearchBar'
 import { TranscriptRow } from '../components/TranscriptRow'
@@ -127,14 +127,18 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
       notify('Transcript updated')
     }
   }
+  const onExportJson = async (): Promise<void> => {
+    const path = await api.history.exportJson()
+    if (path) notify('Transcript history exported')
+  }
 
   return (
     <div className="flex flex-col h-full">
       <header className="px-7 pt-6 pb-4 border-b border-border">
         <div className="flex items-center justify-between gap-4 mb-4">
           <h1 className="text-lg font-semibold">History</h1>
-          {stats && (
-            <div className="flex items-center gap-4 text-xs text-muted">
+          <div className="flex items-center gap-4">
+            {stats && <div className="flex items-center gap-4 text-xs text-muted">
               <span className="flex items-center gap-1.5">
                 <Type className="w-3.5 h-3.5" />
                 {stats.todayWords} words today
@@ -147,8 +151,16 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
                 <Flame className="w-3.5 h-3.5" />
                 {stats.streakDays}-day streak
               </span>
-            </div>
-          )}
+            </div>}
+            <button
+              type="button"
+              onClick={() => void onExportJson()}
+              className="px-2.5 py-1.5 rounded-lg border border-border bg-surface text-xs font-medium hover:bg-surface2 transition flex items-center gap-1.5 shrink-0"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export JSON
+            </button>
+          </div>
         </div>
         <SearchBar value={query} onChange={setQuery} inputRef={searchRef} />
       </header>
