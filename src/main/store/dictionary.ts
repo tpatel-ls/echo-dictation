@@ -46,25 +46,30 @@ export class DictionaryStore {
   add(word: string, misheard: string[], source: DictionarySource): DictionaryEntry {
     const w = word.trim().replace(/\s+/g, ' ')
     if (!w) throw new Error('A dictionary word is required')
+    const ts = this.now()
 
     // Only an active (non-deleted) entry merges; a tombstone with this word is ignored, so
     // a deleted word can be re-added fresh (the partial unique index permits the coexistence).
     const existing = this.query('SELECT * FROM dictionary WHERE word = ? COLLATE NOCASE AND deleted = 0', [w])[0]
     if (existing) {
-      const merged = normalizeAliases([...existing.misheard, ...misheard], existing.word)
+      const merged = this.claimAliases(
+        existing.word,
+        normalizeAliases([...existing.misheard, ...misheard], existing.word),
+        existing.id,
+        ts
+      )
       this.db.run('UPDATE dictionary SET misheard = ?, updated_at = ? WHERE id = ?', [
         JSON.stringify(merged),
-        this.now(),
+        ts,
         existing.id
       ])
       this.onChange()
       return { ...existing, misheard: merged }
     }
 
-    const ts = this.now()
     const entry = {
       word: w,
-      misheard: normalizeAliases(misheard, w),
+      misheard: this.claimAliases(w, normalizeAliases(misheard, w), undefined, ts),
       source,
       created_at: ts,
       times_applied: 0
@@ -83,11 +88,17 @@ export class DictionaryStore {
     if (!cur) return null
     const word = (patch.word ?? cur.word).trim().replace(/\s+/g, ' ')
     if (!word) throw new Error('A dictionary word is required')
-    const misheard = normalizeAliases(patch.misheard ?? cur.misheard, word)
+    const ts = this.now()
+    const misheard = this.claimAliases(
+      word,
+      normalizeAliases(patch.misheard ?? cur.misheard, word),
+      id,
+      ts
+    )
     this.db.run('UPDATE dictionary SET word = ?, misheard = ?, updated_at = ? WHERE id = ?', [
       word,
       JSON.stringify(misheard),
-      this.now(),
+      ts,
       id
     ])
     this.onChange()
@@ -130,6 +141,31 @@ export class DictionaryStore {
     this.db.run('DROP INDEX IF EXISTS idx_dictionary_word')
   }
 
+  /** A spoken alias must map to one canonical entry. The latest explicit assignment wins,
+   * while canonical words remain protected from being used as another entry's alias. */
+  private claimAliases(word: string, aliases: string[], ownerId: number | undefined, ts: number): string[] {
+    const active = this.list()
+    const canonicalWords = new Set(
+      active
+        .filter((entry) => entry.id !== ownerId)
+        .map((entry) => entry.word.toLowerCase())
+    )
+    const allowed = aliases.filter((alias) => !canonicalWords.has(alias.toLowerCase()))
+    const claimed = new Set([word, ...allowed].map((value) => value.toLowerCase()))
+
+    for (const entry of active) {
+      if (entry.id === ownerId) continue
+      const remaining = entry.misheard.filter((alias) => !claimed.has(alias.toLowerCase()))
+      if (remaining.length === entry.misheard.length) continue
+      this.db.run('UPDATE dictionary SET misheard = ?, updated_at = ? WHERE id = ?', [
+        JSON.stringify(remaining),
+        ts,
+        entry.id
+      ])
+    }
+    return allowed
+  }
+
   private query(sql: string, params: SqlValue[]): DictionaryEntry[] {
     const stmt = this.db.prepare(sql)
     stmt.bind(params)
@@ -155,7 +191,7 @@ function normalizeAliases(aliases: string[], word: string): string[] {
   for (const raw of aliases) {
     const a = raw.trim().replace(/\s+/g, ' ')
     const key = a.toLowerCase()
-    if (!a || a === word || seen.has(key)) continue
+    if (!a || key === word.toLowerCase() || seen.has(key)) continue
     seen.add(key)
     out.push(a)
   }

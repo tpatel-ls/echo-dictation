@@ -48,6 +48,32 @@ describe('DictionaryStore', () => {
     expect(store.list()).toHaveLength(1)
   })
 
+  it('moves a conflicting alias to the most recently assigned canonical word', () => {
+    const store = newStore()
+    const first = store.add('Acme Cloud', ['acme'], 'manual')
+    const second = store.add('Acme Desktop', ['ACME'], 'manual')
+
+    expect(store.get(first.id)?.misheard).toEqual([])
+    expect(store.get(second.id)?.misheard).toEqual(['ACME'])
+  })
+
+  it('never allows another canonical word to be claimed as an alias', () => {
+    const store = newStore()
+    store.add('GitHub', [], 'manual')
+    const other = store.add('GitLab', ['github', 'git lab app'], 'manual')
+    expect(other.misheard).toEqual(['git lab app'])
+  })
+
+  it('resolves alias conflicts when an existing entry is updated', () => {
+    const store = newStore()
+    const first = store.add('First', ['shared'], 'manual')
+    const second = store.add('Second', [], 'manual')
+    store.update(second.id, { misheard: ['Shared'] })
+
+    expect(store.get(first.id)?.misheard).toEqual([])
+    expect(store.get(second.id)?.misheard).toEqual(['Shared'])
+  })
+
   it('updates word and aliases', () => {
     const store = newStore()
     const e = store.add('Bryan', ['Brian'], 'manual')
