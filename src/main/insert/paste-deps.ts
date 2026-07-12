@@ -1,10 +1,11 @@
 import { app, clipboard, shell, systemPreferences } from 'electron'
 import { spawn } from 'node:child_process'
-import { appendFileSync, existsSync, statSync, truncateSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { PasteDeps } from './paste'
 import type { SelectionDeps } from './selection'
 import { helperPath } from '../native/helper-path'
+import { appendRotatingLog } from '../diagnostic-log'
 
 // Shared backing for both dependency sets — Electron's clipboard and the macOS helper chord — so the
 // two real* factories can't drift on clipboard access.
@@ -106,11 +107,6 @@ function mainAccessibilityTrusted(): boolean {
 }
 
 function pasteLog(message: string): void {
-  try {
-    const file = join(app.getPath('userData'), 'paste.log')
-    if (existsSync(file) && statSync(file).size > 64 * 1024) truncateSync(file, 0)
-    appendFileSync(file, `${new Date().toISOString()} ${message}\n`)
-  } catch {
-    /* Diagnostics must never affect dictation. */
-  }
+  const file = join(app.getPath('userData'), 'paste.log')
+  appendRotatingLog(file, `${new Date().toISOString()} ${message}\n`)
 }
