@@ -34,6 +34,7 @@
         <TextView style="@style/EchoSectionHeader" android:text="@string/section_transcription" />
 
         <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/whisper_base_url_layout"
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -165,6 +166,7 @@
         <TextView style="@style/EchoSectionHeader" android:text="@string/section_sync" />
 
         <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/sync_base_url_layout"
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -211,6 +213,7 @@
             android:textSize="12sp" />
 
         <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/claude_base_url_layout"
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

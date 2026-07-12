@@ -42,6 +42,11 @@
     <string name="field_claude_url">Claude base URL</string>
     <string name="field_claude_key">Claude API key</string>
     <string name="field_claude_model">Claude model</string>
+    <string name="endpoint_required">This endpoint is required.</string>
+    <string name="endpoint_invalid_url">Enter a full HTTP or HTTPS URL.</string>
+    <string name="endpoint_invalid_scheme">Endpoint URLs must use HTTP or HTTPS.</string>
+    <string name="endpoint_credentials">Remove credentials from the endpoint URL.</string>
+    <string name="endpoint_query_fragment">Endpoint base URLs cannot include a query or fragment.</string>
     <string name="settings_save">Save</string>
     <string name="settings_saved">Saved</string>
     <string name="section_snippets">Snippets</string>

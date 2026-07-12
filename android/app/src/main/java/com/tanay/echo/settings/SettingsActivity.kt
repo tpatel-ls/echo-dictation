@@ -16,6 +16,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import com.tanay.echo.R
 import com.tanay.echo.floating.EchoAccessibilityService
 import com.tanay.echo.floating.FloatingButtonService
@@ -37,6 +38,7 @@ class SettingsActivity : AppCompatActivity() {
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { refreshFloating() }
 
     private lateinit var whisperBaseUrl: TextInputEditText
+    private lateinit var whisperBaseUrlLayout: TextInputLayout
     private lateinit var whisperApiKey: TextInputEditText
     private lateinit var whisperModel: TextInputEditText
     private lateinit var language: TextInputEditText
@@ -44,9 +46,11 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var accuracyModel: TextInputEditText
     private lateinit var whisperMode: MaterialSwitch
     private lateinit var syncBaseUrl: TextInputEditText
+    private lateinit var syncBaseUrlLayout: TextInputLayout
     private lateinit var syncToken: TextInputEditText
     private lateinit var contextTone: MaterialSwitch
     private lateinit var claudeBaseUrl: TextInputEditText
+    private lateinit var claudeBaseUrlLayout: TextInputLayout
     private lateinit var claudeApiKey: TextInputEditText
     private lateinit var claudeModel: TextInputEditText
 
@@ -61,6 +65,7 @@ class SettingsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_settings)
 
         whisperBaseUrl = findViewById(R.id.whisper_base_url)
+        whisperBaseUrlLayout = findViewById(R.id.whisper_base_url_layout)
         whisperApiKey = findViewById(R.id.whisper_api_key)
         whisperModel = findViewById(R.id.whisper_model)
         language = findViewById(R.id.language)
@@ -68,9 +73,11 @@ class SettingsActivity : AppCompatActivity() {
         accuracyModel = findViewById(R.id.accuracy_model)
         whisperMode = findViewById(R.id.whisper_mode)
         syncBaseUrl = findViewById(R.id.sync_base_url)
+        syncBaseUrlLayout = findViewById(R.id.sync_base_url_layout)
         syncToken = findViewById(R.id.sync_token)
         contextTone = findViewById(R.id.context_tone_enabled)
         claudeBaseUrl = findViewById(R.id.claude_base_url)
+        claudeBaseUrlLayout = findViewById(R.id.claude_base_url_layout)
         claudeApiKey = findViewById(R.id.claude_api_key)
         claudeModel = findViewById(R.id.claude_model)
         grantMicButton = findViewById(R.id.grant_mic)
@@ -81,6 +88,9 @@ class SettingsActivity : AppCompatActivity() {
         floatingNotif = findViewById(R.id.floating_notif)
 
         load()
+        bindEndpointValidation(whisperBaseUrl, whisperBaseUrlLayout, required = true)
+        bindEndpointValidation(syncBaseUrl, syncBaseUrlLayout, required = false)
+        bindEndpointValidation(claudeBaseUrl, claudeBaseUrlLayout, required = false)
 
         // Re-establish the bubble if it was enabled but isn't running (after a reboot or memory kill).
         if (settings.floatingEnabled && Settings.canDrawOverlays(this) && a11yEnabled() && hasMic()) {
@@ -162,7 +172,11 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun save() {
-        settings.whisperBaseUrl = text(whisperBaseUrl)
+        val whisperEndpoint = showEndpointError(whisperBaseUrl, whisperBaseUrlLayout, required = true)
+        val syncEndpoint = showEndpointError(syncBaseUrl, syncBaseUrlLayout, required = false)
+        val claudeEndpoint = showEndpointError(claudeBaseUrl, claudeBaseUrlLayout, required = false)
+        if (whisperEndpoint.error != null || syncEndpoint.error != null || claudeEndpoint.error != null) return
+        settings.whisperBaseUrl = whisperEndpoint.normalized
         settings.whisperApiKey = text(whisperApiKey)
         settings.whisperModel = text(whisperModel)
         settings.language = text(language)
@@ -173,10 +187,10 @@ class SettingsActivity : AppCompatActivity() {
         }
         settings.accuracyModel = text(accuracyModel)
         settings.whisperMode = whisperMode.isChecked
-        settings.syncBaseUrl = text(syncBaseUrl)
+        settings.syncBaseUrl = syncEndpoint.normalized
         settings.syncToken = text(syncToken)
         settings.contextToneEnabled = contextTone.isChecked
-        settings.claudeBaseUrl = text(claudeBaseUrl)
+        settings.claudeBaseUrl = claudeEndpoint.normalized
         settings.claudeApiKey = text(claudeApiKey)
         settings.claudeModel = text(claudeModel)
         Toast.makeText(this, R.string.settings_saved, Toast.LENGTH_SHORT).show()
@@ -216,4 +230,27 @@ class SettingsActivity : AppCompatActivity() {
         ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
     private fun text(field: TextInputEditText): String = field.text?.toString().orEmpty()
+
+    private fun bindEndpointValidation(field: TextInputEditText, layout: TextInputLayout, required: Boolean) {
+        field.setOnFocusChangeListener { _, focused ->
+            if (!focused) showEndpointError(field, layout, required)
+        }
+    }
+
+    private fun showEndpointError(
+        field: TextInputEditText,
+        layout: TextInputLayout,
+        required: Boolean,
+    ): EndpointValidation {
+        val result = validateEndpointUrl(text(field), required)
+        layout.error = when (result.error) {
+            EndpointError.REQUIRED -> getString(R.string.endpoint_required)
+            EndpointError.INVALID_URL -> getString(R.string.endpoint_invalid_url)
+            EndpointError.INVALID_SCHEME -> getString(R.string.endpoint_invalid_scheme)
+            EndpointError.CREDENTIALS -> getString(R.string.endpoint_credentials)
+            EndpointError.QUERY_OR_FRAGMENT -> getString(R.string.endpoint_query_fragment)
+            null -> null
+        }
+        return result
+    }
 }

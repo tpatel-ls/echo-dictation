@@ -1,9 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 import type { MaskedSecrets, Settings as SettingsType } from '@shared/types'
 import { triggerLabel, triggerOptions } from '@shared/trigger'
 import { api } from '../lib/api'
 import { Field, TextInput, Select } from '../components/Field'
 import { Toggle } from '../components/Toggle'
+import { validateEndpointUrl } from '@shared/endpoints'
 
 export function Settings({ notify }: { notify: (m: string) => void }): JSX.Element {
   const [s, setS] = useState<SettingsType | null>(null)
@@ -116,9 +117,13 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
           </Section>
 
           <Section title="Transcription (Whisper)">
-            <Field label="Base URL">
-              <TextInput value={s.whisperBaseUrl} onChange={(v) => void patch({ whisperBaseUrl: v })} />
-            </Field>
+            <EndpointField
+              label="Base URL"
+              value={s.whisperBaseUrl}
+              required
+              serviceLabel="Whisper"
+              onSave={(value) => patch({ whisperBaseUrl: value })}
+            />
             <Field label="Model">
               <TextInput width="w-44" value={s.whisperModel} onChange={(v) => void patch({ whisperModel: v })} />
             </Field>
@@ -151,9 +156,12 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
                 onChange={(v) => void patch({ commandModeEnabled: v })}
               />
             </Field>
-            <Field label="Base URL">
-              <TextInput value={s.claudeBaseUrl} onChange={(v) => void patch({ claudeBaseUrl: v })} />
-            </Field>
+            <EndpointField
+              label="Base URL"
+              value={s.claudeBaseUrl}
+              serviceLabel="Cleanup"
+              onSave={(value) => patch({ claudeBaseUrl: value })}
+            />
             <Field label="Model">
               <TextInput width="w-52" value={s.claudeModel} onChange={(v) => void patch({ claudeModel: v })} />
             </Field>
@@ -163,12 +171,13 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
           </Section>
 
           <Section title="Sync">
-            <Field
+            <EndpointField
               label="Service URL"
-              hint="Your self-hosted sync service (e.g. on your tailnet). Leave blank to keep this device local-only."
-            >
-              <TextInput value={s.syncBaseUrl} onChange={(v) => void patch({ syncBaseUrl: v })} />
-            </Field>
+              hint="Leave blank to keep this device local-only."
+              value={s.syncBaseUrl}
+              serviceLabel="Sync"
+              onSave={(value) => patch({ syncBaseUrl: value })}
+            />
             <Field label="Token" hint={masked?.syncToken ? `Current: ${masked.syncToken}` : 'Not set'}>
               <TextInput type="password" value={syncToken} placeholder="Enter to change" onChange={setSyncToken} />
             </Field>
@@ -244,6 +253,44 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
         </div>
       </div>
     </div>
+  )
+}
+
+function EndpointField({
+  label,
+  hint,
+  value,
+  required = false,
+  serviceLabel,
+  onSave
+}: {
+  label: string
+  hint?: string
+  value: string
+  required?: boolean
+  serviceLabel: string
+  onSave: (value: string) => Promise<void>
+}): JSX.Element {
+  const [draft, setDraft] = useState(value)
+  const errorId = useId()
+  useEffect(() => setDraft(value), [value])
+  const validation = validateEndpointUrl(draft, { required, label: serviceLabel })
+  const commit = (): void => {
+    if (!validation.error && validation.normalized !== value) void onSave(validation.normalized)
+  }
+  return (
+    <Field label={label} hint={hint} error={validation.error} errorId={errorId}>
+      <TextInput
+        value={draft}
+        onChange={setDraft}
+        invalid={Boolean(validation.error)}
+        describedBy={validation.error ? errorId : undefined}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur()
+        }}
+      />
+    </Field>
   )
 }
 
