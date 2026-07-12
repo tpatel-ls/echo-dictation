@@ -1,11 +1,17 @@
 {
   "name": "echo",
   "version": "0.1.0",
-  "description": "Push-to-talk dictation for Windows & macOS — hold a key to dictate via a self-hosted Whisper node.",
+  "description": "Accuracy-first dictation for macOS, Windows x64, and Android with history, learning, and sync.",
   "author": "Tanay",
   "license": "MIT",
+  "packageManager": "npm@11.8.0",
+  "engines": {
+    "node": ">=20",
+    "npm": ">=10"
+  },
   "main": "./out/main/index.js",
   "scripts": {
+    "preinstall": "node scripts/check-toolchain.mjs",
     "dev": "electron-vite dev",
     "build:native": "node scripts/build-native.mjs",
     "build:native:win": "node scripts/build-native.mjs --target=win32",
