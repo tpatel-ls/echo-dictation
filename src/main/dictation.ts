@@ -1,6 +1,6 @@
 import { app, type BrowserWindow } from 'electron'
 import { join } from 'node:path'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import {
   IPC,
   type AudioMeta,
@@ -10,6 +10,7 @@ import {
   type NewTranscript,
   type Secrets,
   type Settings,
+  type Transcript,
   type TranscriptStatus
 } from '@shared/types'
 import { applyDictionary, buildBiasPrompt } from '@shared/dictionary'
@@ -20,8 +21,13 @@ import type { SettingsStore } from './store/settings'
 import type { HistoryStore } from './store/history'
 import type { DictionaryStore } from './store/dictionary'
 import type { SnippetsStore } from './store/snippets'
-import { transcribe } from './transcription/whisper'
+import { retainAudioCopy } from './store/history-file'
 import { WhisperPrewarm } from './transcription/prewarm'
+import {
+  isLowConfidenceRecognitionError,
+  recognizeAccurately,
+  type SecondaryRecognizer
+} from './transcription/accuracy'
 import { cleanup, command } from './transcription/claude'
 import { pasteText } from './insert/paste'
 import { realPasteDeps, realSelectionDeps } from './insert/paste-deps'
@@ -55,7 +61,8 @@ export class DictationController {
     private settings: SettingsStore,
     private history: HistoryStore,
     private dictionary: DictionaryStore,
-    private snippets: SnippetsStore
+    private snippets: SnippetsStore,
+    private secondaryRecognizer?: SecondaryRecognizer
   ) {}
 
   async onStart(): Promise<void> {
@@ -81,6 +88,7 @@ export class DictationController {
    * Returns null — no probe — when any gate fails.
    */
   private startSelectionProbe(): Promise<string | null> | null {
+    if (process.platform === 'win32') return null
     const s = this.settings.getSettings()
     const sec = this.settings.getSecrets()
     if (!s.commandModeEnabled) return null
@@ -127,10 +135,24 @@ export class DictationController {
       /* dictation works fine without snippets */
     }
 
+    let tempAudioPath: string | null = null
     try {
-      const heard = await transcribe(buf, s, sec.whisperApiKey, undefined, {
+      tempAudioPath = writeTemporaryAudio(buf)
+      const glossary = dict.map((e) => e.word)
+      const outcome = await recognizeAccurately({
+        path: tempAudioPath,
+        buffer: buf
+      }, {
+        settings: s,
+        whisperApiKey: sec.whisperApiKey,
+        claudeApiKey: sec.claudeApiKey,
+        appContext,
+        glossary,
         prompt: buildBiasPrompt(dict)
+      }, {
+        secondary: this.secondaryRecognizer
       })
+      const heard = outcome.winner.text
 
       // Command Mode: a selection captured at hotkey-down means this utterance is a spoken
       // instruction on that selection, not text to insert. Nothing selected ⇒ normal dictation.
@@ -167,7 +189,7 @@ export class DictationController {
             s,
             sec.claudeApiKey,
             undefined,
-            dict.map((e) => e.word),
+            glossary,
             styleDirective(registerForTitle(appContext))
           )
           text = cleaned
@@ -178,7 +200,7 @@ export class DictationController {
 
       await pasteText(text, realPasteDeps(this.pendingFocus?.focus))
 
-      const audioPath = s.retainAudio ? saveAudio(buf) : null
+      const audioPath = s.retainAudio && tempAudioPath ? retainAudioCopy(tempAudioPath) : null
       const transcript = this.history.insert(
         row({
           status: 'ok',
@@ -187,7 +209,7 @@ export class DictationController {
           words: wordCount(text),
           meta,
           appContext,
-          model: s.whisperModel,
+          model: outcome.winner.source,
           latency: Date.now() - t0,
           audioPath
         })
@@ -196,6 +218,16 @@ export class DictationController {
       this.startLinger()
       return { ok: true, transcript }
     } catch (e) {
+      if (isLowConfidenceRecognitionError(e)) {
+        const reason = 'Low confidence transcription'
+        const audioPath = s.retainAudio && tempAudioPath ? retainAudioCopy(tempAudioPath) : null
+        this.history.insert(
+          row({ status: 'failed', rawText: reason, meta, appContext, model: 'low-confidence', latency: Date.now() - t0, audioPath })
+        )
+        this.send({ phase: 'error', message: reason })
+        this.startLinger()
+        return { ok: false, error: (e as Error).message }
+      }
       const reason = friendlyError(e)
       this.history.insert(
         row({ status: 'failed', rawText: reason, meta, appContext, model: s.whisperModel, latency: Date.now() - t0 })
@@ -207,7 +239,61 @@ export class DictationController {
       this.busy = false
       this.pendingFocus = null
       this.selectionProbe = null
+      if (tempAudioPath) deleteTemporaryAudio(tempAudioPath)
     }
+  }
+
+  async retryTranscript(id: number): Promise<Transcript> {
+    const existing = this.history.get(id)
+    if (!existing) throw new Error('Transcript not found')
+    if (!existing.audio_path || !existsSync(existing.audio_path)) throw new Error('Retained audio is unavailable')
+
+    const started = Date.now()
+    const s = this.settings.getSettings()
+    const sec = this.settings.getSecrets()
+    const dict = this.dictionary.list()
+    const glossary = dict.map((entry) => entry.word)
+    const file = readFileSync(existing.audio_path)
+    const buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer
+    const outcome = await recognizeAccurately(
+      { path: existing.audio_path, buffer },
+      {
+        settings: s,
+        whisperApiKey: sec.whisperApiKey,
+        claudeApiKey: sec.claudeApiKey,
+        appContext: existing.app_context,
+        glossary,
+        prompt: buildBiasPrompt(dict)
+      },
+      { secondary: this.secondaryRecognizer }
+    )
+
+    const raw = applyVoiceCommands(this.correct(outcome.winner.text, dict))
+    if (!raw) throw new Error('No speech detected')
+    let cleaned: string | null = null
+    if (s.cleanupMode === 'auto' && needsAiCleanup(raw)) {
+      try {
+        cleaned = await cleanup(
+          raw,
+          s,
+          sec.claudeApiKey,
+          undefined,
+          glossary,
+          styleDirective(registerForTitle(existing.app_context))
+        )
+      } catch {
+        /* keep the recovered raw transcript */
+      }
+    }
+
+    const updated = this.history.updateRetried(id, {
+      rawText: raw,
+      cleanedText: cleaned,
+      model: outcome.winner.source,
+      latencyMs: Date.now() - started
+    })
+    if (!updated) throw new Error('Transcript not found')
+    return updated
   }
 
   /**
@@ -328,17 +414,20 @@ function row(p: RowParams): NewTranscript {
   }
 }
 
-/** Persist the dictation's WAV to userData/audio when retention is enabled. */
-function saveAudio(buf: ArrayBuffer): string | null {
+/** Write exactly one temporary WAV for recognizers that need a filesystem path. */
+function writeTemporaryAudio(buf: ArrayBuffer): string {
+  const dir = join(app.getPath('temp'), 'echo-dictation')
+  mkdirSync(dir, { recursive: true })
+  const path = join(dir, `${Date.now()}-${Math.floor(Math.random() * 1e6)}.wav`)
+  writeFileSync(path, Buffer.from(buf))
+  return path
+}
+
+function deleteTemporaryAudio(path: string): void {
   try {
-    const dir = join(app.getPath('userData'), 'audio')
-    mkdirSync(dir, { recursive: true })
-    const name = `${Date.now()}-${Math.floor(Math.random() * 1e6)}.wav`
-    const path = join(dir, name)
-    writeFileSync(path, Buffer.from(buf))
-    return path
+    unlinkSync(path)
   } catch {
-    return null
+    /* temp cleanup is best-effort */
   }
 }
 

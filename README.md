@@ -1,265 +1,192 @@
 # Echo
 
-A Wispr-Flow-style push-to-talk dictation app for **Windows & macOS**. **Hold a key**
-(Right Ctrl on Windows, Right ⌘ on macOS) anywhere to dictate; release to insert the
-transcribed text at your cursor. A floating pill appears at the center-bottom of the
-screen while you talk, and a dashboard keeps a searchable history of everything you've
-dictated.
+Echo is an accuracy-first English dictation app for macOS, Windows x64, and Android. Hold a
+global key on desktop or use the Android voice keyboard/floating mic, speak naturally, and Echo
+inserts a faithful transcript at the cursor. It includes a bottom recording bar, searchable
+history, learned dictionary corrections, snippets, context-aware cleanup, and cross-device sync.
 
-> **Phones (iOS / Android):** Echo is a desktop app, but it talks to a plain Whisper
-> endpoint — so a voice keyboard on your phone can share the *same* self-hosted node. See
-> [Dictating on your phone](#dictating-on-your-phone-ios--android).
+The app talks to your OpenAI-compatible `/audio/transcriptions` endpoint. Optional cleanup and
+transcript adjudication use your configured AI proxy. Audio and text are not sent anywhere else.
 
-Bring your own speech-to-text: Echo talks to **any OpenAI-compatible Whisper endpoint** —
-a self-hosted node (faster-whisper-server, speaches, LocalAI…) or OpenAI itself. Optional
-AI cleanup talks to **any Anthropic-compatible endpoint** — off the hot path, so inserts
-stay instant.
+## What is included
 
-```
-   ╭───────────────────────────────╮
-   │  ●  ▁▂▅▇▆▃▂▁▂▄  0:03           │   hold Right Ctrl → speak → release
-   ╰───────────────────────────────╯
-```
+| Platform | Trigger and insertion | Background startup |
+| --- | --- | --- |
+| macOS | Hold either Option key by default, release to paste | `/Library/LaunchAgents/com.tanay.echo.plist` for every local user |
+| Windows x64 | Hold Right Ctrl by default, release to paste | Machine-wide installer registers hidden startup for every user |
+| Android 8+ | Echo voice keyboard or floating mic | Android foreground service when the floating mic is enabled |
 
-## Quick start
+Desktop feedback is event-driven and targets less than 50 ms from trigger to visible recording
+state on a warm process. Final transcription includes audio upload and model inference, so it
+cannot honestly be guaranteed below 50 ms. Maximum accuracy runs several recognition hypotheses
+in parallel and favors correctness over final-response latency.
+
+## Accuracy pipeline
+
+1. Capture speech as mono 16 kHz PCM WAV with speech-oriented audio constraints.
+2. Send `language=en`, a dictionary bias prompt, and deterministic temperature `0` to Whisper.
+3. In Maximum mode, compare five concurrent remote hypotheses. macOS and Windows can also include
+   their native English speech recognizer.
+4. Reject wrong-script output, Icelandic `eth`/`thorn` drift, decoder repetition, empty results,
+   and assistant-style replies.
+5. Ground disagreements through the configured Responses API. A reconstruction must be supported
+   by recognizer candidates; Echo never asks the model to answer the dictated content.
+6. Apply deterministic dictionary aliases, spoken formatting, snippets, and optional cleanup.
+7. If confidence remains low, insert nothing and keep retained audio available for retry.
+
+The three desktop modes are:
+
+- **Maximum** (default): five concurrent remote hypotheses plus native recognition when available.
+- **Balanced**: one fast decode, with recovery only when its quality is not clean.
+- **Fast**: one deterministic decode, still protected by the rejection gate.
+
+## Desktop development
+
+Requirements: Node.js 20+; Swift/Xcode command-line tools on macOS; .NET 8 SDK for Windows helper
+builds.
 
 ```bash
 npm install
+npm test
+npm run typecheck
 npm run dev
 ```
 
-`npm run dev` launches the app (tray icon + overlay + dashboard). Then point Echo at your
-endpoints — either:
+Open Settings and enter:
 
-- **Settings page** (dashboard): enter your Whisper base URL (e.g.
-  `https://your-whisper-host/v1`), API key, and optionally a Claude-compatible base URL +
-  key for cleanup, **or**
-- **`secrets.local.json`** at the project root (gitignored — see
-  `secrets.local.json.example`): keys *and endpoint URLs* are seeded from it, so a fresh
-  install or packaged personal build works out of the box with zero clicks. Seeded URLs
-  only fill empty settings — anything you set in the UI wins.
+- Whisper base URL, API key, and model.
+- AI proxy base URL, key, cleanup model, and adjudicator model.
+- Optional sync URL and token.
 
-Either way, keys are stored **encrypted** via the OS credential store (Electron
-`safeStorage`) — never in plain text, never in version control.
+For a preconfigured personal build, create the gitignored `secrets.local.json` from
+`secrets.local.json.example`. It seeds empty settings for each user. The seed is optional; source
+builds without it still package normally and can be configured in the UI.
 
-Hold **Right Ctrl**, speak, release — your words appear wherever your cursor is.
-
-## How it works
-
-| Action | Result |
-|---|---|
-| **Hold the trigger key** (Right Ctrl / Right ⌘) | Pill appears, mic records (other keys stay normal for shortcuts) |
-| **Release** | Audio → Whisper → dictionary fixes → text pasted at your cursor → history |
-| Tap it (<200ms) | Ignored (accidental tap) |
-| Press another key while holding | Cancels — treated as a normal shortcut |
-
-Open the dashboard from the tray icon to browse/search history, manage your dictionary,
-see stats, change settings, or run diagnostics. Each transcript can be copied, re-inserted,
-edited, deleted, **replayed** (if audio retention is on), or **cleaned up with AI** (fixes
-punctuation, removes "um/uh", tidies formatting).
-
-## Personal dictionary — never fix the same word twice
-
-Whisper keeps hearing "Bryan" as "Brian"? Fix it once and it stays fixed:
-
-- **Edit any transcript in History** (pencil icon). Echo diffs your edit, auto-learns
-  word corrections ("Learned: Brian → Bryan", one-click Undo), and applies them to every
-  future dictation.
-- **Or add words manually** on the **Dictionary** page: the canonical spelling plus any
-  "misheard as" aliases.
-
-Under the hood it's two layers:
-
-1. **Bias** — your dictionary words ride along in Whisper's `prompt` field, so the model
-   prefers your spellings in the first place (names, jargon, product names).
-2. **Guarantee** — a deterministic word-boundary replacement pass fixes known mishearings
-   right after transcription, in microseconds, before pasting. AI cleanup also receives
-   your glossary so it never "fixes" your words back.
-
-Noise is filtered: punctuation-only edits, sentence-case changes, and full rewrites don't
-pollute the dictionary; learning is skipped when a corrected-away word is itself one of
-your dictionary words.
-
-## Configuration
-
-All in **Settings** (dashboard):
-
-- **Whisper** — base URL of any OpenAI-compatible `/v1/audio/transcriptions` server +
-  API key + model name.
-- **AI cleanup** — base URL of any Anthropic-compatible `/v1/messages` endpoint + key +
-  model. Modes: `off` (raw), `on-demand` (polish from history), or `auto` (clean every
-  dictation before inserting). Default: **on-demand** — raw Whisper for speed.
-- **Microphone** — `on-demand` (default) opens the mic only while dictating; `keep warm`
-  pre-opens it so the first key-press has zero acquisition latency.
-- **Keep audio recordings** — save each dictation's WAV so you can replay it from History
-  (off by default). Deleting a transcript also deletes its audio file.
-- **Trigger key** — Windows: Right Ctrl / Left Ctrl / Caps Lock / F8 · macOS: Right ⌘ /
-  Right ⌥ / Left ⌘ / Caps Lock / F8. Plus **min hold**, **launch at login**, **overlay
-  offset**.
-
-## Architecture
-
-```
-src/
-  shared/         types · WAV encoder · dictionary engine · formatting   (pure, unit-tested)
-  main/           Electron main process
-    hotkey/       machine.ts (pure PTT state machine) · listener.ts (uiohook)
-    transcription/ whisper.ts · claude.ts
-    store/        history.ts · dictionary.ts (sql.js) · settings.ts (safeStorage)
-    insert/       paste.ts (clipboard save/restore) · window-focus.ts
-    dictation.ts  the live dictation orchestrator
-    learn.ts      transcript-edit → dictionary learning
-    windows.ts · tray.ts · ipc.ts · diagnostics.ts · index.ts
-  preload/        typed contextBridge → window.api
-  renderer/
-    overlay/      the pill (mic capture, waveform)
-    dashboard/    history · dictionary · stats · settings · diagnostics (React + Tailwind)
-```
-
-- **Global hold-to-talk** uses a low-level keyboard hook (`uiohook-napi`) feeding a pure,
-  unit-tested state machine.
-- **The overlay never steals focus** (`focusable:false`, `showInactive`), and the target
-  window is re-focused before pasting — so text always lands in the right place.
-- **Insert** = set clipboard → re-focus target → Ctrl+V (`nut.js`) → restore your previous
-  clipboard.
-- **History + dictionary** live in `sql.js` (SQLite in WASM), persisted atomically at
-  `%APPDATA%\echo\history.sqlite` (Windows) or `~/Library/Application Support/echo/history.sqlite`
-  (macOS). No native compilation anywhere — `npm install` needs no build tools.
-
-## Install & run always-on — Windows (autostart at boot)
+## Install on this Mac for all users
 
 ```bash
-npm run pack
-```
-
-Produces a self-contained app at `dist/win-unpacked/Echo.exe` (no installer, no admin
-needed). Copy that folder somewhere stable (e.g. `%LOCALAPPDATA%\Programs\Echo`) and run
-`Echo.exe` once — it registers itself to **launch at login** (hidden, straight to the tray)
-and runs the hotkey in the background. Quit only via the tray. Toggle autostart in
-Settings → Launch at login.
-
-If a `secrets.local.json` exists at the project root when you build, it's bundled into the
-app's resources and seeds your keys on first run (see `electron-builder.yml` — remove that
-block if you'd rather type keys into Settings).
-
-### NSIS installer (optional, needs elevation)
-
-```bash
-npm run dist   # produces dist/Echo-0.1.0-setup.exe
-```
-
-electron-builder's `winCodeSign` toolchain contains macOS symlinks that can't unpack
-without **symlink privilege**. If it fails with "A required privilege is not held", either
-enable **Windows Developer Mode** (Settings → System → For developers) or run from an
-**Administrator** terminal. `npm run pack` (above) avoids this entirely. The exe is
-unsigned.
-
-## Install & run always-on — macOS
-
-macOS apps must be built **on a Mac** — electron-builder can't cross-compile them from
-Windows. On any Mac (a spare Mac mini on your network is perfect):
-
-```bash
-git clone <your-repo-url> echo && cd echo
-cp secrets.local.json.example secrets.local.json   # add your Whisper key + URL
 npm install
-npm run pack:mac     # → dist/mac*/Echo.app   (or `npm run dist:mac` for a .dmg)
+npm run dist:mac
+sudo npm run install:mac:all-users
 ```
 
-Drag **Echo.app** to `/Applications` and open it. It runs as a **menu-bar app** (top-right
-of the screen — no Dock icon), exactly like the Windows tray app.
+This copies the locally signed app to `/Applications/Echo.app`, installs the machine-wide
+LaunchAgent, starts Echo hidden for the console user, and keeps it event-driven in the background.
+Every local user gets separate history, settings, and credentials under their own
+`~/Library/Application Support/echo` directory.
 
-**First launch — grant three permissions.** Echo triggers the prompts automatically; switch
-each one on in **System Settings → Privacy & Security**, then **quit Echo from the menu bar
-and reopen it** (macOS only honors a new key-tap permission on a fresh launch):
+Each macOS user must grant these once in **System Settings > Privacy & Security**:
 
-| Permission | Why Echo needs it |
-|---|---|
-| **Accessibility** | paste transcribed text into other apps |
-| **Input Monitoring** | detect your hold-to-talk key anywhere |
-| **Microphone** | hear you |
+| Permission | Used for |
+| --- | --- |
+| Accessibility | Paste text into the focused app |
+| Input Monitoring | Detect Option/Caps Lock/F8 globally |
+| Microphone | Capture speech |
 
-If the hotkey does nothing, it's almost always Input Monitoring — check the **Diagnostics**
-page, which shows the live permission state.
+Quit and reopen Echo after changing Input Monitoring or Accessibility. The Diagnostics page shows
+the live state. The default trigger is **Left or Right Option**; Settings can select either side,
+Command, Caps Lock, or F8.
 
-**Gatekeeper:** the build is unsigned (no Apple Developer account required), so the first
-time, **right-click Echo.app → Open** to get past “Apple cannot check it for malware.” Just
-once.
+Local artifact outputs:
 
-**Trigger key:** macOS defaults to **Right ⌘** (Apple keyboards have no Right Ctrl). Change
-it in **Settings → Trigger key** — Right ⌘, Right ⌥, Left ⌘, Caps Lock, or F8. Launch-at-
-login and everything else behave just like Windows.
+- `dist/Echo-0.1.0-arm64.dmg`
+- `dist/Echo-0.1.0-arm64-mac.zip`
 
-## Dictating on your phone (Android / iOS)
+## Install on Windows for all users
 
-Echo itself is desktop-only, but its entire backend is just an **OpenAI-compatible Whisper
-endpoint** — so a voice keyboard on your phone can use the very same self-hosted node:
+Build from macOS or Windows:
 
-1. **Reach your node from the phone.** Install **Tailscale**, sign into your tailnet, and
-   `https://your-whisper-host/v1` becomes reachable on mobile data.
-2. **Install a Whisper voice keyboard:**
-   - **Android** — [whisper-to-input](https://github.com/j3soon/whisper-to-input) (open
-     source). In its settings, set the endpoint to your node's `/v1` URL and paste your API
-     key, then enable it under *System → Languages & input → On-screen keyboard*. Tap the
-     mic on the keyboard to dictate into any app.
-   - **iOS** — Apple sandboxes third-party keyboards tightly; the practical route is an
-     **Apple Shortcut** that records audio and POSTs it to your node's
-     `/v1/audio/transcriptions`, then pastes the result.
-3. **Carry your spellings over.** On the **Dictionary** page, click **Export** and open the
-   JSON — paste its `prompt` value into the keyboard's *prompt / initial-prompt* field (if
-   it has one). Your phone now shares Echo's *bias* ("prefer Bryan, not Brian"). The
-   deterministic find-and-replace layer stays desktop-only.
+```bash
+npm install
+npm run dist:win
+```
 
-> **Echo ↔ Echo (Windows ↔ Mac):** your whole dictionary lives in `history.sqlite`. Copy it
-> between machines — Windows `%APPDATA%\echo\` ↔ macOS `~/Library/Application Support/echo/`
-> — and both installs share the same learned corrections instantly.
+Run `dist/Echo-0.1.0-setup.exe` and accept the UAC prompt. The NSIS installer is pinned to x64,
+installs machine-wide, creates desktop/Start Menu shortcuts, and registers
+`Echo.exe --hidden` under the 64-bit HKLM Run key so every user starts Echo at sign-in. Each user
+still has separate settings/history and can disable **Launch at login**; a disabled profile exits
+immediately when invoked by the machine startup entry.
 
-**Full parity (advanced).** To get the find-and-replace corrections on *every* device, front
-your Whisper node with a tiny proxy that injects the bias prompt and applies the dictionary
-server-side (it can reuse `src/shared/dictionary.ts` directly), then point every client at
-the proxy instead of the node. Worth it only if you dictate from several devices daily.
+The installer contains self-contained x64 helpers for the global keyboard hook, SendInput paste,
+and `System.Speech`; the target PC does not need .NET. For the independent native recognizer,
+install **English (United States)** under Windows **Time & language > Speech**.
 
-## Scripts
+The Windows installer is currently unsigned. Windows may show a SmartScreen warning on first run.
+The local artifact is `dist/Echo-0.1.0-setup.exe`.
 
-| Command | Does |
-|---|---|
-| `npm run dev` | Launch the app with hot reload |
-| `npm test` | Run the unit suite (Vitest) |
-| `npm run typecheck` | Type-check main + renderer |
-| `npm run build` | Bundle main/preload/renderers |
-| `npm run pack` | Build standalone `dist/win-unpacked/Echo.exe` (no admin) |
-| `npm run dist` | Build the NSIS installer (needs Developer Mode / admin) |
-| `npm run pack:mac` | Build `Echo.app` — **run on a Mac** |
-| `npm run dist:mac` | Build a macOS `.dmg` — **run on a Mac** |
-| `node scripts/test-whisper.mjs <key> <url>` | Probe a Whisper endpoint from the CLI |
-| `node scripts/make-icons.mjs` | Regenerate app + tray icons |
-| `npx electron scripts/smoke-electron.cjs` | Verify native modules load (no UI) |
+## Install on Android
+
+The native Kotlin app lives in `android/` and supports both an Echo IME and a floating microphone.
+It shares the English quality gate, dictionary, history, snippets, context cleanup, and sync
+service used by desktop.
+
+```bash
+cd android
+./gradlew testDebugUnitTest lintDebug assembleDebug
+```
+
+Install `android/app/build/outputs/apk/debug/app-debug.apk`, open Echo, enter the same endpoints,
+grant microphone access, and enable either **Echo Voice Keyboard** or the floating mic permissions.
+See [Android build and install](docs/android-build-and-install.md) for exact device steps.
+
+## History and learning
+
+The dashboard provides transcript search, copy/reinsert, editing, deletion, retained-audio replay,
+AI cleanup, and retry transcription. Editing a transcript learns word-level corrections such as
+`Brian -> Bryan`; future requests bias Whisper toward the canonical term and a deterministic pass
+fixes known aliases before insertion. The dictionary and transcript history can sync across
+desktop and Android through the included self-hosted service.
+
+Run the sync service:
+
+```bash
+SYNC_TOKEN='a-long-random-token' npm run sync-server
+```
+
+Deployment details are in [the sync server guide](src/server/README.md).
+
+## Useful scripts
+
+| Command | Result |
+| --- | --- |
+| `npm test` | Desktop Vitest suite |
+| `npm run typecheck` | Main/preload and renderer TypeScript checks |
+| `npm run build` | macOS native helpers plus Electron production bundle |
+| `npm run build:win` | Windows x64 helpers plus Electron production bundle |
+| `npm run dist:mac` | Signed local macOS DMG and ZIP |
+| `npm run dist:win` | Machine-wide Windows x64 NSIS installer |
+| `npm run install:mac:all-users` | Install app and all-user LaunchAgent (run with sudo) |
+| `npm run sync-server` | Start the self-hosted sync service |
 
 ## Troubleshooting
 
-- **"Can't reach Whisper"** — check the base URL in Settings and that the server is up
-  (self-hosted over a VPN/tailnet: confirm the tunnel is connected). Test it on the
-  **Diagnostics** page.
-- **Nothing pastes** — some apps block synthetic Ctrl+V. The text is still saved to
-  history; use **Re-insert** or **Copy** from the dashboard.
-- **Hotkey does nothing** — Windows requires the app to run with the same privilege level
-  as the target window. If dictating into an elevated/admin app, run Echo as admin too.
-  Check the **Global hotkey** diagnostic.
-- **No transcript / "No speech detected"** — check the **Microphone** diagnostic and
-  Windows mic permissions (Settings → Privacy → Microphone → Desktop apps).
-- **Trigger key conflicts** — change it in Settings (Windows: Right/Left Ctrl, Caps Lock,
-  F8 · macOS: Right ⌘, Right ⌥, Left ⌘, Caps Lock, F8).
-- **macOS: hotkey or paste does nothing** — a privacy permission is missing. Grant
-  **Accessibility**, **Input Monitoring**, and **Microphone** in System Settings → Privacy
-  & Security, then quit Echo from the menu bar and reopen it. The Diagnostics page shows
-  which one is missing.
+- **Mac trigger does nothing:** grant Input Monitoring to Echo/EchoKeyHelper, then fully quit and
+  reopen Echo. Check Diagnostics.
+- **Auto-paste blocked:** grant Accessibility to Echo/EchoPasteHelper. The transcript remains on
+  the clipboard and in History when paste is blocked.
+- **Windows trigger does nothing:** do not mix privilege levels. Echo must run elevated when the
+  target app is elevated.
+- **Wrong-language text:** keep language `en` and use Maximum accuracy. Current builds reject the
+  known foreign-script drift instead of inserting it.
+- **No transcript:** verify the selected microphone, endpoint, API key, and English speech pack.
+- **Android cannot insert:** enable the Echo keyboard, or grant the floating mic Accessibility and
+  draw-over-apps permissions.
 
-## Security notes
+## Data and security
 
-- API keys are encrypted at rest via Electron `safeStorage` (OS credential store).
-- `secrets.local.json` is **gitignored** — keys never enter version control.
-- Audio goes only to the Whisper endpoint you configure; cleanup text only to the AI
-  endpoint you configure. No audio is retained on disk by default.
+- `secrets.local.json`, Android `defaults.local.properties`, databases, retained audio, and build
+  output are gitignored.
+- Desktop secrets are stored per user in a mode-`0600` local settings file. This avoids a hidden
+  Keychain prompt blocking all-user launch. Android secrets use EncryptedSharedPreferences backed
+  by the Android keystore.
+- Audio goes only to the configured speech endpoint. Cleanup/adjudication text goes only to the
+  configured AI endpoint. Audio retention is user-configurable on desktop and off-phone.
+- No credential is committed to this repository.
+
+## Verification
+
+See [cross-platform verification](docs/cross-platform-verification.md) for the tested matrix,
+artifact checks, and the remaining Windows on-device checklist.
 
 ## License
 

@@ -1,6 +1,8 @@
 node_modules/
 out/
 dist/
+native/windows/**/bin/
+native/windows/**/obj/
 *.log
 .DS_Store
 .vite/
@@ -10,5 +12,6 @@ secrets.local.json
 
 # design scratch
 .playwright-mcp/
+.superpowers/
 /overlay-*.png
 /echo-*.png

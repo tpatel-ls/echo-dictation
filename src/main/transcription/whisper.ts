@@ -10,6 +10,7 @@ export interface WhisperOpts {
   delay?: (ms: number) => Promise<void>
   /** Dictionary bias prompt — nudges Whisper toward custom spellings. */
   prompt?: string
+  temperature?: number
 }
 
 export class TranscriptionError extends Error {
@@ -42,13 +43,14 @@ export async function transcribe(
   const retries = opts.retries ?? 2
   const timeoutMs = opts.timeoutMs ?? 20_000
   const delay = opts.delay ?? ((ms) => new Promise((r) => setTimeout(r, ms)))
+  const temperature = opts.temperature ?? 0
   const url = joinUrl(settings.whisperBaseUrl, 'audio/transcriptions')
 
   let prompt = opts.prompt || undefined
   let lastError: unknown
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      return await attemptTranscribe(url, wav, settings.whisperModel, apiKey, deps, timeoutMs, prompt)
+      return await attemptTranscribe(url, wav, settings.whisperModel, apiKey, deps, timeoutMs, prompt, temperature)
     } catch (e) {
       lastError = e
       // 4xx is a real client error (bad key, bad request) — retrying won't help.
@@ -75,7 +77,8 @@ async function attemptTranscribe(
   apiKey: string,
   deps: WhisperDeps,
   timeoutMs: number,
-  prompt?: string
+  prompt?: string,
+  temperature = 0
 ): Promise<string> {
   const form = new FormData()
   form.append('file', new Blob([wav], { type: 'audio/wav' }), 'audio.wav')
@@ -83,7 +86,7 @@ async function attemptTranscribe(
   form.append('language', 'en')
   form.append('response_format', 'json')
   // Deterministic decoding — greedy, no sampling drift between identical dictations.
-  form.append('temperature', '0')
+  form.append('temperature', String(temperature))
   if (prompt) form.append('prompt', prompt)
 
   const controller = new AbortController()

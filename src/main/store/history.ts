@@ -109,6 +109,30 @@ export class HistoryStore {
     return this.get(id)
   }
 
+  updateRetried(
+    id: number,
+    result: { rawText: string; cleanedText: string | null; model: string; latencyMs: number }
+  ): Transcript | null {
+    if (!this.get(id)) return null
+    const keptText = result.cleanedText ?? result.rawText
+    this.db.run(
+      `UPDATE transcripts
+       SET raw_text = ?, cleaned_text = ?, word_count = ?, latency_ms = ?, model = ?, status = 'ok', updated_at = ?
+       WHERE id = ?`,
+      [
+        result.rawText,
+        result.cleanedText,
+        wordCount(keptText),
+        result.latencyMs,
+        result.model,
+        this.now(),
+        id
+      ]
+    )
+    this.onChange()
+    return this.get(id)
+  }
+
   /** Soft-delete: keep the row as a tombstone (deleted=1) so the deletion can sync. */
   delete(id: number): void {
     this.db.run('UPDATE transcripts SET deleted = 1, updated_at = ? WHERE id = ?', [this.now(), id])

@@ -11,6 +11,10 @@ export interface SeedFile {
   syncToken?: string
 }
 
+export interface SeedOptions {
+  seedSync?: boolean
+}
+
 /** Parse a seed file's text, tolerating the UTF-8 BOM that Notepad and
  * PowerShell prepend — JSON.parse rejects it. Invalid JSON → empty seed. */
 export function parseSeed(text: string): SeedFile {
@@ -27,10 +31,10 @@ export function parseSeed(text: string): SeedFile {
  * build configured by one file works out of the box. Never overrides a URL the
  * user has set. Returns the patched settings, or null when nothing applied.
  */
-export function applySeedEndpoints(settings: Settings, seed: SeedFile): Settings | null {
+export function applySeedEndpoints(settings: Settings, seed: SeedFile, options: SeedOptions = {}): Settings | null {
   const whisper = seed.whisperBaseUrl?.trim()
   const claude = seed.claudeBaseUrl?.trim()
-  const sync = seed.syncBaseUrl?.trim()
+  const sync = options.seedSync === false ? undefined : seed.syncBaseUrl?.trim()
   const patch: Partial<Settings> = {}
   if (!settings.whisperBaseUrl && whisper) patch.whisperBaseUrl = whisper
   if (!settings.claudeBaseUrl && claude) patch.claudeBaseUrl = claude

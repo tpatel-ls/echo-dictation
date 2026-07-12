@@ -1,4 +1,7 @@
-import { getActiveWindow } from '@nut-tree-fork/nut-js'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 
 export interface WindowSnapshot {
   title: string
@@ -12,19 +15,26 @@ export interface WindowSnapshot {
  */
 export async function snapshotForegroundWindow(): Promise<WindowSnapshot> {
   try {
-    const win = await getActiveWindow()
-    let title = ''
-    try {
-      title = await win.title
-    } catch {
-      /* ignore */
-    }
+    const { stdout } = await execFileAsync('osascript', [
+      '-e',
+      [
+        'tell application "System Events"',
+        'set frontApp to first application process whose frontmost is true',
+        'set appName to name of frontApp',
+        'set windowTitle to ""',
+        'try',
+        'set windowTitle to name of front window of frontApp',
+        'end try',
+        'return appName & "\n" & windowTitle',
+        'end tell'
+      ].join('\n')
+    ])
+    const [appName = 'Unknown', title = ''] = stdout.trim().split(/\r?\n/)
     return {
-      title: title || 'Unknown',
+      title: title ? `${appName} — ${title}` : appName,
       focus: async () => {
         try {
-          const w = win as unknown as { focus?: () => Promise<void> }
-          if (typeof w.focus === 'function') await w.focus()
+          await execFileAsync('osascript', ['-e', `tell application ${JSON.stringify(appName)} to activate`])
         } catch {
           /* best-effort */
         }

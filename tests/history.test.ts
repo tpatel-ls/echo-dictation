@@ -1,10 +1,25 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, vi } from 'vitest'
 import path from 'node:path'
+import { tmpdir } from 'node:os'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import initSqlJs, { type SqlJsStatic, type Database } from 'sql.js'
 import { HistoryStore } from '../src/main/store/history'
+import { retainAudioCopy } from '../src/main/store/history-file'
 import type { NewTranscript } from '@shared/types'
 
 const WASM = path.join(process.cwd(), 'node_modules', 'sql.js', 'dist')
+const electronMock = vi.hoisted(() => ({
+  getPath: vi.fn(() => '/tmp'),
+  getAppPath: vi.fn(() => process.cwd())
+}))
+
+vi.mock('electron', () => ({
+  app: {
+    isPackaged: false,
+    getPath: electronMock.getPath,
+    getAppPath: electronMock.getAppPath
+  }
+}))
 
 function base(overrides: Partial<NewTranscript> = {}): NewTranscript {
   return {
@@ -71,6 +86,29 @@ describe('HistoryStore', () => {
     const store = newStore()
     const t = store.insert(base())
     expect(store.updateCleaned(t.id, 'Hello, world.')?.cleaned_text).toBe('Hello, world.')
+  })
+
+  it('replaces a failed transcript after retry while preserving its retained audio', () => {
+    const store = newStore()
+    const t = store.insert(
+      base({ status: 'failed', raw_text: 'Low confidence transcription', audio_path: '/tmp/retry.wav' })
+    )
+    const retried = store.updateRetried(t.id, {
+      rawText: 'How is it going today?',
+      cleanedText: null,
+      model: 'native',
+      latencyMs: 420
+    })
+
+    expect(retried).toMatchObject({
+      status: 'ok',
+      raw_text: 'How is it going today?',
+      cleaned_text: null,
+      word_count: 5,
+      model: 'native',
+      latency_ms: 420,
+      audio_path: '/tmp/retry.wav'
+    })
   })
 
   it('deletes a row', () => {
@@ -184,5 +222,25 @@ describe('HistoryStore sync write-path', () => {
     const s = store.stats(now)
     expect(s.totalTranscripts).toBe(1)
     expect(s.totalWords).toBe(2)
+  })
+})
+
+describe('history audio retention', () => {
+  it('copies a temporary wav into retained history storage without deleting the temp file', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'echo-history-audio-'))
+    electronMock.getPath.mockReturnValue(dir)
+    const temp = path.join(dir, 'temp.wav')
+    writeFileSync(temp, Buffer.from([9, 8, 7]))
+
+    try {
+      const retained = retainAudioCopy(temp, { now: () => 1234, random: () => 0.42 })
+
+      expect(retained).toBe(path.join(dir, 'audio', '1234-420000.wav'))
+      if (!retained) throw new Error('expected retained audio path')
+      expect(readFileSync(retained)).toEqual(Buffer.from([9, 8, 7]))
+      expect(existsSync(temp)).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

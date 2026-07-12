@@ -148,10 +148,12 @@ class WhisperTest {
     @Test
     fun includesLanguageWhenSet() = runTest {
         server.enqueue(MockResponse().setResponseCode(200).setBody("""{"text":"ok"}"""))
-        client.transcribe(ByteArray(8), base(), "whisper-1", "KEY", language = "es")
+        client.transcribe(ByteArray(8), base(), "whisper-1", "KEY", language = "en", temperature = 0.3)
         val body = server.takeRequest().body.readUtf8()
         assertTrue(body.contains("name=\"language\""))
-        assertTrue(body.contains("es"))
+        assertTrue(body.contains("en"))
+        assertTrue(body.contains("name=\"temperature\""))
+        assertTrue(body.contains("0.3"))
     }
 
     @Test

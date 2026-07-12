@@ -1,10 +1,14 @@
-import { systemPreferences, shell, dialog } from 'electron'
+import { app, systemPreferences, shell, dialog } from 'electron'
+import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { helperPath, type NativeHelperName } from './native/helper-path'
 
 /**
  * macOS privacy onboarding. To dictate into any app, Echo needs three permissions the
  * OS withholds by default:
- *   • Accessibility   — to post the synthetic ⌘V that pastes text (nut.js)
- *   • Input Monitoring — to receive the global hold-to-talk key (uiohook event tap)
+ *   • Accessibility   — to post the synthetic ⌘V that pastes text
+ *   • Input Monitoring — to receive the global hold-to-talk Option key
  *   • Microphone       — to hear you
  * Windows and Linux need none of this (the mic is granted via Chromium's own prompt),
  * so every function here is a no-op off macOS.
@@ -48,9 +52,33 @@ export async function primeMacPermissions(): Promise<void> {
   } catch {
     /* ignore */
   }
+  try {
+    await runHelper('EchoPasteHelper', ['--prompt'])
+  } catch {
+    /* ignore */
+  }
+  try {
+    await runHelper('EchoKeyHelper', ['--prompt'])
+  } catch {
+    /* ignore */
+  }
+  try {
+    await runHelper('EchoSpeechHelper', ['--prompt'])
+  } catch {
+    /* ignore */
+  }
 }
 
-export type PrivacyPane = 'Accessibility' | 'ListenEvent' | 'Microphone'
+export async function checkNativeHelper(name: string): Promise<boolean> {
+  if (!isMac()) return true
+  try {
+    return (await runHelper(name, ['--check'])) === 0
+  } catch {
+    return false
+  }
+}
+
+export type PrivacyPane = 'Accessibility' | 'ListenEvent' | 'Microphone' | 'SpeechRecognition'
 
 /** Open a specific macOS “Privacy & Security” pane in System Settings. */
 export function openPrivacyPane(pane: PrivacyPane): void {
@@ -73,25 +101,55 @@ export function permissionSummary(p: MacPermissions): { ok: boolean; detail: str
 export async function showMacOnboardingIfNeeded(): Promise<void> {
   if (!isMac()) return
   const p = checkMacPermissions()
-  if (p.accessibility && p.microphone === 'granted') return
+  const pasteTrusted = await checkNativeHelper('EchoPasteHelper')
+  const speechTrusted = await checkNativeHelper('EchoSpeechHelper')
+  if (p.accessibility && pasteTrusted && speechTrusted && p.microphone === 'granted') return
 
   await primeMacPermissions()
+  const after = checkMacPermissions()
+  if (
+    after.accessibility &&
+    (await checkNativeHelper('EchoPasteHelper')) &&
+    (await checkNativeHelper('EchoSpeechHelper')) &&
+    after.microphone === 'granted'
+  ) return
 
   const res = await dialog.showMessageBox({
     type: 'info',
     title: 'Finish setting up Echo',
     message: 'Echo needs three macOS permissions to dictate anywhere',
     detail:
-      'Open each in System Settings → Privacy & Security, switch Echo on, then quit and ' +
-      'reopen Echo from the menu-bar icon (⌘ keys need a restart to take effect):\n\n' +
-      '•  Accessibility — paste text into other apps\n' +
-      '•  Input Monitoring — detect your hold-to-talk key\n' +
-      '•  Microphone — hear you\n\n' +
+      'Open each in System Settings → Privacy & Security, switch Echo and the Echo helpers on, then quit and ' +
+      'reopen Echo from the menu-bar icon (Input Monitoring needs a restart to take effect):\n\n' +
+      '•  Accessibility — Echo and EchoPasteHelper paste text into other apps\n' +
+      '•  Input Monitoring — EchoKeyHelper detects your hold-to-talk key\n' +
+      '•  Microphone — hear you\n' +
+      '•  Speech Recognition — EchoSpeechHelper checks Apple Speech as a secondary recognizer\n\n' +
       'Echo lives in the menu bar (top-right), not the Dock.',
-    buttons: ['Open Accessibility', 'Open Input Monitoring', 'Later'],
+    buttons: ['Open Accessibility', 'Open Input Monitoring', 'Open Speech Recognition', 'Later'],
     defaultId: 0,
-    cancelId: 2
+    cancelId: 3
   })
   if (res.response === 0) openPrivacyPane('Accessibility')
   else if (res.response === 1) openPrivacyPane('ListenEvent')
+  else if (res.response === 2) openPrivacyPane('SpeechRecognition')
+}
+
+function runHelper(name: string, args: string[]): Promise<number> {
+  const helper = nativeHelperPath(name)
+  if (!existsSync(helper)) return Promise.resolve(0)
+  return new Promise((resolve, reject) => {
+    const child = spawn(helper, args, { stdio: ['ignore', 'ignore', 'ignore'] })
+    child.on('error', reject)
+    child.on('exit', (code) => resolve(code ?? 1))
+  })
+}
+
+function nativeHelperPath(name: string): string {
+  return helperPath(
+    name as NativeHelperName,
+    process.platform,
+    app.isPackaged ? process.resourcesPath : undefined,
+    process.cwd()
+  )
 }

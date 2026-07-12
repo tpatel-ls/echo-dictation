@@ -12,6 +12,8 @@ import { HotkeyListener } from './hotkey/listener'
 import { registerIpc } from './ipc'
 import { createTray } from './tray'
 import { showMacOnboardingIfNeeded } from './permissions'
+import { NativeSpeechRecognizer } from './transcription/native-speech'
+import { shouldExitHiddenStartup, shouldOpenSecondInstance, usesMachineWideStartup } from './startup'
 import { IPC, type Settings } from '@shared/types'
 
 // Keep the always-on app alive through stray errors — one unhandled exception must
@@ -22,6 +24,7 @@ process.on('unhandledRejection', (reason) => console.error('[echo] unhandledReje
 // How often the desktop reconciles with the sync service, on top of the change- and
 // launch-triggered passes. Within the 30–60s target from the design spec.
 const SYNC_INTERVAL_MS = 45_000
+const smokeTest = process.env.ECHO_SMOKE_TEST === '1'
 
 app.setAppUserModelId('com.tanay.echo')
 
@@ -29,7 +32,7 @@ app.setAppUserModelId('com.tanay.echo')
 // which is keyed off userData) so automated runs never touch the real profile.
 if (process.env.ECHO_USER_DATA) app.setPath('userData', process.env.ECHO_USER_DATA)
 
-if (!app.requestSingleInstanceLock()) {
+if (!smokeTest && !app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.whenReady().then(main).catch((e) => {
@@ -39,6 +42,10 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 async function main(): Promise<void> {
+  if (smokeTest) {
+    app.exit(0)
+    return
+  }
   // Electron denies getUserMedia by default — grant microphone access so the
   // overlay can capture audio. (OS-level mic privacy must also be enabled.)
   const allowMic = (permission: string): boolean =>
@@ -49,6 +56,11 @@ async function main(): Promise<void> {
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => allowMic(permission))
 
   const settings = new SettingsStore()
+  const openedHidden = process.argv.includes('--hidden')
+  if (shouldExitHiddenStartup(openedHidden, settings.getSettings().launchAtLogin)) {
+    app.quit()
+    return
+  }
 
   // Sync: a store mutation nudges the runner, but the runner is built after the DB opens,
   // so the change hook forwards through a mutable indirection set just below.
@@ -56,7 +68,6 @@ async function main(): Promise<void> {
   const { db, store: history, dictionary, snippets, flush, persist } = await openHistory({
     onChange: () => nudgeSync()
   })
-
   const syncBindings: SyncBinding[] = [
     { name: 'transcripts', table: new SyncTable(db, 'transcripts', [...SYNC_COLUMNS.transcripts]) },
     { name: 'dictionary', table: new SyncTable(db, 'dictionary', [...SYNC_COLUMNS.dictionary]) },
@@ -83,20 +94,30 @@ async function main(): Promise<void> {
   syncRunner.trigger() // reconcile once on launch
   syncRunner.startInterval(SYNC_INTERVAL_MS) // periodic catch-up
 
-  const openedHidden = process.argv.includes('--hidden')
   let quitting = false
+  let onboardingShown = false
 
   const overlay = createOverlay(settings.getSettings().overlayOffsetBottom)
   let dashboard: BrowserWindow | null = null
+
+  const maybeShowOnboarding = (): void => {
+    if (onboardingShown) return
+    onboardingShown = true
+    void showMacOnboardingIfNeeded()
+  }
 
   const openDashboard = (): void => {
     if (dashboard && !dashboard.isDestroyed()) {
       dashboard.show()
       dashboard.focus()
+      maybeShowOnboarding()
       return
     }
     dashboard = createDashboard()
-    dashboard.once('ready-to-show', () => dashboard?.show())
+    dashboard.once('ready-to-show', () => {
+      dashboard?.show()
+      maybeShowOnboarding()
+    })
     // Close-to-tray: closing the window keeps Echo running in the background.
     dashboard.on('close', (e) => {
       if (!quitting) {
@@ -109,7 +130,11 @@ async function main(): Promise<void> {
   // Auto-launch at login passes --hidden so we boot straight to the tray.
   if (!openedHidden) openDashboard()
 
-  const controller = new DictationController(overlay, settings, history, dictionary, snippets)
+  const nativeSpeech = new NativeSpeechRecognizer({
+    platform: process.platform,
+    resourcesPath: app.isPackaged ? process.resourcesPath : undefined
+  })
+  const controller = new DictationController(overlay, settings, history, dictionary, snippets, nativeSpeech)
 
   const opts = (): { minHoldMs: number; cancelOnOtherKey: boolean } => {
     const s = settings.getSettings()
@@ -127,10 +152,6 @@ async function main(): Promise<void> {
     console.error('Global hotkey listener failed to start:', e)
   }
 
-  // macOS only: starting the key hook above triggers the Input Monitoring prompt; this
-  // fires the Accessibility + Microphone prompts and guides the user to the right panes.
-  void showMacOnboardingIfNeeded()
-
   const onSettingsChanged = (s: Settings): void => {
     listener.update({ minHoldMs: s.minHoldMs, cancelOnOtherKey: s.cancelOnOtherKey }, s.triggerKey)
     applyLoginItem(s.launchAtLogin)
@@ -147,6 +168,7 @@ async function main(): Promise<void> {
     quit: () => {
       quitting = true
       syncRunner.stop()
+      nativeSpeech.shutdown()
       flush()
       app.exit(0)
     }
@@ -154,7 +176,9 @@ async function main(): Promise<void> {
 
   applyLoginItem(settings.getSettings().launchAtLogin)
 
-  app.on('second-instance', openDashboard)
+  app.on('second-instance', (_event, argv) => {
+    if (shouldOpenSecondInstance(argv)) openDashboard()
+  })
   app.on('activate', openDashboard)
   app.on('window-all-closed', () => {
     /* tray app — keep running with no visible windows */
@@ -167,6 +191,7 @@ async function main(): Promise<void> {
     } catch {
       /* ignore */
     }
+    nativeSpeech.shutdown()
     flush()
   })
 }
@@ -178,6 +203,12 @@ async function main(): Promise<void> {
  */
 function applyLoginItem(enabled: boolean): void {
   if (!app.isPackaged) {
+    app.setLoginItemSettings({ openAtLogin: false })
+    return
+  }
+  if (usesMachineWideStartup(process.platform, app.isPackaged)) {
+    // The NSIS installer owns the all-user HKLM entry. Remove a stale HKCU entry so Windows
+    // does not launch a second hidden instance and accidentally reveal the dashboard at sign-in.
     app.setLoginItemSettings({ openAtLogin: false })
     return
   }

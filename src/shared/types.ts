@@ -22,11 +22,14 @@ export type NewTranscript = Omit<Transcript, 'id'>
 
 export type CleanupMode = 'off' | 'auto' | 'on-demand'
 export type MicMode = 'on-demand' | 'warm'
+export type AccuracyMode = 'fast' | 'balanced' | 'maximum'
 export type TriggerKey =
   | 'RightControl'
   | 'LeftControl'
-  | 'RightCommand' // ⌘ — macOS default
+  | 'RightCommand' // ⌘
   | 'LeftCommand'
+  | 'EitherOption' // either ⌥ key
+  | 'LeftOption'
   | 'RightOption' // ⌥
   | 'CapsLock'
   | 'F8'
@@ -42,12 +45,16 @@ export interface Settings {
   whisperBaseUrl: string
   whisperModel: string
   cleanupMode: CleanupMode
+  accuracyMode: AccuracyMode
   claudeBaseUrl: string
   claudeModel: string
+  accuracyModel: string
   /** Command Mode: when text is selected, treat a dictation as a spoken instruction on it (needs Claude). */
   commandModeEnabled: boolean
   launchAtLogin: boolean
   micMode: MicMode
+  /** Per-user preferred microphone device id. Empty follows the macOS system default. */
+  audioInputDeviceId: string
   retainAudio: boolean
   insertMode: 'paste'
   overlayOffsetBottom: number
@@ -56,7 +63,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  triggerKey: 'RightControl',
+  triggerKey: 'EitherOption',
   minHoldMs: 200,
   cancelOnOtherKey: true,
   // Point these at your own endpoints in Settings (any OpenAI-compatible
@@ -64,12 +71,15 @@ export const DEFAULT_SETTINGS: Settings = {
   whisperBaseUrl: '',
   whisperModel: 'whisper-1',
   cleanupMode: 'auto',
+  accuracyMode: 'maximum',
   claudeBaseUrl: '',
   claudeModel: 'claude-sonnet-4-6',
-  commandModeEnabled: true,
+  accuracyModel: 'gpt-5.4-mini',
+  commandModeEnabled: false,
   launchAtLogin: true,
   micMode: 'on-demand',
-  retainAudio: false,
+  audioInputDeviceId: '',
+  retainAudio: true,
   insertMode: 'paste',
   overlayOffsetBottom: 28,
   syncBaseUrl: ''
@@ -176,6 +186,7 @@ export const IPC = {
   HISTORY_POLISH: 'history:polish',
   HISTORY_EDIT: 'history:edit',
   HISTORY_REINSERT: 'history:reinsert',
+  HISTORY_RETRY: 'history:retry',
   HISTORY_COPY: 'history:copy',
   HISTORY_AUDIO: 'history:audio',
   DICT_LIST: 'dict:list',
@@ -221,6 +232,7 @@ export interface EchoApi {
     polish(id: number): Promise<Transcript>
     edit(id: number, text: string): Promise<EditResult>
     reinsert(id: number): Promise<InsertResult>
+    retry(id: number): Promise<Transcript>
     copy(id: number): Promise<void>
     getAudio(id: number): Promise<ArrayBuffer | null>
   }

@@ -28,6 +28,36 @@ export function resampleLinear(input: Float32Array, from: number, to: number): F
   const ratio = from / to
   const outLen = Math.max(1, Math.floor(input.length / ratio))
   const out = new Float32Array(outLen)
+
+  if (ratio > 1) {
+    // Downsampling needs a low-pass filter before samples are discarded. Without it,
+    // energy above the target Nyquist limit folds into the speech band and changes
+    // consonants. A compact Hann-windowed sinc keeps capture synchronous and pure.
+    const radius = 24
+    const cutoff = (to / from) * 0.92
+    for (let i = 0; i < outLen; i++) {
+      const center = (i + 0.5) * ratio - 0.5
+      const left = Math.ceil(center - radius)
+      const right = Math.floor(center + radius)
+      let weighted = 0
+      let weightSum = 0
+
+      for (let sourceIndex = left; sourceIndex <= right; sourceIndex++) {
+        if (sourceIndex < 0 || sourceIndex >= input.length) continue
+        const distance = sourceIndex - center
+        const window = 0.5 * (1 + Math.cos((Math.PI * distance) / radius))
+        const x = Math.PI * cutoff * distance
+        const sinc = x === 0 ? 1 : Math.sin(x) / x
+        const weight = cutoff * sinc * window
+        weighted += input[sourceIndex] * weight
+        weightSum += weight
+      }
+
+      out[i] = weightSum === 0 ? 0 : weighted / weightSum
+    }
+    return out
+  }
+
   for (let i = 0; i < outLen; i++) {
     const pos = i * ratio
     const i0 = Math.floor(pos)
