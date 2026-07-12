@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { serializeDictionary } from '../src/shared/dict-export'
+import { parseDictionaryImport, serializeDictionary } from '../src/shared/dict-export'
 import type { DictionaryEntry } from '@shared/types'
 
 function entry(over: Partial<DictionaryEntry> = {}): DictionaryEntry {
@@ -36,5 +36,44 @@ describe('serializeDictionary', () => {
     const out = serializeDictionary([])
     expect(out.entries).toEqual([])
     expect(out.prompt).toBe('')
+  })
+})
+
+describe('parseDictionaryImport', () => {
+  it('accepts the portable versioned export and normalizes valid entries', () => {
+    const parsed = parseDictionaryImport(JSON.stringify({
+      version: 1,
+      entries: [
+        { word: '  GitHub  ', misheard: ['git hub', ''], source: 'learned' },
+        { word: 'Kubernetes', misheard: ['kubernetis'] }
+      ],
+      prompt: 'ignored'
+    }))
+
+    expect(parsed).toEqual({
+      entries: [
+        { word: 'GitHub', misheard: ['git hub'], source: 'learned' },
+        { word: 'Kubernetes', misheard: ['kubernetis'], source: 'manual' }
+      ],
+      skipped: 0
+    })
+  })
+
+  it('skips malformed and oversized entries without rejecting the whole import', () => {
+    const parsed = parseDictionaryImport(JSON.stringify({
+      version: 1,
+      entries: [
+        null,
+        { word: '', misheard: [] },
+        { word: 'Valid', misheard: ['alias', 3] },
+        { word: 'x'.repeat(201), misheard: [] }
+      ]
+    }))
+    expect(parsed).toEqual({ entries: [], skipped: 4 })
+  })
+
+  it('rejects invalid JSON and unsupported export versions', () => {
+    expect(() => parseDictionaryImport('not json')).toThrow(/valid JSON/)
+    expect(() => parseDictionaryImport('{"version":2,"entries":[]}')).toThrow(/version/)
   })
 })
