@@ -8,7 +8,7 @@ import {
   type DiagName,
   type EditResult,
   type LearnedCorrection,
-  type ListOpts,
+  type HistoryQueryOpts,
   type Secrets,
   type Settings
 } from '@shared/types'
@@ -46,8 +46,8 @@ export function registerIpc(ctx: IpcContext): void {
   )
 
   // ── History ─────────────────────────────────────────────────────────────────
-  ipcMain.handle(IPC.HISTORY_LIST, (_e, opts: ListOpts) => ctx.history.list(opts))
-  ipcMain.handle(IPC.HISTORY_SEARCH, (_e, q: string, opts: ListOpts) => ctx.history.search(q, opts))
+  ipcMain.handle(IPC.HISTORY_LIST, (_e, opts: HistoryQueryOpts) => ctx.history.list(opts))
+  ipcMain.handle(IPC.HISTORY_SEARCH, (_e, q: string, opts: HistoryQueryOpts) => ctx.history.search(q, opts))
   ipcMain.handle(IPC.HISTORY_DELETE, (_e, id: number) => {
     const t = ctx.history.get(id)
     if (t?.audio_path) {

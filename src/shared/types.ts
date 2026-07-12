@@ -212,6 +212,11 @@ export interface ListOpts {
   offset: number
 }
 
+export interface HistoryQueryOpts extends ListOpts {
+  status?: TranscriptStatus
+  from?: number
+}
+
 export interface MaskedSecrets {
   whisperApiKey: string // masked, e.g. "sk-whi…1a2b"
   claudeApiKey: string
@@ -228,8 +233,8 @@ export interface EchoApi {
   sendAudio(buf: ArrayBuffer, meta: AudioMeta): Promise<InsertResult>
   overlayReady(): void
   history: {
-    list(opts: ListOpts): Promise<Transcript[]>
-    search(q: string, opts: ListOpts): Promise<Transcript[]>
+    list(opts: HistoryQueryOpts): Promise<Transcript[]>
+    search(q: string, opts: HistoryQueryOpts): Promise<Transcript[]>
     delete(id: number): Promise<void>
     stats(): Promise<Stats>
     polish(id: number): Promise<Transcript>

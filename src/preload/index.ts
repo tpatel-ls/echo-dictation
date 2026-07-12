@@ -5,7 +5,7 @@ import {
   type DiagName,
   type DictationStateEvent,
   type LearnedCorrection,
-  type ListOpts,
+  type HistoryQueryOpts,
   type EchoApi,
   type OSPlatform,
   type Secrets,
@@ -31,8 +31,8 @@ const api: EchoApi = {
     ipcRenderer.send(IPC.OVERLAY_READY)
   },
   history: {
-    list: (opts: ListOpts) => ipcRenderer.invoke(IPC.HISTORY_LIST, opts),
-    search: (q: string, opts: ListOpts) => ipcRenderer.invoke(IPC.HISTORY_SEARCH, q, opts),
+    list: (opts: HistoryQueryOpts) => ipcRenderer.invoke(IPC.HISTORY_LIST, opts),
+    search: (q: string, opts: HistoryQueryOpts) => ipcRenderer.invoke(IPC.HISTORY_SEARCH, q, opts),
     delete: (id: number) => ipcRenderer.invoke(IPC.HISTORY_DELETE, id),
     stats: () => ipcRenderer.invoke(IPC.HISTORY_STATS),
     polish: (id: number) => ipcRenderer.invoke(IPC.HISTORY_POLISH, id),

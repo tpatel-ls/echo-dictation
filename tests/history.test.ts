@@ -82,6 +82,19 @@ describe('HistoryStore', () => {
     expect(store.search('zzz', { limit: 10, offset: 0 })).toHaveLength(0)
   })
 
+  it('filters list and search results by status and minimum date', () => {
+    const store = newStore()
+    store.insert(base({ created_at: 100, raw_text: 'old success', status: 'ok' }))
+    store.insert(base({ created_at: 200, raw_text: 'recent failure', status: 'failed' }))
+    store.insert(base({ created_at: 300, raw_text: 'recent success', status: 'ok' }))
+    store.insert(base({ created_at: 400, raw_text: '', status: 'empty' }))
+
+    expect(store.list({ limit: 10, offset: 0, status: 'ok', from: 150 }).map((row) => row.raw_text))
+      .toEqual(['recent success'])
+    expect(store.search('recent', { limit: 10, offset: 0, status: 'failed', from: 150 })
+      .map((row) => row.raw_text)).toEqual(['recent failure'])
+  })
+
   it('updates cleaned text', () => {
     const store = newStore()
     const t = store.insert(base())
