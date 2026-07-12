@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { join } from 'node:path'
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { existsSync, readFileSync, mkdirSync } from 'node:fs'
 import {
   DEFAULT_SETTINGS,
   EMPTY_SECRETS,
@@ -12,6 +12,7 @@ import {
 import { defaultTriggerKey } from '@shared/trigger'
 import { writeFileAtomic } from './atomic-file'
 import { readJsonWithRecovery } from './json-recovery'
+import { normalizeSecrets, persistSecretsFile } from './secret-file'
 import { applySeedEndpoints, parseSeed, type SeedFile } from './seed'
 import { normalizeSettings } from './settings-migration'
 
@@ -59,7 +60,7 @@ export class SettingsStore {
   }
 
   setSecrets(patch: Partial<Secrets>): void {
-    this.secrets = { ...this.secrets, ...patch }
+    this.secrets = normalizeSecrets({ ...this.secrets, ...patch }, this.secrets)
     this.persistSecrets(this.secrets)
   }
 
@@ -87,7 +88,7 @@ export class SettingsStore {
       if (existsSync(this.secretsPath)) {
         const raw = readFileSync(this.secretsPath, 'utf8').trim()
         if (raw.startsWith('{')) {
-          return { ...EMPTY_SECRETS, ...seedSecrets(seed), ...(JSON.parse(raw) as Partial<Secrets>) }
+          return normalizeSecrets(JSON.parse(raw), seedSecrets(seed))
         }
       }
     } catch {
@@ -120,8 +121,7 @@ export class SettingsStore {
   }
 
   private persistSecrets(s: Secrets): void {
-    const json = JSON.stringify(s)
-    writeFileSync(this.secretsPath, json, { mode: 0o600 })
+    persistSecretsFile(this.secretsPath, s)
   }
 
   private persistSettings(): void {
