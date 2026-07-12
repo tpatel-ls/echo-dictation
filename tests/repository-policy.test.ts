@@ -36,4 +36,15 @@ describe('repository automation policy', () => {
     expect(workflow).toContain('app-debug.apk')
     expect(workflow).toContain('lint-results-debug.html')
   })
+
+  it('runs CodeQL for desktop and Android source languages', () => {
+    const workflow = repositoryFile('.github/workflows/codeql.yml')
+
+    expect(workflow).toContain('security-events: write')
+    expect(workflow).toContain('javascript-typescript')
+    expect(workflow).toContain('java-kotlin')
+    expect(workflow).toContain('github/codeql-action/init@v3')
+    expect(workflow).toContain('github/codeql-action/analyze@v3')
+    expect(workflow).toContain('schedule:')
+  })
 })
