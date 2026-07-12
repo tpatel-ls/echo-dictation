@@ -6,6 +6,7 @@ import {
   Settings as SettingsIcon,
   Stethoscope,
   AudioLines,
+  TextQuote,
   type LucideIcon
 } from 'lucide-react'
 import type { Page } from '../types'
@@ -16,6 +17,7 @@ import { api } from '../lib/api'
 const items: { id: Page; label: string; Icon: LucideIcon }[] = [
   { id: 'history', label: 'History', Icon: History },
   { id: 'dictionary', label: 'Dictionary', Icon: BookOpen },
+  { id: 'snippets', label: 'Snippets', Icon: TextQuote },
   { id: 'stats', label: 'Stats', Icon: BarChart3 },
   { id: 'settings', label: 'Settings', Icon: SettingsIcon },
   { id: 'diagnostics', label: 'Diagnostics', Icon: Stethoscope }

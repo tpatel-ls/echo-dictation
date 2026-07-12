@@ -6,6 +6,11 @@ export interface Snippet {
   expansion: string
 }
 
+export interface StoredSnippet extends Snippet {
+  id: number
+  created_at: number
+}
+
 /**
  * If `text` (the whole dictation) matches a snippet's cue — ignoring case, surrounding whitespace,
  * collapsed inner spaces, and trailing sentence punctuation — return its expansion; else null. The

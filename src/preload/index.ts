@@ -55,6 +55,12 @@ const api: EchoApi = {
     export: () => ipcRenderer.invoke(IPC.DICT_EXPORT),
     import: () => ipcRenderer.invoke(IPC.DICT_IMPORT)
   },
+  snippets: {
+    list: () => ipcRenderer.invoke(IPC.SNIPPET_LIST),
+    add: (cue, expansion) => ipcRenderer.invoke(IPC.SNIPPET_ADD, cue, expansion),
+    update: (id, patch) => ipcRenderer.invoke(IPC.SNIPPET_UPDATE, id, patch),
+    remove: (id) => ipcRenderer.invoke(IPC.SNIPPET_DELETE, id)
+  },
   settings: {
     get: () => ipcRenderer.invoke(IPC.SETTINGS_GET),
     set: (patch: Partial<Settings>) => ipcRenderer.invoke(IPC.SETTINGS_SET, patch),

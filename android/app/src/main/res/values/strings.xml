@@ -54,6 +54,7 @@
     <string name="snippet_save">Save changes</string>
     <string name="snippets_header">Your snippets</string>
     <string name="snippets_empty">No snippets yet. Add one above.</string>
+    <string name="snippet_search_hint">Search snippets</string>
     <string name="snippet_cue_required">Enter a cue</string>
     <string name="snippet_delete">Delete snippet</string>
     <string name="enable_keyboard">Enable Echo keyboard</string>

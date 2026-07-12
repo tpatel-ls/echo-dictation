@@ -67,6 +67,19 @@
 
         <TextView style="@style/EchoSectionHeader" android:text="@string/snippets_header" />
 
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:hint="@string/snippet_search_hint">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/snippet_search"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text" />
+        </com.google.android.material.textfield.TextInputLayout>
+
         <TextView
             android:id="@+id/snippet_empty"
             android:layout_width="wrap_content"

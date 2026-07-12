@@ -47,4 +47,11 @@ class SnippetsTest {
         val dupes = listOf(Snippet("hi", "first"), Snippet("HI", "second"))
         assertEquals("first", expandSnippet("hi", dupes))
     }
+
+    @Test
+    fun `search matches cue and expansion case insensitively in stable order`() {
+        assertEquals(listOf(snips[0]), filterSnippets(snips, "ADDRESS"))
+        assertEquals(listOf(snips[1]), filterSnippets(snips, "TANAY/30min"))
+        assertEquals(snips, filterSnippets(snips, "  "))
+    }
 }

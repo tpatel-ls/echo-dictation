@@ -1,3 +1,5 @@
+import type { StoredSnippet } from './snippets'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared types — the single source of truth referenced by main, preload, renderers.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -199,6 +201,10 @@ export const IPC = {
   DICT_UNDO_LEARN: 'dict:undoLearn',
   DICT_EXPORT: 'dict:export',
   DICT_IMPORT: 'dict:import',
+  SNIPPET_LIST: 'snippet:list',
+  SNIPPET_ADD: 'snippet:add',
+  SNIPPET_UPDATE: 'snippet:update',
+  SNIPPET_DELETE: 'snippet:delete',
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   SETTINGS_CHANGED: 'settings:changed',
@@ -263,6 +269,12 @@ export interface EchoApi {
     /** Write a portable JSON snapshot via a save dialog; returns the path, or null if cancelled. */
     export(): Promise<string | null>
     import(): Promise<DictionaryImportResult | null>
+  }
+  snippets: {
+    list(): Promise<StoredSnippet[]>
+    add(cue: string, expansion: string): Promise<StoredSnippet>
+    update(id: number, patch: { cue?: string; expansion?: string }): Promise<void>
+    remove(id: number): Promise<void>
   }
   settings: {
     get(): Promise<Settings>
