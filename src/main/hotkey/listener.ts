@@ -1,15 +1,32 @@
 import { app } from 'electron'
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { appendFileSync, existsSync, statSync, truncateSync } from 'node:fs'
 import { join } from 'node:path'
 import { HotkeyMachine, type MachineOptions } from './machine'
 import type { TriggerKey } from '@shared/types'
 import { helperPath } from '../native/helper-path'
+import { NativeHelperSupervisor, type SupervisedProcess } from '../native/helper-supervisor'
 
 export interface HotkeyCallbacks {
   onStart: () => void
   onStop: (durationMs: number) => void
   onCancel: (reason: 'too-short' | 'other-key') => void
+}
+
+interface HotkeyHelperStream {
+  setEncoding(encoding: BufferEncoding): void
+  on(event: 'data', listener: (chunk: string) => void): unknown
+}
+
+export interface HotkeyHelperProcess extends SupervisedProcess {
+  stdout?: HotkeyHelperStream | null
+  stderr?: HotkeyHelperStream | null
+}
+
+export interface HotkeyListenerDeps {
+  exists(path: string): boolean
+  helperPath(): string
+  spawn(path: string): HotkeyHelperProcess
 }
 
 interface NativeKeyEvent {
@@ -34,29 +51,50 @@ interface NativeErrorEvent {
  */
 export class HotkeyListener {
   private machine: HotkeyMachine
-  private running = false
-  private child: ChildProcess | null = null
+  private supervisor: NativeHelperSupervisor | null = null
   private stdout = ''
 
   constructor(
     opts: MachineOptions,
     private triggerKey: TriggerKey,
-    private cb: HotkeyCallbacks
+    private cb: HotkeyCallbacks,
+    private deps: HotkeyListenerDeps = defaultHotkeyDeps
   ) {
     this.machine = new HotkeyMachine(opts)
   }
 
   get isRunning(): boolean {
-    return this.running
+    return this.supervisor?.isRunning ?? false
   }
 
   start(): void {
-    if (this.running) return
-    const helper = nativeHelperPath('EchoKeyHelper')
-    if (!existsSync(helper)) throw new Error(`Keyboard helper is not built at ${helper}`)
+    if (this.supervisor) {
+      this.supervisor.start()
+      return
+    }
+    const helper = this.deps.helperPath()
+    if (!this.deps.exists(helper)) throw new Error(`Keyboard helper is not built at ${helper}`)
+    this.supervisor = new NativeHelperSupervisor({
+      spawn: () => this.deps.spawn(helper),
+      maxRestarts: 4,
+      baseDelayMs: 250,
+      onProcess: (process) => this.attachProcess(process as HotkeyHelperProcess, helper),
+      onCrash: ({ error, code, signal, restartAttempt }) => {
+        const detail = error?.message ?? `code=${code ?? 'signal'} signal=${signal ?? 'none'}`
+        diagnosticLog(`helper crash ${detail}; restart=${restartAttempt + 1}`)
+      },
+      onExhausted: ({ error, code }) => {
+        const detail = error?.message ?? `exit code ${code ?? 'signal'}`
+        console.error(`[echo] key helper recovery exhausted: ${detail}`)
+        diagnosticLog(`helper recovery exhausted: ${detail}`)
+      }
+    })
+    this.supervisor.start()
+  }
+
+  private attachProcess(child: HotkeyHelperProcess, helper: string): void {
+    this.stdout = ''
     diagnosticLog(`starting helper ${helper}; trigger=${this.triggerKey}`)
-    const child = spawn(helper, [], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
-    this.child = child
     child.stdout?.setEncoding('utf8')
     child.stderr?.setEncoding('utf8')
     child.stdout?.on('data', this.onStdout)
@@ -67,20 +105,10 @@ export class HotkeyListener {
         diagnosticLog(`helper stderr: ${text}`)
       }
     })
-    child.on('exit', (code) => {
-      this.running = false
-      this.child = null
-      diagnosticLog(`helper exit code=${code ?? 'signal'}`)
-      if (code !== 0 && code !== null) console.error(`[echo] key helper exited with code ${code}`)
-    })
-    this.running = true
   }
 
   stop(): void {
-    if (!this.running) return
-    this.child?.kill()
-    this.child = null
-    this.running = false
+    this.supervisor?.stop()
   }
 
   update(opts: MachineOptions, triggerKey: TriggerKey): void {
@@ -97,6 +125,7 @@ export class HotkeyListener {
       try {
         const event = JSON.parse(line) as NativeKeyEvent | NativeReadyEvent | NativeErrorEvent
         if (event.type === 'key') this.onNativeKey(event)
+        else if (event.type === 'ready') this.supervisor?.markHealthy()
         else if (event.type === 'error') console.error('[echo] key helper:', event.message)
       } catch {
         console.error('[echo] key helper produced invalid JSON')
@@ -139,6 +168,15 @@ function nativeHelperPath(name: string): string {
     app.isPackaged ? process.resourcesPath : undefined,
     process.cwd()
   )
+}
+
+const defaultHotkeyDeps: HotkeyListenerDeps = {
+  exists: existsSync,
+  helperPath: () => nativeHelperPath('EchoKeyHelper'),
+  spawn: (path) => spawn(path, [], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true
+  }) as HotkeyHelperProcess
 }
 
 function diagnosticLog(message: string): void {
