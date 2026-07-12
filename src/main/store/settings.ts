@@ -40,7 +40,7 @@ export class SettingsStore {
     this.secrets = this.loadSecrets()
     const seeded = applySeedEndpoints(this.settings, this.loadSeed(), { seedSync: !hadSettings })
     if (seeded) {
-      this.settings = seeded
+      this.settings = normalizeSettings(seeded, this.settings)
     }
     if (hadSettings || seeded) this.persistSettings()
   }
