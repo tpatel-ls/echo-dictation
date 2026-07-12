@@ -23,4 +23,17 @@ describe('repository automation policy', () => {
     expect(workflow).toContain('npm run build:win')
     expect(workflow).toContain('cancel-in-progress: true')
   })
+
+  it('tests lints and packages Android with the supported toolchain', () => {
+    const workflow = repositoryFile('.github/workflows/android-ci.yml')
+
+    expect(workflow).toContain('distribution: temurin')
+    expect(workflow).toContain('java-version: 17')
+    expect(workflow).toContain('platforms;android-34')
+    expect(workflow).toContain('gradle/actions/setup-gradle@v4')
+    expect(workflow).toContain('testDebugUnitTest lintDebug assembleDebug')
+    expect(workflow).toContain('actions/upload-artifact@v4')
+    expect(workflow).toContain('app-debug.apk')
+    expect(workflow).toContain('lint-results-debug.html')
+  })
 })
