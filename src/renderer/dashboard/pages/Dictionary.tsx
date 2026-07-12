@@ -26,11 +26,12 @@ export function Dictionary({ notify }: { notify: Notify }): JSX.Element {
       .map((s) => s.trim())
       .filter(Boolean)
     try {
-      const added = await api.dictionary.add(w, aliases)
+      const result = await api.dictionary.add(w, aliases)
       setWord('')
       setMisheard('')
       await load()
-      notify(`Added “${added.word}” to your dictionary`)
+      const conflict = result.conflicts.length ? `; skipped ${result.conflicts.length} conflicting alias` : ''
+      notify(`Added “${result.entry.word}” to your dictionary${conflict}`)
     } catch (err) {
       notify(`Couldn't add: ${(err as Error).message.slice(0, 60)}`)
     }
@@ -48,8 +49,11 @@ export function Dictionary({ notify }: { notify: Notify }): JSX.Element {
   }
 
   const onAddAlias = async (entry: DictionaryEntry, alias: string): Promise<void> => {
-    await api.dictionary.update(entry.id, { misheard: [...entry.misheard, alias] })
+    const result = await api.dictionary.update(entry.id, { misheard: [...entry.misheard, alias] })
     await load()
+    if (result?.conflicts.length) {
+      notify(`“${alias}” already belongs to “${result.conflicts[0].existingWord}”`)
+    }
   }
 
   const onExport = async (): Promise<void> => {
@@ -62,7 +66,8 @@ export function Dictionary({ notify }: { notify: Notify }): JSX.Element {
       if (!result) return
       await load()
       const skipped = result.skipped ? `, skipped ${result.skipped}` : ''
-      notify(`Imported ${result.imported} dictionary entr${result.imported === 1 ? 'y' : 'ies'}${skipped}`)
+      const conflicts = result.conflicts ? `, ${result.conflicts} alias conflict${result.conflicts === 1 ? '' : 's'}` : ''
+      notify(`Imported ${result.imported} dictionary entr${result.imported === 1 ? 'y' : 'ies'}${skipped}${conflicts}`)
     } catch (error) {
       notify(`Import failed: ${(error as Error).message.slice(0, 70)}`)
     }

@@ -1,4 +1,4 @@
-import { ipcMain, clipboard, dialog } from 'electron'
+import { app, ipcMain, clipboard, dialog } from 'electron'
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { parseDictionaryImport, serializeDictionary } from '@shared/dict-export'
 import { serializeTranscriptCsv, serializeTranscriptJson } from '@shared/transcript-export'
@@ -10,6 +10,7 @@ import {
   type EditResult,
   type LearnedCorrection,
   type HistoryQueryOpts,
+  type HistoryExportFilter,
   type Secrets,
   type Settings
 } from '@shared/types'
@@ -26,6 +27,8 @@ import { runDiagnostic } from './diagnostics'
 import { createDiagnosticReport } from './diagnostic-report'
 import { learnFromEdit } from './learn'
 import { writeFileAtomic } from './store/atomic-file'
+import { createBuildInfo } from '@shared/build-info'
+import { release as osRelease } from 'node:os'
 
 export interface IpcContext {
   settings: SettingsStore
@@ -39,6 +42,16 @@ export interface IpcContext {
 }
 
 export function registerIpc(ctx: IpcContext): void {
+  const buildInfo = (): import('@shared/build-info').BuildInfo => createBuildInfo({
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    runtimeVersion: process.versions.electron ?? process.versions.node,
+    nodeVersion: process.versions.node,
+    osVersion: osRelease(),
+    packaged: app.isPackaged,
+    channel: process.env.ECHO_CHANNEL
+  })
   ipcMain.on(IPC.OVERLAY_READY, () => {
     /* overlay handshake — reserved for future pre-warming */
   })
@@ -77,25 +90,31 @@ export function registerIpc(ctx: IpcContext): void {
     const t = ctx.history.get(id)
     if (t) clipboard.writeText(t.cleaned_text ?? t.raw_text)
   })
-  ipcMain.handle(IPC.HISTORY_EXPORT_JSON, async (): Promise<string | null> => {
+  ipcMain.handle(IPC.HISTORY_EXPORT_JSON, async (
+    _event,
+    filter: HistoryExportFilter
+  ): Promise<string | null> => {
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Export transcript history',
       defaultPath: 'echo-transcripts.json',
       filters: [{ name: 'JSON', extensions: ['json'] }]
     })
     if (canceled || !filePath) return null
-    const exported = serializeTranscriptJson(ctx.history.listAll())
+    const exported = serializeTranscriptJson(ctx.history.exportFiltered(filter ?? {}))
     writeFileAtomic(filePath, JSON.stringify(exported, null, 2))
     return filePath
   })
-  ipcMain.handle(IPC.HISTORY_EXPORT_CSV, async (): Promise<string | null> => {
+  ipcMain.handle(IPC.HISTORY_EXPORT_CSV, async (
+    _event,
+    filter: HistoryExportFilter
+  ): Promise<string | null> => {
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Export transcript history',
       defaultPath: 'echo-transcripts.csv',
       filters: [{ name: 'CSV', extensions: ['csv'] }]
     })
     if (canceled || !filePath) return null
-    writeFileAtomic(filePath, serializeTranscriptCsv(ctx.history.listAll()))
+    writeFileAtomic(filePath, serializeTranscriptCsv(ctx.history.exportFiltered(filter ?? {})))
     return filePath
   })
   ipcMain.handle(IPC.HISTORY_CLEAR_UNSUCCESSFUL, async (): Promise<number | null> => {
@@ -155,10 +174,10 @@ export function registerIpc(ctx: IpcContext): void {
   // ── Dictionary ───────────────────────────────────────────────────────────────
   ipcMain.handle(IPC.DICT_LIST, () => ctx.dictionary.list())
   ipcMain.handle(IPC.DICT_ADD, (_e, word: string, misheard: string[]) =>
-    ctx.dictionary.add(word, misheard, 'manual')
+    ctx.dictionary.addWithConflicts(word, misheard, 'manual')
   )
   ipcMain.handle(IPC.DICT_UPDATE, (_e, id: number, patch: { word?: string; misheard?: string[] }) =>
-    ctx.dictionary.update(id, patch)
+    ctx.dictionary.updateWithConflicts(id, patch)
   )
   ipcMain.handle(IPC.DICT_DELETE, (_e, id: number) => ctx.dictionary.delete(id))
   ipcMain.handle(IPC.DICT_UNDO_LEARN, (_e, items: LearnedCorrection[]) => {
@@ -187,10 +206,11 @@ export function registerIpc(ctx: IpcContext): void {
     const raw = readFileSync(filePaths[0], 'utf8')
     if (Buffer.byteLength(raw) > 5 * 1024 * 1024) throw new Error('Dictionary import is larger than 5 MB')
     const parsed = parseDictionaryImport(raw)
+    let conflicts = 0
     for (const entry of parsed.entries) {
-      ctx.dictionary.add(entry.word, entry.misheard, entry.source)
+      conflicts += ctx.dictionary.addWithConflicts(entry.word, entry.misheard, entry.source).conflicts.length
     }
-    return { imported: parsed.entries.length, skipped: parsed.skipped }
+    return { imported: parsed.entries.length, skipped: parsed.skipped, conflicts }
   })
 
   // ── Voice snippets ───────────────────────────────────────────────────────────
@@ -227,7 +247,7 @@ export function registerIpc(ctx: IpcContext): void {
     const report = createDiagnosticReport({
       platform: process.platform,
       arch: process.arch,
-      packaged: process.defaultApp !== true,
+      packaged: app.isPackaged,
       triggerKey: settings.triggerKey,
       hotkeyRunning: ctx.listener.isRunning,
       endpoints: {
@@ -240,10 +260,12 @@ export function registerIpc(ctx: IpcContext): void {
         cleanup: Boolean(secrets.claudeApiKey),
         sync: Boolean(secrets.syncToken)
       },
-      results: Array.isArray(results) ? results : []
+      results: Array.isArray(results) ? results : [],
+      build: buildInfo()
     })
     clipboard.writeText(report)
   })
+  ipcMain.handle(IPC.SYSTEM_BUILD_INFO, buildInfo)
   ipcMain.handle(IPC.OPEN_DASHBOARD, () => {
     ctx.openDashboard()
   })

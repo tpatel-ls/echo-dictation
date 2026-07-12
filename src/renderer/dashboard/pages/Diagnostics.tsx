@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { DiagName, DiagResult } from '@shared/types'
 import {
   Check,
@@ -10,9 +10,12 @@ import {
   Sparkles,
   ClipboardPaste,
   Copy,
+  Info,
   type LucideIcon
 } from 'lucide-react'
 import { api } from '../lib/api'
+import type { BuildInfo } from '@shared/build-info'
+import { formatBuildInfo } from '@shared/build-info'
 
 const CHECKS: { name: DiagName; label: string; Icon: LucideIcon; desc: string }[] = [
   { name: 'whisper', label: 'Whisper endpoint', Icon: Cloud, desc: 'Reach the transcription server on your tailnet.' },
@@ -26,6 +29,9 @@ type State = DiagResult | 'running' | undefined
 
 export function Diagnostics({ notify }: { notify: (message: string) => void }): JSX.Element {
   const [results, setResults] = useState<Record<string, State>>({})
+  const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null)
+
+  useEffect(() => { void api.system.buildInfo().then(setBuildInfo) }, [])
 
   const run = async (name: DiagName): Promise<void> => {
     setResults((r) => ({ ...r, [name]: 'running' }))
@@ -93,6 +99,12 @@ export function Diagnostics({ notify }: { notify: (message: string) => void }): 
               </div>
             )
           })}
+          {buildInfo && (
+            <div className="mt-3 pt-4 border-t border-border flex items-center gap-3 text-xs text-muted">
+              <Info className="w-4 h-4 shrink-0" />
+              <span>{formatBuildInfo(buildInfo)}</span>
+            </div>
+          )}
         </div>
       </div>
     </div>

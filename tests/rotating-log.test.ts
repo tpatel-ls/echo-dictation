@@ -44,4 +44,22 @@ describe('appendRotatingLog', () => {
     fs.append = vi.fn(() => { throw new Error('disk full') })
     expect(() => appendRotatingLog('/logs/echo.log', 'line', {}, fs)).not.toThrow()
   })
+
+  it('redacts sensitive values and flattens forged multiline entries', () => {
+    const fs = operations()
+    appendRotatingLog(
+      '/logs/echo.log',
+      'failed https://private.example/v1 for /Users/tanay/Echo Bearer secret-token\nforged line\n',
+      {},
+      fs
+    )
+    const written = (fs.append as ReturnType<typeof vi.fn>).mock.calls[0][1] as string
+    expect(written).not.toContain('private.example')
+    expect(written).not.toContain('/Users/tanay')
+    expect(written).not.toContain('secret-token')
+    expect(written).toContain('[url]')
+    expect(written).toContain('~/Echo')
+    expect(written.match(/\n/g)).toHaveLength(1)
+    expect(written).toContain('\\nforged line')
+  })
 })

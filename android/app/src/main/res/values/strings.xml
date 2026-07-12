@@ -22,6 +22,7 @@
     <string name="section_sync">Sync</string>
     <string name="section_formatting">AI formatting (adapts to the app)</string>
     <string name="section_setup">Setup</string>
+    <string name="section_about">About</string>
     <string name="field_whisper_url">Whisper base URL</string>
     <string name="field_whisper_key">Whisper API key</string>
     <string name="field_whisper_model">Whisper model</string>

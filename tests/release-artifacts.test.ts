@@ -12,7 +12,17 @@ function validRecords(): ArtifactRecord[] {
     { path: 'dist/win-unpacked/resources/native/EchoKeyHelper.exe', fileOutput: 'PE32+ executable x86-64' },
     { path: 'dist/win-unpacked/resources/native/EchoPasteHelper.exe', fileOutput: 'PE32+ executable x86-64' },
     { path: 'dist/win-unpacked/resources/native/EchoSpeechHelper.exe', fileOutput: 'PE32+ executable x86-64' },
-    { path: 'dist/mac-arm64/Echo.app', fileOutput: 'directory', signatureValid: true },
+    {
+      path: 'dist/mac-arm64/Echo.app',
+      fileOutput: 'directory',
+      executableFileOutput: 'Mach-O 64-bit executable arm64',
+      helperFileOutputs: [
+        'Mach-O 64-bit executable arm64',
+        'Mach-O 64-bit executable arm64',
+        'Mach-O 64-bit executable arm64'
+      ],
+      signatureValid: true
+    },
     { path: 'dist/Echo-0.1.0-arm64.dmg', fileOutput: 'zlib compressed data' },
     { path: 'dist/Echo-0.1.0-arm64-mac.zip', fileOutput: 'Zip archive data' },
     { path: 'android/app/build/outputs/apk/debug/app-debug.apk', fileOutput: 'Zip archive data' },
@@ -38,12 +48,14 @@ describe('release artifact verification', () => {
     runtime.fileOutput = 'PE32+ executable ARM64'
     const app = records.find((record) => record.path.endsWith('Echo.app'))!
     app.signatureValid = false
+    app.helperFileOutputs = ['Mach-O 64-bit executable x86_64']
 
     expect(validateArtifactSet(records)).toEqual(
       expect.arrayContaining([
         expect.stringContaining('EchoPasteHelper.exe'),
         expect.stringContaining('Windows runtime must be x86-64'),
         expect.stringContaining('macOS signature'),
+        expect.stringContaining('native helpers must be arm64')
       ]),
     )
   })

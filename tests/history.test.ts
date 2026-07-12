@@ -93,6 +93,19 @@ describe('HistoryStore', () => {
       .toEqual(['recent success'])
     expect(store.search('recent', { limit: 10, offset: 0, status: 'failed', from: 150 })
       .map((row) => row.raw_text)).toEqual(['recent failure'])
+    expect(store.list({ limit: 10, offset: 0, to: 250 }).map((row) => row.raw_text))
+      .toEqual(['recent failure', 'old success'])
+    expect(store.list({ limit: 10, offset: 0, from: 300, to: 200 })).toEqual([])
+  })
+
+  it('exports exactly the active search, status, and date scope without pagination', () => {
+    const store = newStore()
+    store.insert(base({ created_at: 100, raw_text: 'project old', status: 'ok' }))
+    store.insert(base({ created_at: 200, raw_text: 'project failed', status: 'failed' }))
+    store.insert(base({ created_at: 300, raw_text: 'project current', status: 'ok' }))
+    store.insert(base({ created_at: 400, raw_text: 'unrelated', status: 'ok' }))
+    expect(store.exportFiltered({ query: 'project', status: 'ok', from: 150 }).map((row) => row.raw_text))
+      .toEqual(['project current'])
   })
 
   it('updates cleaned text', () => {

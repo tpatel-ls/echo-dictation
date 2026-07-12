@@ -88,4 +88,19 @@ describe('HotkeyListener recovery', () => {
     expect(children).toHaveLength(1)
     expect(listener.isRunning).toBe(false)
   })
+
+  it('keeps exponential backoff when ready helpers crash again immediately', async () => {
+    vi.useFakeTimers()
+    const { listener, children } = setup()
+    listener.start()
+    children[0].emit('exit', 2, null)
+    await vi.advanceTimersByTimeAsync(250)
+    children[1].send({ type: 'ready' })
+    children[1].emit('exit', 2, null)
+
+    await vi.advanceTimersByTimeAsync(499)
+    expect(children).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(children).toHaveLength(3)
+  })
 })

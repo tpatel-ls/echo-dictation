@@ -11,6 +11,8 @@ export interface ArtifactRecord {
   path: string
   fileOutput: string
   signatureValid?: boolean
+  executableFileOutput?: string
+  helperFileOutputs?: string[]
 }
 
 export function classifyArtifact(path: string): ArtifactKind | null {
@@ -57,6 +59,15 @@ export function validateArtifactSet(records: ArtifactRecord[]): string[] {
     }
     if (kind === 'mac-app' && record.signatureValid !== true) {
       errors.push(`macOS signature verification failed: ${record.path}`)
+    }
+    if (kind === 'mac-app' && !/arm64/i.test(record.executableFileOutput ?? '')) {
+      errors.push(`macOS executable must be arm64: ${record.path}`)
+    }
+    if (
+      kind === 'mac-app' &&
+      (record.helperFileOutputs?.length !== 3 || record.helperFileOutputs.some((output) => !/arm64/i.test(output)))
+    ) {
+      errors.push(`macOS native helpers must be arm64: ${record.path}`)
     }
     if ((kind === 'mac-zip' || kind === 'android-apk') && !/Zip archive/i.test(record.fileOutput)) {
       errors.push(`Expected a Zip-compatible artifact: ${record.path}`)

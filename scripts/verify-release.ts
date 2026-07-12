@@ -38,6 +38,18 @@ async function main(): Promise<void> {
       path.endsWith('.app')
         ? spawnSync('codesign', ['--verify', '--deep', '--strict', resolve(root, path)]).status === 0
         : undefined,
+    executableFileOutput:
+      path.endsWith('.app')
+        ? execFileSync('file', [resolve(root, path, 'Contents/MacOS/Echo')], { encoding: 'utf8' })
+        : undefined,
+    helperFileOutputs:
+      path.endsWith('.app')
+        ? [
+            'Contents/Resources/native/EchoKeyHelper',
+            'Contents/Resources/native/EchoPasteHelper',
+            'Contents/Resources/native/EchoSpeechHelper.app/Contents/MacOS/EchoSpeechHelper'
+          ].map((helper) => execFileSync('file', [resolve(root, path, helper)], { encoding: 'utf8' }))
+        : undefined,
   }))
   const errors = validateArtifactSet(records)
   if (errors.length) throw new Error(errors.join('\n'))

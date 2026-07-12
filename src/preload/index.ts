@@ -41,8 +41,8 @@ const api: EchoApi = {
     retry: (id: number) => ipcRenderer.invoke(IPC.HISTORY_RETRY, id),
     copy: (id: number) => ipcRenderer.invoke(IPC.HISTORY_COPY, id),
     getAudio: (id: number) => ipcRenderer.invoke(IPC.HISTORY_AUDIO, id),
-    exportJson: () => ipcRenderer.invoke(IPC.HISTORY_EXPORT_JSON),
-    exportCsv: () => ipcRenderer.invoke(IPC.HISTORY_EXPORT_CSV),
+    exportJson: (filter) => ipcRenderer.invoke(IPC.HISTORY_EXPORT_JSON, filter),
+    exportCsv: (filter) => ipcRenderer.invoke(IPC.HISTORY_EXPORT_CSV, filter),
     clearUnsuccessful: () => ipcRenderer.invoke(IPC.HISTORY_CLEAR_UNSUCCESSFUL)
   },
   dictionary: {
@@ -70,6 +70,9 @@ const api: EchoApi = {
   diag: {
     run: (name: DiagName) => ipcRenderer.invoke(IPC.DIAG_RUN, name),
     copyReport: (results) => ipcRenderer.invoke(IPC.DIAG_COPY_REPORT, results)
+  },
+  system: {
+    buildInfo: () => ipcRenderer.invoke(IPC.SYSTEM_BUILD_INFO)
   }
 }
 

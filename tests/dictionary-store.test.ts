@@ -48,30 +48,33 @@ describe('DictionaryStore', () => {
     expect(store.list()).toHaveLength(1)
   })
 
-  it('moves a conflicting alias to the most recently assigned canonical word', () => {
+  it('reports a conflicting alias without changing its existing owner', () => {
     const store = newStore()
     const first = store.add('Acme Cloud', ['acme'], 'manual')
-    const second = store.add('Acme Desktop', ['ACME'], 'manual')
+    const second = store.addWithConflicts('Acme Desktop', ['ACME'], 'manual')
 
-    expect(store.get(first.id)?.misheard).toEqual([])
-    expect(store.get(second.id)?.misheard).toEqual(['ACME'])
+    expect(store.get(first.id)?.misheard).toEqual(['acme'])
+    expect(second.entry.misheard).toEqual([])
+    expect(second.conflicts).toEqual([{ alias: 'ACME', existingWord: 'Acme Cloud' }])
   })
 
   it('never allows another canonical word to be claimed as an alias', () => {
     const store = newStore()
     store.add('GitHub', [], 'manual')
-    const other = store.add('GitLab', ['github', 'git lab app'], 'manual')
-    expect(other.misheard).toEqual(['git lab app'])
+    const other = store.addWithConflicts('GitLab', ['github', 'git lab app'], 'manual')
+    expect(other.entry.misheard).toEqual(['git lab app'])
+    expect(other.conflicts).toEqual([{ alias: 'github', existingWord: 'GitHub' }])
   })
 
   it('resolves alias conflicts when an existing entry is updated', () => {
     const store = newStore()
     const first = store.add('First', ['shared'], 'manual')
     const second = store.add('Second', [], 'manual')
-    store.update(second.id, { misheard: ['Shared'] })
+    const result = store.updateWithConflicts(second.id, { misheard: ['Shared'] })
 
-    expect(store.get(first.id)?.misheard).toEqual([])
-    expect(store.get(second.id)?.misheard).toEqual(['Shared'])
+    expect(store.get(first.id)?.misheard).toEqual(['shared'])
+    expect(store.get(second.id)?.misheard).toEqual([])
+    expect(result?.conflicts).toEqual([{ alias: 'Shared', existingWord: 'First' }])
   })
 
   it('updates word and aliases', () => {
@@ -81,6 +84,18 @@ describe('DictionaryStore', () => {
     expect(u?.word).toBe('Bryan K')
     expect(u?.misheard).toEqual(['Brian', 'Brian K'])
     expect(store.update(999, { word: 'x' })).toBeNull()
+  })
+
+  it('rejects a rename onto an existing canonical word without creating a duplicate', () => {
+    const store = newStore()
+    const alpha = store.add('Alpha', [], 'manual')
+    const beta = store.add('Beta', [], 'manual')
+    const result = store.updateWithConflicts(beta.id, { word: 'alpha' })
+
+    expect(result?.entry.word).toBe('Beta')
+    expect(result?.conflicts).toEqual([{ alias: 'alpha', existingWord: 'Alpha' }])
+    expect(store.get(alpha.id)?.word).toBe('Alpha')
+    expect(store.list().map((entry) => entry.word).sort()).toEqual(['Alpha', 'Beta'])
   })
 
   it('deletes an entry', () => {

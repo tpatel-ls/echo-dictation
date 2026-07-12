@@ -137,7 +137,14 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
     }
   }
   const onExport = async (format: 'json' | 'csv'): Promise<void> => {
-    const path = format === 'json' ? await api.history.exportJson() : await api.history.exportCsv()
+    const filter = {
+      query: query || undefined,
+      status: status === 'all' ? undefined : status,
+      from: dateRangeStart(dateRange)
+    }
+    const path = format === 'json'
+      ? await api.history.exportJson(filter)
+      : await api.history.exportCsv(filter)
     if (path) notify('Transcript history exported')
   }
   const onClearUnsuccessful = async (): Promise<void> => {

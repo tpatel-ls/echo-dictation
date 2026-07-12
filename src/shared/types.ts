@@ -1,4 +1,5 @@
 import type { StoredSnippet } from './snippets'
+import type { BuildInfo } from './build-info'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared types — the single source of truth referenced by main, preload, renderers.
@@ -212,6 +213,7 @@ export const IPC = {
   SECRETS_SET: 'secrets:set',
   DIAG_RUN: 'diag:run',
   DIAG_COPY_REPORT: 'diag:copyReport',
+  SYSTEM_BUILD_INFO: 'system:buildInfo',
   OPEN_DASHBOARD: 'app:openDashboard'
 } as const
 
@@ -223,6 +225,14 @@ export interface ListOpts {
 export interface HistoryQueryOpts extends ListOpts {
   status?: TranscriptStatus
   from?: number
+  to?: number
+}
+
+export interface HistoryExportFilter {
+  query?: string
+  status?: TranscriptStatus
+  from?: number
+  to?: number
 }
 
 export interface MaskedSecrets {
@@ -234,6 +244,17 @@ export interface MaskedSecrets {
 export interface DictionaryImportResult {
   imported: number
   skipped: number
+  conflicts: number
+}
+
+export interface AliasConflict {
+  alias: string
+  existingWord: string
+}
+
+export interface DictionaryMutationResult {
+  entry: DictionaryEntry
+  conflicts: AliasConflict[]
 }
 
 // ── The contract exposed on `window.api` via the preload bridge ───────────────
@@ -256,14 +277,14 @@ export interface EchoApi {
     retry(id: number): Promise<Transcript>
     copy(id: number): Promise<void>
     getAudio(id: number): Promise<ArrayBuffer | null>
-    exportJson(): Promise<string | null>
-    exportCsv(): Promise<string | null>
+    exportJson(filter: HistoryExportFilter): Promise<string | null>
+    exportCsv(filter: HistoryExportFilter): Promise<string | null>
     clearUnsuccessful(): Promise<number | null>
   }
   dictionary: {
     list(): Promise<DictionaryEntry[]>
-    add(word: string, misheard: string[]): Promise<DictionaryEntry>
-    update(id: number, patch: { word?: string; misheard?: string[] }): Promise<DictionaryEntry | null>
+    add(word: string, misheard: string[]): Promise<DictionaryMutationResult>
+    update(id: number, patch: { word?: string; misheard?: string[] }): Promise<DictionaryMutationResult | null>
     remove(id: number): Promise<void>
     undoLearn(items: LearnedCorrection[]): Promise<void>
     /** Write a portable JSON snapshot via a save dialog; returns the path, or null if cancelled. */
@@ -285,5 +306,8 @@ export interface EchoApi {
   diag: {
     run(name: DiagName): Promise<DiagResult>
     copyReport(results: DiagResult[]): Promise<void>
+  }
+  system: {
+    buildInfo(): Promise<BuildInfo>
   }
 }

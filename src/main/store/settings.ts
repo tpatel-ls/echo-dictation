@@ -11,7 +11,7 @@ import {
 } from '@shared/types'
 import { defaultTriggerKey } from '@shared/trigger'
 import { writeFileAtomic } from './atomic-file'
-import { readJsonWithRecovery } from './json-recovery'
+import { readJsonRecoveryResult } from './json-recovery'
 import { normalizeSecrets, persistSecretsFile } from './secret-file'
 import { applySeedEndpoints, parseSeed, type SeedFile } from './seed'
 import { normalizeSettings } from './settings-migration'
@@ -36,13 +36,14 @@ export class SettingsStore {
     this.settingsPath = join(dir, 'settings.json')
     this.secretsPath = join(dir, 'secrets.bin')
     const hadSettings = existsSync(this.settingsPath)
-    this.settings = this.loadSettings()
+    const loadedSettings = this.loadSettings()
+    this.settings = loadedSettings.settings
     this.secrets = this.loadSecrets()
     const seeded = applySeedEndpoints(this.settings, this.loadSeed(), { seedSync: !hadSettings })
     if (seeded) {
       this.settings = normalizeSettings(seeded, this.settings)
     }
-    if (hadSettings || seeded) this.persistSettings()
+    if (loadedSettings.replaceable && (hadSettings || seeded)) this.persistSettings()
   }
 
   getSettings(): Settings {
@@ -72,14 +73,15 @@ export class SettingsStore {
     }
   }
 
-  private loadSettings(): Settings {
+  private loadSettings(): { settings: Settings; replaceable: boolean } {
     // Fresh install: the default trigger key depends on the keyboard. macOS has no
     // Right Ctrl, so a Windows default of RightControl would be undictatable there.
     const defaults = {
       ...DEFAULT_SETTINGS,
       triggerKey: defaultTriggerKey(process.platform as OSPlatform)
     }
-    return normalizeSettings(readJsonWithRecovery(this.settingsPath), defaults)
+    const loaded = readJsonRecoveryResult(this.settingsPath)
+    return { settings: normalizeSettings(loaded.value, defaults), replaceable: loaded.replaceable }
   }
 
   private loadSecrets(): Secrets {
@@ -88,7 +90,11 @@ export class SettingsStore {
       if (existsSync(this.secretsPath)) {
         const raw = readFileSync(this.secretsPath, 'utf8').trim()
         if (raw.startsWith('{')) {
-          return normalizeSecrets(JSON.parse(raw), seedSecrets(seed))
+          const loaded = normalizeSecrets(JSON.parse(raw), seedSecrets(seed))
+          // Migrate legacy files that predate owner-only permissions by replacing the
+          // validated payload atomically with a mode-0600 file on every startup.
+          this.persistSecrets(loaded)
+          return loaded
         }
       }
     } catch {
