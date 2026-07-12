@@ -13,10 +13,13 @@ export interface SyncConfig {
   baseUrl: string
   token: string
   timeoutMs?: number
+  retryCount?: number
+  retryBaseMs?: number
 }
 
 export interface SyncDeps {
   fetch: typeof fetch
+  delay?: (ms: number, signal?: AbortSignal) => Promise<void>
 }
 
 /** Per-collection sync progress. Two cursors: a server-seq pull cursor and a local
@@ -118,6 +121,26 @@ export class SyncClient {
   }
 
   private async request(url: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
+    const retryCount = Math.min(5, Math.max(0, this.config.retryCount ?? 2))
+    let lastError: unknown
+
+    for (let attempt = 0; attempt <= retryCount; attempt++) {
+      try {
+        const response = await this.requestAttempt(url, init, signal)
+        if (response.status < 500 || attempt === retryCount) return response
+      } catch (error) {
+        if (signal?.aborted || (error instanceof SyncError && error.message === 'sync cancelled')) {
+          throw error
+        }
+        lastError = error
+        if (attempt === retryCount) throw error
+      }
+      await this.waitBeforeRetry(attempt, signal)
+    }
+    throw lastError
+  }
+
+  private async requestAttempt(url: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
     const timeoutMs = this.config.timeoutMs ?? 15_000
     const controller = new AbortController()
     const cancel = (): void => controller.abort()
@@ -138,6 +161,31 @@ export class SyncClient {
       signal?.removeEventListener('abort', cancel)
     }
   }
+
+  private waitBeforeRetry(attempt: number, signal?: AbortSignal): Promise<void> {
+    const baseMs = Math.min(5_000, Math.max(10, this.config.retryBaseMs ?? 250))
+    const ms = Math.min(5_000, baseMs * 2 ** attempt)
+    return this.deps.delay?.(ms, signal) ?? abortableDelay(ms, signal)
+  }
+}
+
+function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new SyncError('sync cancelled'))
+      return
+    }
+    const timer = setTimeout(done, ms)
+    function done(): void {
+      signal?.removeEventListener('abort', cancel)
+      resolve()
+    }
+    function cancel(): void {
+      clearTimeout(timer)
+      reject(new SyncError('sync cancelled'))
+    }
+    signal?.addEventListener('abort', cancel, { once: true })
+  })
 }
 
 /** In-memory SyncState — the default cursor store for tests and a base for persistence. */
