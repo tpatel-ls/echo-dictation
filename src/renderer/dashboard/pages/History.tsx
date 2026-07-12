@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type UIEvent } from 'react'
-import type { Stats, Transcript, TriggerKey } from '@shared/types'
+import type { HistoryQueryOpts, Stats, Transcript, TranscriptStatus, TriggerKey } from '@shared/types'
 import { formatDuration } from '@shared/format'
 import { triggerLabel, defaultTriggerKey } from '@shared/trigger'
 import { Download, Flame, Clock, Type } from 'lucide-react'
@@ -15,10 +15,19 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
   const [query, setQuery] = useState('')
   const [stats, setStats] = useState<Stats | null>(null)
   const [done, setDone] = useState(false)
+  const [status, setStatus] = useState<TranscriptStatus | 'all'>('all')
+  const [dateRange, setDateRange] = useState<'all' | 'today' | '7d' | '30d'>('all')
   const [triggerKey, setTriggerKey] = useState<TriggerKey>(() => defaultTriggerKey(api.platform))
   const offset = useRef(0)
   const loading = useRef(false)
   const searchRef = useRef<HTMLInputElement>(null)
+
+  const requestOpts = useCallback((limit: number, requestOffset: number): HistoryQueryOpts => ({
+    limit,
+    offset: requestOffset,
+    status: status === 'all' ? undefined : status,
+    from: dateRangeStart(dateRange)
+  }), [status, dateRange])
 
   const loadStats = useCallback(async (): Promise<void> => {
     setStats(await api.history.stats())
@@ -27,25 +36,25 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
   const reset = useCallback(async (q: string): Promise<void> => {
     loading.current = true
     const rows = q
-      ? await api.history.search(q, { limit: PAGE, offset: 0 })
-      : await api.history.list({ limit: PAGE, offset: 0 })
+      ? await api.history.search(q, requestOpts(PAGE, 0))
+      : await api.history.list(requestOpts(PAGE, 0))
     setItems(rows)
     setDone(rows.length < PAGE)
     offset.current = rows.length
     loading.current = false
-  }, [])
+  }, [requestOpts])
 
   const loadMore = useCallback(async (): Promise<void> => {
     if (loading.current || done) return
     loading.current = true
     const rows = query
-      ? await api.history.search(query, { limit: PAGE, offset: offset.current })
-      : await api.history.list({ limit: PAGE, offset: offset.current })
+      ? await api.history.search(query, requestOpts(PAGE, offset.current))
+      : await api.history.list(requestOpts(PAGE, offset.current))
     setItems((cur) => [...cur, ...rows])
     setDone(rows.length < PAGE)
     offset.current += rows.length
     loading.current = false
-  }, [query, done])
+  }, [query, done, requestOpts])
 
   useEffect(() => {
     void loadStats()
@@ -167,12 +176,40 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
             </div>
           </div>
         </div>
-        <SearchBar value={query} onChange={setQuery} inputRef={searchRef} />
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2">
+          <SearchBar value={query} onChange={setQuery} inputRef={searchRef} />
+          <select
+            aria-label="Filter by transcript status"
+            value={status}
+            onChange={(event) => setStatus(event.target.value as TranscriptStatus | 'all')}
+            className="px-2.5 py-2 bg-surface border border-border rounded-lg text-xs outline-none focus:border-accent/60"
+          >
+            <option value="all">All statuses</option>
+            <option value="ok">Successful</option>
+            <option value="failed">Failed</option>
+            <option value="empty">Empty</option>
+          </select>
+          <select
+            aria-label="Filter by transcript date"
+            value={dateRange}
+            onChange={(event) => setDateRange(event.target.value as typeof dateRange)}
+            className="px-2.5 py-2 bg-surface border border-border rounded-lg text-xs outline-none focus:border-accent/60"
+          >
+            <option value="all">Any time</option>
+            <option value="today">Today</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+          </select>
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto px-7 py-4" onScroll={onScroll}>
         {items.length === 0 ? (
-          <Empty query={query} keyLabel={triggerLabel(triggerKey)} />
+          <Empty
+            query={query}
+            filtered={status !== 'all' || dateRange !== 'all'}
+            keyLabel={triggerLabel(triggerKey)}
+          />
         ) : (
           <div className="flex flex-col gap-2.5 max-w-3xl mx-auto">
             {items.map((t) => (
@@ -195,14 +232,24 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
   )
 }
 
-function Empty({ query, keyLabel }: { query: string; keyLabel: string }): JSX.Element {
+function dateRangeStart(range: 'all' | 'today' | '7d' | '30d'): number | undefined {
+  if (range === 'all') return undefined
+  if (range === 'today') {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return today.getTime()
+  }
+  return Date.now() - (range === '7d' ? 7 : 30) * 86_400_000
+}
+
+function Empty({ query, filtered, keyLabel }: { query: string; filtered: boolean; keyLabel: string }): JSX.Element {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center text-muted gap-2 animate-fadeup">
       <div className="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center mb-1">
         <Type className="w-5 h-5" />
       </div>
-      {query ? (
-        <p className="text-sm">No transcripts match “{query}”.</p>
+      {query || filtered ? (
+        <p className="text-sm">No transcripts match {query ? `“${query}”` : 'these filters'}.</p>
       ) : (
         <>
           <p className="text-sm text-text">No transcripts yet</p>

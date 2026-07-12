@@ -1,5 +1,5 @@
 import type { Database, SqlValue } from 'sql.js'
-import type { ListOpts, NewTranscript, Stats, Transcript, TranscriptStatus } from '@shared/types'
+import type { HistoryQueryOpts, NewTranscript, Stats, Transcript, TranscriptStatus } from '@shared/types'
 import { estimatedSecondsSaved, wordCount } from '@shared/format'
 import { ensureSyncColumns } from './migrate'
 import { monotonicClock } from './clock'
@@ -64,11 +64,8 @@ export class HistoryStore {
     return this.query('SELECT * FROM transcripts WHERE id = ? AND deleted = 0', [id])[0] ?? null
   }
 
-  list(opts: ListOpts): Transcript[] {
-    return this.query(
-      'SELECT * FROM transcripts WHERE deleted = 0 ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?',
-      [opts.limit, opts.offset]
-    )
+  list(opts: HistoryQueryOpts): Transcript[] {
+    return this.filteredQuery(opts)
   }
 
   listAll(): Transcript[] {
@@ -78,14 +75,8 @@ export class HistoryStore {
     )
   }
 
-  search(q: string, opts: ListOpts): Transcript[] {
-    const like = `%${q}%`
-    return this.query(
-      `SELECT * FROM transcripts
-       WHERE deleted = 0 AND (raw_text LIKE ? OR cleaned_text LIKE ?)
-       ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
-      [like, like, opts.limit, opts.offset]
-    )
+  search(q: string, opts: HistoryQueryOpts): Transcript[] {
+    return this.filteredQuery(opts, q)
   }
 
   /**
@@ -192,6 +183,30 @@ export class HistoryStore {
     while (stmt.step()) rows.push(toTranscript(stmt.getAsObject()))
     stmt.free()
     return rows
+  }
+
+  private filteredQuery(opts: HistoryQueryOpts, search?: string): Transcript[] {
+    const clauses = ['deleted = 0']
+    const params: SqlValue[] = []
+    if (search) {
+      const like = `%${search}%`
+      clauses.push('(raw_text LIKE ? OR cleaned_text LIKE ?)')
+      params.push(like, like)
+    }
+    if (opts.status) {
+      clauses.push('status = ?')
+      params.push(opts.status)
+    }
+    if (typeof opts.from === 'number' && Number.isFinite(opts.from)) {
+      clauses.push('created_at >= ?')
+      params.push(opts.from)
+    }
+    params.push(opts.limit, opts.offset)
+    return this.query(
+      `SELECT * FROM transcripts WHERE ${clauses.join(' AND ')}
+       ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+      params
+    )
   }
 
   private scalar(sql: string, params: SqlValue[]): number {
