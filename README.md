@@ -153,6 +153,9 @@ Deployment details are in [the sync server guide](src/server/README.md).
 | `npm run typecheck` | Main/preload and renderer TypeScript checks |
 | `npm run build` | macOS native helpers plus Electron production bundle |
 | `npm run build:win` | Windows x64 helpers plus Electron production bundle |
+| `npm run check` | Complete desktop, Android, and tracked-secret quality gate |
+| `npm run check:desktop` | Desktop tests, typechecks, and production bundle |
+| `npm run check:android` | Android tests, lint, and debug APK |
 | `npm run dist:mac` | Signed local macOS DMG and ZIP |
 | `npm run dist:win` | Machine-wide Windows x64 NSIS installer |
 | `npm run install:mac:all-users` | Install app and all-user LaunchAgent (run with sudo) |

@@ -12,6 +12,9 @@
 - `npm run typecheck` — both tsconfig projects (node + web)
 - `npm run build` — bundle main/preload/renderers to `out/`
 - `npm run dev` — launch with hot reload
+- `npm run check:desktop` — desktop tests, typechecks, native helpers, and production bundle
+- `npm run check:android` — Android unit tests, lint, and debug APK
+- `npm run check` — all desktop, Android, and tracked-secret gates
 
 ## Conventions
 

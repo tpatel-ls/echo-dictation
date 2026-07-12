@@ -22,14 +22,16 @@ jobs:
           distribution: temurin
           java-version: 17
           cache: gradle
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
       - uses: android-actions/setup-android@v3
       - name: Install Android SDK 34
         run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
       - uses: gradle/actions/setup-gradle@v4
       - run: chmod +x android/gradlew
       - name: Test, lint, and assemble
-        working-directory: android
-        run: ./gradlew testDebugUnitTest lintDebug assembleDebug --no-daemon
+        run: npm run check:android
       - name: Upload Android reports and APK
         uses: actions/upload-artifact@v4
         with:
