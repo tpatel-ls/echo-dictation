@@ -1,4 +1,5 @@
 import type { DiagResult, TriggerKey } from '@shared/types'
+import type { BuildInfo } from '@shared/build-info'
 
 export interface DiagnosticReportInput {
   platform: NodeJS.Platform
@@ -9,6 +10,7 @@ export interface DiagnosticReportInput {
   endpoints: { whisper: boolean; cleanup: boolean; sync: boolean }
   secrets: { whisper: boolean; cleanup: boolean; sync: boolean }
   results: DiagResult[]
+  build?: BuildInfo
 }
 
 export function redactDiagnosticText(text: string): string {
@@ -26,6 +28,7 @@ export function createDiagnosticReport(input: DiagnosticReportInput): string {
     'Echo diagnostics',
     `Generated: ${new Date().toISOString()}`,
     `Platform: ${input.platform} ${input.arch}`,
+    ...(input.build ? [`Build: ${input.build.appVersion} ${input.build.runtime} ${input.build.channel}`] : []),
     `Packaged: ${yesNo(input.packaged)}`,
     `Trigger: ${input.triggerKey}`,
     `Hotkey running: ${yesNo(input.hotkeyRunning)}`,

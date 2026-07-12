@@ -342,5 +342,15 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/floating_perm_notif" />
+
+        <TextView style="@style/EchoSectionHeader" android:text="@string/section_about" />
+
+        <TextView
+            android:id="@+id/build_info"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/echo_muted"
+            android:textIsSelectable="true"
+            android:textSize="13sp" />
     </LinearLayout>
 </ScrollView>

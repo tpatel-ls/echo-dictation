@@ -132,4 +132,22 @@ describe('SyncRunner', () => {
       vi.useRealTimers()
     }
   })
+
+  it('aborts an in-flight pass and suppresses shutdown cancellation errors', async () => {
+    let received: AbortSignal | null = null
+    const errors: unknown[] = []
+    const runner = new SyncRunner(
+      (signal) => new Promise<void>((_resolve, reject) => {
+        received = signal
+        signal.addEventListener('abort', () => reject(new Error('cancelled')))
+      }),
+      (error) => errors.push(error)
+    )
+    runner.trigger()
+    runner.stop()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect((received as AbortSignal | null)?.aborted).toBe(true)
+    expect(errors).toEqual([])
+  })
 })

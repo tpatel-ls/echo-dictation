@@ -10,14 +10,17 @@ export class SyncRunner {
   private running = false
   private pending = false
   private interval: ReturnType<typeof setInterval> | null = null
+  private controller: AbortController | null = null
+  private stopped = false
 
   constructor(
-    private readonly run: () => Promise<void>,
+    private readonly run: (signal: AbortSignal) => Promise<void>,
     private readonly onError: (e: unknown) => void = (e) => console.error('[sync] pass failed:', e)
   ) {}
 
   /** Request a sync pass. Runs now if idle; otherwise coalesces into one follow-up pass. */
   trigger(): void {
+    if (this.stopped) return
     if (this.running) {
       this.pending = true
       return
@@ -27,32 +30,39 @@ export class SyncRunner {
 
   /** Begin running passes on a fixed interval (replacing any existing one). */
   startInterval(ms: number): void {
-    this.stop()
+    if (this.interval) clearInterval(this.interval)
+    this.stopped = false
     this.interval = setInterval(() => this.trigger(), ms)
     this.interval.unref?.()
   }
 
-  /** Stop the interval. In-flight and pending passes still settle. */
+  /** Stop scheduling and cancel the in-flight network pass. */
   stop(): void {
+    this.stopped = true
+    this.pending = false
     if (this.interval) {
       clearInterval(this.interval)
       this.interval = null
     }
+    this.controller?.abort()
   }
 
   private async cycle(): Promise<void> {
     this.running = true
+    const controller = new AbortController()
+    this.controller = controller
     try {
       do {
         this.pending = false
-        await this.run()
-      } while (this.pending) // a trigger landed mid-pass → run exactly once more
+        await this.run(controller.signal)
+      } while (this.pending && !this.stopped) // a trigger landed mid-pass → run exactly once more
     } catch (e) {
       // Swallow: a failed pass must not bubble (no unhandled rejection) or wedge the
       // runner. We deliberately do NOT honour `pending` on error — that would spin a
       // tight retry loop while the network is down; the interval retries instead.
-      this.onError(e)
+      if (!this.stopped || !controller.signal.aborted) this.onError(e)
     } finally {
+      if (this.controller === controller) this.controller = null
       this.running = false
     }
   }

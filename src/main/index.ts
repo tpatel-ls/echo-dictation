@@ -76,13 +76,13 @@ async function main(): Promise<void> {
   const syncState = new FileSyncState(join(app.getPath('userData'), 'sync-state.json'))
   // The run closure reads settings/secrets fresh each pass: editing them in Settings takes
   // effect live, and an install without a sync endpoint simply no-ops.
-  const syncRunner = new SyncRunner(async () => {
+  const syncRunner = new SyncRunner(async (signal) => {
     const s = settings.getSettings()
     const sec = settings.getSecrets()
     if (!s.syncBaseUrl || !sec.syncToken) return // sync not configured yet
     const client = new SyncClient(syncBindings, { baseUrl: s.syncBaseUrl, token: sec.syncToken }, syncState)
     try {
-      await client.syncOnce()
+      await client.syncOnce(signal)
     } finally {
       // `applyRemote` writes pulled rows straight to the db and the pull cursor has already
       // advanced durably — so persist even if the push half then throws. Otherwise a crash

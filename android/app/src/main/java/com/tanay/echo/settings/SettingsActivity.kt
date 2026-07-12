@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -18,6 +19,7 @@ import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.tanay.echo.R
+import com.tanay.echo.BuildConfig
 import com.tanay.echo.floating.EchoAccessibilityService
 import com.tanay.echo.floating.FloatingButtonService
 import com.tanay.echo.transcription.AccuracyMode
@@ -86,6 +88,13 @@ class SettingsActivity : AppCompatActivity() {
         floatingOverlay = findViewById(R.id.floating_overlay)
         floatingA11y = findViewById(R.id.floating_a11y)
         floatingNotif = findViewById(R.id.floating_notif)
+        findViewById<TextView>(R.id.build_info).text = formatAndroidBuildInfo(
+            BuildConfig.VERSION_NAME,
+            BuildConfig.VERSION_CODE,
+            Build.VERSION.RELEASE,
+            Build.SUPPORTED_ABIS.firstOrNull().orEmpty(),
+            BuildConfig.DEBUG,
+        )
 
         load()
         bindEndpointValidation(whisperBaseUrl, whisperBaseUrlLayout, required = true)

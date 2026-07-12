@@ -64,6 +64,7 @@ export class SyncClient {
       } catch (e) {
         // Isolate collections: a failure in one must not starve the others this pass.
         errors.push(e)
+        if (signal?.aborted) break
       }
     }
     if (errors.length) throw errors[0]
@@ -72,11 +73,14 @@ export class SyncClient {
   private async pull(binding: SyncBinding, signal?: AbortSignal): Promise<void> {
     let cursor = this.state.getCursor(binding.name)
     for (;;) {
+      throwIfCancelled(signal)
       const url = `${joinUrl(this.config.baseUrl, `sync/${binding.name}`)}?since=${cursor}&limit=${PAGE}`
       const res = await this.request(url, { headers: this.authHeader() }, signal)
       if (!res.ok) throw new SyncError(`pull ${binding.name} failed: ${res.status}`)
       const body = (await res.json()) as PullBody
+      throwIfCancelled(signal)
       for (const rec of body.records) {
+        throwIfCancelled(signal)
         try {
           binding.table.applyRemote({
             uuid: rec.uuid,
@@ -91,12 +95,14 @@ export class SyncClient {
         }
       }
       cursor = advanceCursor(cursor, body.records)
+      throwIfCancelled(signal)
       this.state.setCursor(binding.name, cursor) // persist progress per drained page
       if (!body.hasMore) break
     }
   }
 
   private async push(binding: SyncBinding, signal?: AbortSignal): Promise<void> {
+    throwIfCancelled(signal)
     const watermark = this.state.getWatermark(binding.name)
     const changes = binding.table.changedSince(watermark)
     if (!changes.length) return
@@ -111,8 +117,10 @@ export class SyncClient {
       headers: { ...this.authHeader(), 'content-type': 'application/json' },
       body: JSON.stringify({ records })
     }, signal)
+    throwIfCancelled(signal)
     if (!res.ok) throw new SyncError(`push ${binding.name} failed: ${res.status}`)
     const highest = changes.reduce((max, c) => Math.max(max, c.updatedAt), watermark)
+    throwIfCancelled(signal)
     this.state.setWatermark(binding.name, highest)
   }
 
@@ -127,7 +135,8 @@ export class SyncClient {
     for (let attempt = 0; attempt <= retryCount; attempt++) {
       try {
         const response = await this.requestAttempt(url, init, signal)
-        if (response.status < 500 || attempt === retryCount) return response
+        const retryableStatus = response.status >= 500 || response.status === 408 || response.status === 429
+        if (!retryableStatus || attempt === retryCount) return response
       } catch (error) {
         if (signal?.aborted || (error instanceof SyncError && error.message === 'sync cancelled')) {
           throw error
@@ -167,6 +176,10 @@ export class SyncClient {
     const ms = Math.min(5_000, baseMs * 2 ** attempt)
     return this.deps.delay?.(ms, signal) ?? abortableDelay(ms, signal)
   }
+}
+
+function throwIfCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new SyncError('sync cancelled')
 }
 
 function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { readJsonWithRecovery, type JsonRecoveryOperations } from '../src/main/store/json-recovery'
+import {
+  readJsonRecoveryResult,
+  readJsonWithRecovery,
+  type JsonRecoveryOperations
+} from '../src/main/store/json-recovery'
 
 function operations(overrides: Partial<JsonRecoveryOperations> = {}): JsonRecoveryOperations {
   return {
@@ -40,11 +44,18 @@ describe('readJsonWithRecovery', () => {
       rename: vi.fn(() => { throw new Error('read-only volume') })
     })
     expect(readJsonWithRecovery('/data/settings.json', fs)).toBeNull()
+    expect(readJsonRecoveryResult('/data/settings.json', fs).replaceable).toBe(false)
   })
 
   it('does not move a file that could not be read', () => {
     const fs = operations({ read: () => { throw new Error('permission denied') } })
     expect(readJsonWithRecovery('/data/settings.json', fs)).toBeNull()
     expect(fs.rename).not.toHaveBeenCalled()
+    expect(readJsonRecoveryResult('/data/settings.json', fs).replaceable).toBe(false)
+  })
+
+  it('allows defaults to replace a corrupt file only after its backup succeeds', () => {
+    const fs = operations({ read: () => '{broken' })
+    expect(readJsonRecoveryResult('/data/settings.json', fs)).toEqual({ value: null, replaceable: true })
   })
 })

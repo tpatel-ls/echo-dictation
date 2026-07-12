@@ -1,4 +1,5 @@
 import { appendFileSync, existsSync, renameSync, statSync, unlinkSync } from 'node:fs'
+import { redactDiagnosticText } from './diagnostic-report'
 
 export interface RotatingLogOperations {
   exists(path: string): boolean
@@ -30,8 +31,9 @@ export function appendRotatingLog(
   try {
     const maxBytes = Math.max(1, options.maxBytes ?? 64 * 1024)
     const backups = Math.max(0, Math.floor(options.backups ?? 2))
-    const bytes = Buffer.from(data)
-    const bounded = bytes.length > maxBytes ? bytes.subarray(bytes.length - maxBytes).toString() : data
+    const safeData = sanitizeLogEntry(data)
+    const bytes = Buffer.from(safeData)
+    const bounded = bytes.length > maxBytes ? bytes.subarray(bytes.length - maxBytes).toString() : safeData
 
     if (operations.exists(path) && operations.size(path) + Buffer.byteLength(bounded) > maxBytes) {
       if (backups === 0) {
@@ -50,4 +52,11 @@ export function appendRotatingLog(
   } catch {
     // Diagnostics must never affect dictation or startup.
   }
+}
+
+function sanitizeLogEntry(data: string): string {
+  const hasTrailingNewline = /\r?\n$/.test(data)
+  let safe = redactDiagnosticText(data).replace(/\r?\n/g, '\\n')
+  if (hasTrailingNewline) safe = safe.replace(/\\n$/, '\n')
+  return safe
 }

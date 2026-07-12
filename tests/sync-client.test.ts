@@ -276,6 +276,37 @@ describe('SyncClient', () => {
     await expect(pending).rejects.toThrow(/cancelled/)
   })
 
+  it('does not apply a response when cancellation happens during JSON decoding', async () => {
+    let resolveJson: ((body: unknown) => void) | undefined
+    const json = new Promise((resolve) => { resolveJson = resolve })
+    const fetch = vi.fn(async () => ({ ok: true, status: 200, json: () => json }) as Response)
+    const applyRemote = vi.fn()
+    const table = {
+      applyRemote,
+      changedSince: () => []
+    } as unknown as SyncTable
+    const state = new MemorySyncState()
+    const sync = new SyncClient(
+      [{ name: 'transcripts', table }],
+      { baseUrl: 'http://sync', token: 'tok', retryCount: 0 },
+      state,
+      { fetch: fetch as unknown as typeof globalThis.fetch }
+    )
+    const controller = new AbortController()
+    const pending = sync.syncOnce(controller.signal)
+    await Promise.resolve()
+    controller.abort()
+    resolveJson?.({
+      records: [{ uuid: 'late', updatedAt: 10, deleted: false, payload: '{}', seq: 1 }],
+      cursor: 1,
+      hasMore: false
+    })
+
+    await expect(pending).rejects.toThrow(/cancelled/)
+    expect(applyRemote).not.toHaveBeenCalled()
+    expect(state.getCursor('transcripts')).toBe(0)
+  })
+
   it('retries transient server failures with bounded exponential backoff', async () => {
     const delays: number[] = []
     const responses = [503, 502, 200]
@@ -298,6 +329,27 @@ describe('SyncClient', () => {
     await expect(sync.syncOnce()).resolves.toBeUndefined()
     expect(retryingFetch).toHaveBeenCalledTimes(3)
     expect(delays).toEqual([100, 200])
+  })
+
+  it('retries request-timeout and rate-limit responses', async () => {
+    const responses = [408, 429, 200]
+    const fetch = vi.fn(async () => {
+      const status = responses.shift() ?? 500
+      return {
+        ok: status === 200,
+        status,
+        json: async () => ({ records: [], cursor: 0, hasMore: false })
+      } as Response
+    })
+    const db = device().db
+    const sync = new SyncClient(
+      [{ name: 'transcripts', table: new SyncTable(db, 'transcripts', [...SYNC_COLUMNS.transcripts]) }],
+      { baseUrl: 'http://sync', token: 'tok', retryCount: 2 },
+      new MemorySyncState(),
+      { fetch: fetch as unknown as typeof globalThis.fetch, delay: async () => {} }
+    )
+    await expect(sync.syncOnce()).resolves.toBeUndefined()
+    expect(fetch).toHaveBeenCalledTimes(3)
   })
 
   it('does not retry client errors and never exceeds the configured retry count', async () => {

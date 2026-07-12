@@ -24,6 +24,7 @@ export interface NativeHelperSupervisorOptions {
   scheduler?: SupervisorScheduler
   maxRestarts?: number
   baseDelayMs?: number
+  healthyAfterMs?: number
   onProcess?: (process: SupervisedProcess) => void
   onCrash?: (crash: HelperCrash) => void
   onExhausted?: (crash: HelperCrash) => void
@@ -37,6 +38,7 @@ const defaultScheduler: SupervisorScheduler = {
 export class NativeHelperSupervisor {
   private process: SupervisedProcess | null = null
   private restartTimer: unknown = null
+  private healthyTimer: unknown = null
   private desired = false
   private restartAttempts = 0
 
@@ -58,6 +60,7 @@ export class NativeHelperSupervisor {
       this.scheduler.cancel(this.restartTimer)
       this.restartTimer = null
     }
+    this.cancelHealthyTimer()
     const process = this.process
     this.process = null
     try {
@@ -68,7 +71,18 @@ export class NativeHelperSupervisor {
   }
 
   markHealthy(): void {
-    this.restartAttempts = 0
+    const process = this.process
+    if (!process) return
+    this.cancelHealthyTimer()
+    const delayMs = Math.max(0, this.options.healthyAfterMs ?? 30_000)
+    if (delayMs === 0) {
+      this.restartAttempts = 0
+      return
+    }
+    this.healthyTimer = this.scheduler.schedule(() => {
+      this.healthyTimer = null
+      if (this.process === process) this.restartAttempts = 0
+    }, delayMs)
   }
 
   private get scheduler(): SupervisorScheduler {
@@ -99,6 +113,7 @@ export class NativeHelperSupervisor {
   }
 
   private handleCrash(crash: HelperCrash): void {
+    this.cancelHealthyTimer()
     if (!this.desired) return
     this.options.onCrash?.(crash)
     const maxRestarts = Math.max(0, this.options.maxRestarts ?? 4)
@@ -115,5 +130,11 @@ export class NativeHelperSupervisor {
       this.restartTimer = null
       this.launch()
     }, delayMs)
+  }
+
+  private cancelHealthyTimer(): void {
+    if (!this.healthyTimer) return
+    this.scheduler.cancel(this.healthyTimer)
+    this.healthyTimer = null
   }
 }

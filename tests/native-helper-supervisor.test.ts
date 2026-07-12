@@ -36,6 +36,7 @@ function harness(maxRestarts = 2): {
     scheduler,
     maxRestarts,
     baseDelayMs: 100,
+    healthyAfterMs: 1_000,
     onExhausted
   })
   return { children, scheduled, supervisor, onExhausted }
@@ -89,7 +90,18 @@ describe('NativeHelperSupervisor', () => {
 
     supervisor.start()
     supervisor.markHealthy()
+    scheduled.at(-1)?.fn()
     children[1].emit('exit', 1, null)
     expect(scheduled.at(-1)?.ms).toBe(100)
+  })
+
+  it('does not reset crash backoff until the process stays healthy long enough', () => {
+    const { children, scheduled, supervisor } = harness(3)
+    supervisor.start()
+    children[0].emit('exit', 1, null)
+    scheduled.shift()?.fn()
+    supervisor.markHealthy()
+    children[1].emit('exit', 1, null)
+    expect(scheduled.at(-1)?.ms).toBe(200)
   })
 })

@@ -1,5 +1,12 @@
 import type { Database, SqlValue } from 'sql.js'
-import type { HistoryQueryOpts, NewTranscript, Stats, Transcript, TranscriptStatus } from '@shared/types'
+import type {
+  HistoryExportFilter,
+  HistoryQueryOpts,
+  NewTranscript,
+  Stats,
+  Transcript,
+  TranscriptStatus
+} from '@shared/types'
 import { estimatedSecondsSaved, wordCount } from '@shared/format'
 import { ensureSyncColumns } from './migrate'
 import { monotonicClock } from './clock'
@@ -72,6 +79,14 @@ export class HistoryStore {
     return this.query(
       'SELECT * FROM transcripts WHERE deleted = 0 ORDER BY created_at DESC, id DESC',
       []
+    )
+  }
+
+  exportFiltered(filter: HistoryExportFilter): Transcript[] {
+    return this.filteredQuery(
+      { limit: 0, offset: 0, status: filter.status, from: filter.from, to: filter.to },
+      filter.query,
+      false
     )
   }
 
@@ -202,7 +217,14 @@ export class HistoryStore {
     return rows
   }
 
-  private filteredQuery(opts: HistoryQueryOpts, search?: string): Transcript[] {
+  private filteredQuery(opts: HistoryQueryOpts, search?: string, paginate = true): Transcript[] {
+    if (
+      typeof opts.from === 'number' &&
+      Number.isFinite(opts.from) &&
+      typeof opts.to === 'number' &&
+      Number.isFinite(opts.to) &&
+      opts.from > opts.to
+    ) return []
     const clauses = ['deleted = 0']
     const params: SqlValue[] = []
     if (search) {
@@ -218,10 +240,15 @@ export class HistoryStore {
       clauses.push('created_at >= ?')
       params.push(opts.from)
     }
-    params.push(opts.limit, opts.offset)
+    if (typeof opts.to === 'number' && Number.isFinite(opts.to)) {
+      clauses.push('created_at <= ?')
+      params.push(opts.to)
+    }
+    const pagination = paginate ? ' LIMIT ? OFFSET ?' : ''
+    if (paginate) params.push(opts.limit, opts.offset)
     return this.query(
       `SELECT * FROM transcripts WHERE ${clauses.join(' AND ')}
-       ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+       ORDER BY created_at DESC, id DESC${pagination}`,
       params
     )
   }

@@ -1,5 +1,10 @@
 import type { Database, SqlValue } from 'sql.js'
-import type { DictionaryEntry, DictionarySource } from '@shared/types'
+import type {
+  AliasConflict,
+  DictionaryEntry,
+  DictionaryMutationResult,
+  DictionarySource
+} from '@shared/types'
 import { ensureSyncColumns } from './migrate'
 import { monotonicClock } from './clock'
 import { randomUUID } from 'node:crypto'
@@ -44,6 +49,14 @@ export class DictionaryStore {
   }
 
   add(word: string, misheard: string[], source: DictionarySource): DictionaryEntry {
+    return this.addWithConflicts(word, misheard, source).entry
+  }
+
+  addWithConflicts(
+    word: string,
+    misheard: string[],
+    source: DictionarySource
+  ): DictionaryMutationResult {
     const w = word.trim().replace(/\s+/g, ' ')
     if (!w) throw new Error('A dictionary word is required')
     const ts = this.now()
@@ -52,24 +65,25 @@ export class DictionaryStore {
     // a deleted word can be re-added fresh (the partial unique index permits the coexistence).
     const existing = this.query('SELECT * FROM dictionary WHERE word = ? COLLATE NOCASE AND deleted = 0', [w])[0]
     if (existing) {
-      const merged = this.claimAliases(
+      const resolved = this.resolveAliases(
         existing.word,
         normalizeAliases([...existing.misheard, ...misheard], existing.word),
         existing.id,
         ts
       )
       this.db.run('UPDATE dictionary SET misheard = ?, updated_at = ? WHERE id = ?', [
-        JSON.stringify(merged),
+        JSON.stringify(resolved.aliases),
         ts,
         existing.id
       ])
       this.onChange()
-      return { ...existing, misheard: merged }
+      return { entry: { ...existing, misheard: resolved.aliases }, conflicts: resolved.conflicts }
     }
 
+    const resolved = this.resolveAliases(w, normalizeAliases(misheard, w), undefined, ts)
     const entry = {
       word: w,
-      misheard: this.claimAliases(w, normalizeAliases(misheard, w), undefined, ts),
+      misheard: resolved.aliases,
       source,
       created_at: ts,
       times_applied: 0
@@ -80,16 +94,32 @@ export class DictionaryStore {
     )
     const id = this.scalar('SELECT last_insert_rowid()')
     this.onChange()
-    return { id, ...entry }
+    return { entry: { id, ...entry }, conflicts: resolved.conflicts }
   }
 
   update(id: number, patch: { word?: string; misheard?: string[] }): DictionaryEntry | null {
+    return this.updateWithConflicts(id, patch)?.entry ?? null
+  }
+
+  updateWithConflicts(
+    id: number,
+    patch: { word?: string; misheard?: string[] }
+  ): DictionaryMutationResult | null {
     const cur = this.get(id)
     if (!cur) return null
     const word = (patch.word ?? cur.word).trim().replace(/\s+/g, ' ')
     if (!word) throw new Error('A dictionary word is required')
+    const duplicate = this.list().find(
+      (entry) => entry.id !== id && entry.word.toLowerCase() === word.toLowerCase()
+    )
+    if (duplicate) {
+      return {
+        entry: cur,
+        conflicts: [{ alias: word, existingWord: duplicate.word }]
+      }
+    }
     const ts = this.now()
-    const misheard = this.claimAliases(
+    const resolved = this.resolveAliases(
       word,
       normalizeAliases(patch.misheard ?? cur.misheard, word),
       id,
@@ -97,12 +127,15 @@ export class DictionaryStore {
     )
     this.db.run('UPDATE dictionary SET word = ?, misheard = ?, updated_at = ? WHERE id = ?', [
       word,
-      JSON.stringify(misheard),
+      JSON.stringify(resolved.aliases),
       ts,
       id
     ])
     this.onChange()
-    return { ...cur, word, misheard }
+    return {
+      entry: { ...cur, word, misheard: resolved.aliases },
+      conflicts: resolved.conflicts
+    }
   }
 
   /** Soft-delete: keep the row as a tombstone (deleted=1) so the deletion can sync. */
@@ -141,29 +174,43 @@ export class DictionaryStore {
     this.db.run('DROP INDEX IF EXISTS idx_dictionary_word')
   }
 
-  /** A spoken alias must map to one canonical entry. The latest explicit assignment wins,
-   * while canonical words remain protected from being used as another entry's alias. */
-  private claimAliases(word: string, aliases: string[], ownerId: number | undefined, ts: number): string[] {
+  /** Keep existing cross-word mappings stable and report ambiguous proposed aliases. */
+  private resolveAliases(
+    word: string,
+    aliases: string[],
+    ownerId: number | undefined,
+    ts: number
+  ): { aliases: string[]; conflicts: AliasConflict[] } {
     const active = this.list()
-    const canonicalWords = new Set(
-      active
-        .filter((entry) => entry.id !== ownerId)
-        .map((entry) => entry.word.toLowerCase())
-    )
-    const allowed = aliases.filter((alias) => !canonicalWords.has(alias.toLowerCase()))
-    const claimed = new Set([word, ...allowed].map((value) => value.toLowerCase()))
+    const others = active.filter((entry) => entry.id !== ownerId)
+    const owners = new Map<string, DictionaryEntry>()
+    for (const entry of others) {
+      owners.set(entry.word.toLowerCase(), entry)
+      for (const alias of entry.misheard) {
+        if (!owners.has(alias.toLowerCase())) owners.set(alias.toLowerCase(), entry)
+      }
+    }
+    const allowed: string[] = []
+    const conflicts: AliasConflict[] = []
+    for (const alias of aliases) {
+      const existing = owners.get(alias.toLowerCase())
+      if (existing) conflicts.push({ alias, existingWord: existing.word })
+      else allowed.push(alias)
+    }
 
-    for (const entry of active) {
-      if (entry.id === ownerId) continue
-      const remaining = entry.misheard.filter((alias) => !claimed.has(alias.toLowerCase()))
+    // A canonical spelling always protects itself, even if it used to be an alias.
+    const canonicalKey = word.toLowerCase()
+    for (const entry of others) {
+      const remaining = entry.misheard.filter((alias) => alias.toLowerCase() !== canonicalKey)
       if (remaining.length === entry.misheard.length) continue
+      conflicts.push({ alias: word, existingWord: entry.word })
       this.db.run('UPDATE dictionary SET misheard = ?, updated_at = ? WHERE id = ?', [
         JSON.stringify(remaining),
         ts,
         entry.id
       ])
     }
-    return allowed
+    return { aliases: allowed, conflicts }
   }
 
   private query(sql: string, params: SqlValue[]): DictionaryEntry[] {

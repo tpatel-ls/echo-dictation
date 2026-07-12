@@ -22,6 +22,14 @@ describe('persistSecretsFile', () => {
       { mode: 0o600 }
     )
   })
+
+  it('uses replacement semantics so callers can re-secure legacy files at startup', () => {
+    const writer: AtomicSecretWriter = vi.fn()
+    const secrets = { whisperApiKey: 'w', claudeApiKey: 'c', syncToken: 's' }
+    persistSecretsFile('/legacy/secrets.bin', secrets, writer)
+    expect(writer).toHaveBeenCalledOnce()
+    expect(writer).toHaveBeenCalledWith('/legacy/secrets.bin', JSON.stringify(secrets), { mode: 0o600 })
+  })
 })
 
 describe('normalizeSecrets', () => {

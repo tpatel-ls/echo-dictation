@@ -14,28 +14,41 @@ const nodeOperations: JsonRecoveryOperations = {
   now: () => new Date()
 }
 
+export interface JsonRecoveryResult<T> {
+  value: T | null
+  /** False when replacing the original could destroy the only recoverable copy. */
+  replaceable: boolean
+}
+
 export function readJsonWithRecovery<T>(
   path: string,
   operations: JsonRecoveryOperations = nodeOperations
 ): T | null {
-  if (!operations.exists(path)) return null
+  return readJsonRecoveryResult<T>(path, operations).value
+}
+
+export function readJsonRecoveryResult<T>(
+  path: string,
+  operations: JsonRecoveryOperations = nodeOperations
+): JsonRecoveryResult<T> {
+  if (!operations.exists(path)) return { value: null, replaceable: true }
 
   let raw: string
   try {
     raw = operations.read(path)
   } catch {
-    return null
+    return { value: null, replaceable: false }
   }
 
   try {
-    return JSON.parse(raw) as T
+    return { value: JSON.parse(raw) as T, replaceable: true }
   } catch {
     const timestamp = operations.now().toISOString().replace(/[-:.]/g, '')
     try {
       operations.rename(path, `${path}.corrupt-${timestamp}`)
     } catch {
-      // Defaults are still safer than aborting startup on an unreadable backup target.
+      return { value: null, replaceable: false }
     }
-    return null
+    return { value: null, replaceable: true }
   }
 }
