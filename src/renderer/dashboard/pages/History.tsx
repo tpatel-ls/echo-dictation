@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type UIEvent } from 'react'
 import type { HistoryQueryOpts, Stats, Transcript, TranscriptStatus, TriggerKey } from '@shared/types'
 import { formatDuration } from '@shared/format'
 import { triggerLabel, defaultTriggerKey } from '@shared/trigger'
-import { Download, Flame, Clock, Type } from 'lucide-react'
+import { Download, Flame, Clock, Trash2, Type } from 'lucide-react'
 import { api } from '../lib/api'
 import { SearchBar } from '../components/SearchBar'
 import { TranscriptRow } from '../components/TranscriptRow'
@@ -140,6 +140,13 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
     const path = format === 'json' ? await api.history.exportJson() : await api.history.exportCsv()
     if (path) notify('Transcript history exported')
   }
+  const onClearUnsuccessful = async (): Promise<void> => {
+    const count = await api.history.clearUnsuccessful()
+    if (count === null) return
+    await reset(query)
+    await loadStats()
+    notify(count ? `Cleared ${count} unsuccessful attempt${count === 1 ? '' : 's'}` : 'Nothing to clear')
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -147,6 +154,15 @@ export function History({ notify }: { notify: Notify }): JSX.Element {
         <div className="flex items-center justify-between gap-4 mb-4">
           <h1 className="text-lg font-semibold">History</h1>
           <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => void onClearUnsuccessful()}
+              title="Clear failed and empty attempts"
+              aria-label="Clear failed and empty attempts"
+              className="p-1.5 rounded-lg border border-border bg-surface text-muted hover:text-bad hover:bg-surface2 transition shrink-0"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
             {stats && <div className="flex items-center gap-4 text-xs text-muted">
               <span className="flex items-center gap-1.5">
                 <Type className="w-3.5 h-3.5" />

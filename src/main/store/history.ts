@@ -137,6 +137,23 @@ export class HistoryStore {
     this.onChange()
   }
 
+  clearUnsuccessful(): Transcript[] {
+    const removed = this.query(
+      `SELECT * FROM transcripts
+       WHERE deleted = 0 AND status IN ('failed', 'empty')
+       ORDER BY created_at DESC, id DESC`,
+      []
+    )
+    if (!removed.length) return []
+    this.db.run(
+      `UPDATE transcripts SET deleted = 1, updated_at = ?
+       WHERE deleted = 0 AND status IN ('failed', 'empty')`,
+      [this.now()]
+    )
+    this.onChange()
+    return removed
+  }
+
   stats(now: number): Stats {
     const startToday = startOfDay(now)
     return {

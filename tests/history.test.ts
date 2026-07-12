@@ -131,6 +131,30 @@ describe('HistoryStore', () => {
     expect(store.get(t.id)).toBeNull()
   })
 
+  it('clears failed and empty attempts in one sync-visible change', () => {
+    const changed = vi.fn()
+    const store = newStore(changed)
+    store.insert(base({ raw_text: 'keep', status: 'ok' }))
+    const failed = store.insert(base({ raw_text: 'failed', status: 'failed', audio_path: '/tmp/f.wav' }))
+    const empty = store.insert(base({ raw_text: '', status: 'empty' }))
+    changed.mockClear()
+
+    const removed = store.clearUnsuccessful()
+
+    expect(removed.map((row) => row.id).sort()).toEqual([failed.id, empty.id].sort())
+    expect(store.list({ limit: 10, offset: 0 }).map((row) => row.raw_text)).toEqual(['keep'])
+    expect(changed).toHaveBeenCalledOnce()
+  })
+
+  it('does not emit a change when there is nothing unsuccessful to clear', () => {
+    const changed = vi.fn()
+    const store = newStore(changed)
+    store.insert(base({ status: 'ok' }))
+    changed.mockClear()
+    expect(store.clearUnsuccessful()).toEqual([])
+    expect(changed).not.toHaveBeenCalled()
+  })
+
   it('aggregates stats and counts today + streak', () => {
     const store = newStore()
     const now = new Date('2026-06-08T12:00:00').getTime()

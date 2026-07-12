@@ -42,7 +42,8 @@ const api: EchoApi = {
     copy: (id: number) => ipcRenderer.invoke(IPC.HISTORY_COPY, id),
     getAudio: (id: number) => ipcRenderer.invoke(IPC.HISTORY_AUDIO, id),
     exportJson: () => ipcRenderer.invoke(IPC.HISTORY_EXPORT_JSON),
-    exportCsv: () => ipcRenderer.invoke(IPC.HISTORY_EXPORT_CSV)
+    exportCsv: () => ipcRenderer.invoke(IPC.HISTORY_EXPORT_CSV),
+    clearUnsuccessful: () => ipcRenderer.invoke(IPC.HISTORY_CLEAR_UNSUCCESSFUL)
   },
   dictionary: {
     list: () => ipcRenderer.invoke(IPC.DICT_LIST),
