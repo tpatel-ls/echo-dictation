@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
 import type { DictionaryEntry } from '@shared/types'
-import { BookOpen, Download, Plus, Sparkles, Trash2, X } from 'lucide-react'
+import { BookOpen, Download, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { api } from '../lib/api'
 import type { Notify } from '../types'
 
@@ -56,17 +56,38 @@ export function Dictionary({ notify }: { notify: Notify }): JSX.Element {
     const path = await api.dictionary.export()
     if (path) notify('Dictionary exported — carry it to your other devices')
   }
+  const onImport = async (): Promise<void> => {
+    try {
+      const result = await api.dictionary.import()
+      if (!result) return
+      await load()
+      const skipped = result.skipped ? `, skipped ${result.skipped}` : ''
+      notify(`Imported ${result.imported} dictionary entr${result.imported === 1 ? 'y' : 'ies'}${skipped}`)
+    } catch (error) {
+      notify(`Import failed: ${(error as Error).message.slice(0, 70)}`)
+    }
+  }
 
   return (
     <div className="flex flex-col h-full">
       <header className="px-7 pt-6 pb-4 border-b border-border">
         <div className="flex items-center justify-between gap-4 mb-1">
           <h1 className="text-lg font-semibold">Dictionary</h1>
-          {entries.length > 0 && (
-            <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
+            {entries.length > 0 && (
               <span className="text-xs text-muted">
                 {entries.length} word{entries.length === 1 ? '' : 's'}
               </span>
+            )}
+            <button
+              onClick={() => void onImport()}
+              title="Import dictionary JSON"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border text-xs text-muted hover:text-text hover:border-[#d4d7de] transition"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Import
+            </button>
+            {entries.length > 0 && (
               <button
                 onClick={() => void onExport()}
                 title="Export as JSON to use on another device"
@@ -75,8 +96,8 @@ export function Dictionary({ notify }: { notify: Notify }): JSX.Element {
                 <Download className="w-3.5 h-3.5" />
                 Export
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
         <p className="text-xs text-muted leading-relaxed max-w-xl">
           Echo prefers these spellings while transcribing and auto-fixes known mishearings.

@@ -1,11 +1,12 @@
 import { ipcMain, clipboard, dialog } from 'electron'
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs'
-import { serializeDictionary } from '@shared/dict-export'
+import { parseDictionaryImport, serializeDictionary } from '@shared/dict-export'
 import { serializeTranscriptCsv, serializeTranscriptJson } from '@shared/transcript-export'
 import {
   IPC,
   type AudioMeta,
   type DiagName,
+  type DictionaryImportResult,
   type EditResult,
   type LearnedCorrection,
   type HistoryQueryOpts,
@@ -173,6 +174,21 @@ export function registerIpc(ctx: IpcContext): void {
     if (canceled || !filePath) return null
     writeFileSync(filePath, JSON.stringify(serializeDictionary(ctx.dictionary.list()), null, 2))
     return filePath
+  })
+  ipcMain.handle(IPC.DICT_IMPORT, async (): Promise<DictionaryImportResult | null> => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Import dictionary',
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    })
+    if (canceled || !filePaths[0]) return null
+    const raw = readFileSync(filePaths[0], 'utf8')
+    if (Buffer.byteLength(raw) > 5 * 1024 * 1024) throw new Error('Dictionary import is larger than 5 MB')
+    const parsed = parseDictionaryImport(raw)
+    for (const entry of parsed.entries) {
+      ctx.dictionary.add(entry.word, entry.misheard, entry.source)
+    }
+    return { imported: parsed.entries.length, skipped: parsed.skipped }
   })
 
   // ── Settings + secrets ────────────────────────────────────────────────────────

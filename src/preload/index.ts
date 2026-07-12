@@ -52,7 +52,8 @@ const api: EchoApi = {
       ipcRenderer.invoke(IPC.DICT_UPDATE, id, patch),
     remove: (id: number) => ipcRenderer.invoke(IPC.DICT_DELETE, id),
     undoLearn: (items: LearnedCorrection[]) => ipcRenderer.invoke(IPC.DICT_UNDO_LEARN, items),
-    export: () => ipcRenderer.invoke(IPC.DICT_EXPORT)
+    export: () => ipcRenderer.invoke(IPC.DICT_EXPORT),
+    import: () => ipcRenderer.invoke(IPC.DICT_IMPORT)
   },
   settings: {
     get: () => ipcRenderer.invoke(IPC.SETTINGS_GET),

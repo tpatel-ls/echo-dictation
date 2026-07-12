@@ -198,6 +198,7 @@ export const IPC = {
   DICT_DELETE: 'dict:delete',
   DICT_UNDO_LEARN: 'dict:undoLearn',
   DICT_EXPORT: 'dict:export',
+  DICT_IMPORT: 'dict:import',
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   SETTINGS_CHANGED: 'settings:changed',
@@ -222,6 +223,11 @@ export interface MaskedSecrets {
   whisperApiKey: string // masked, e.g. "sk-whi…1a2b"
   claudeApiKey: string
   syncToken: string
+}
+
+export interface DictionaryImportResult {
+  imported: number
+  skipped: number
 }
 
 // ── The contract exposed on `window.api` via the preload bridge ───────────────
@@ -256,6 +262,7 @@ export interface EchoApi {
     undoLearn(items: LearnedCorrection[]): Promise<void>
     /** Write a portable JSON snapshot via a save dialog; returns the path, or null if cancelled. */
     export(): Promise<string | null>
+    import(): Promise<DictionaryImportResult | null>
   }
   settings: {
     get(): Promise<Settings>
