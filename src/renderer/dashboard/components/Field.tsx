@@ -1,13 +1,17 @@
-import type { ReactNode } from 'react'
+import type { KeyboardEvent, ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
 
 export function Field({
   label,
   hint,
+  error,
+  errorId,
   children
 }: {
   label: string
   hint?: string
+  error?: string | null
+  errorId?: string
   children: ReactNode
 }): JSX.Element {
   return (
@@ -15,6 +19,7 @@ export function Field({
       <div className="min-w-0">
         <div className="text-sm text-text">{label}</div>
         {hint && <div className="text-xs text-muted mt-0.5 max-w-md leading-relaxed">{hint}</div>}
+        {error && <div id={errorId} className="text-xs text-bad mt-0.5 max-w-md leading-relaxed">{error}</div>}
       </div>
       <div className="shrink-0">{children}</div>
     </div>
@@ -29,7 +34,11 @@ export function TextInput({
   width = 'w-64',
   min,
   max,
-  step
+  step,
+  invalid = false,
+  describedBy,
+  onBlur,
+  onKeyDown
 }: {
   value: string
   onChange: (v: string) => void
@@ -39,6 +48,10 @@ export function TextInput({
   min?: number
   max?: number
   step?: number
+  invalid?: boolean
+  describedBy?: string
+  onBlur?: () => void
+  onKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void
 }): JSX.Element {
   return (
     <input
@@ -48,8 +61,12 @@ export function TextInput({
       min={min}
       max={max}
       step={step}
+      aria-invalid={invalid || undefined}
+      aria-describedby={describedBy}
+      onBlur={onBlur}
+      onKeyDown={onKeyDown}
       onChange={(e) => onChange(e.target.value)}
-      className={`${width} px-3 py-1.5 bg-bg border border-border rounded-lg text-sm outline-none focus:border-accent/60 placeholder:text-muted`}
+      className={`${width} px-3 py-1.5 bg-bg border rounded-lg text-sm outline-none placeholder:text-muted ${invalid ? 'border-bad focus:border-bad' : 'border-border focus:border-accent/60'}`}
     />
   )
 }
