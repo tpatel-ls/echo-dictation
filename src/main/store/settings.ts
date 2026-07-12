@@ -10,6 +10,7 @@ import {
   type Settings
 } from '@shared/types'
 import { defaultTriggerKey } from '@shared/trigger'
+import { writeFileAtomic } from './atomic-file'
 import { applySeedEndpoints, parseSeed, type SeedFile } from './seed'
 
 /**
@@ -37,7 +38,7 @@ export class SettingsStore {
     const seeded = applySeedEndpoints(this.settings, this.loadSeed(), { seedSync: !hadSettings })
     if (seeded) {
       this.settings = seeded
-      writeFileSync(this.settingsPath, JSON.stringify(this.settings, null, 2))
+      this.persistSettings()
     }
   }
 
@@ -47,7 +48,7 @@ export class SettingsStore {
 
   setSettings(patch: Partial<Settings>): Settings {
     this.settings = { ...this.settings, ...patch }
-    writeFileSync(this.settingsPath, JSON.stringify(this.settings, null, 2))
+    this.persistSettings()
     return this.getSettings()
   }
 
@@ -123,6 +124,10 @@ export class SettingsStore {
   private persistSecrets(s: Secrets): void {
     const json = JSON.stringify(s)
     writeFileSync(this.secretsPath, json, { mode: 0o600 })
+  }
+
+  private persistSettings(): void {
+    writeFileAtomic(this.settingsPath, JSON.stringify(this.settings, null, 2))
   }
 }
 
