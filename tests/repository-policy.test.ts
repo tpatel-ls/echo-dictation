@@ -19,8 +19,7 @@ describe('repository automation policy', () => {
     expect(workflow).toContain('windows-2025')
     expect(workflow).toContain('npm test')
     expect(workflow).toContain('npm run typecheck')
-    expect(workflow).toContain('npm run build')
-    expect(workflow).toContain('npm run build:win')
+    expect(workflow).toContain('npm run check:desktop')
     expect(workflow).toContain('cancel-in-progress: true')
   })
 
@@ -31,7 +30,7 @@ describe('repository automation policy', () => {
     expect(workflow).toContain('java-version: 17')
     expect(workflow).toContain('platforms;android-34')
     expect(workflow).toContain('gradle/actions/setup-gradle@v4')
-    expect(workflow).toContain('testDebugUnitTest lintDebug assembleDebug')
+    expect(workflow).toContain('npm run check:android')
     expect(workflow).toContain('actions/upload-artifact@v4')
     expect(workflow).toContain('app-debug.apk')
     expect(workflow).toContain('lint-results-debug.html')

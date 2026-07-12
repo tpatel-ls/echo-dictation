@@ -35,7 +35,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run build
+      - run: npm run check:desktop
 
   build-windows:
     runs-on: windows-2025
@@ -49,4 +49,4 @@ jobs:
         with:
           dotnet-version: 8.0.x
       - run: npm ci
-      - run: npm run build:win
+      - run: npm run check:desktop

@@ -21,4 +21,16 @@ describe('release package scripts', () => {
     expect(installer).toContain('Software\\Microsoft\\Windows\\CurrentVersion\\Run')
     expect(installer).toContain('--hidden')
   })
+
+  it('exposes canonical desktop Android and complete quality gates', () => {
+    const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>
+    }
+
+    expect(pkg.scripts['check:desktop']).toBe('npm test && npm run typecheck && npm run build')
+    expect(pkg.scripts['check:android']).toBe('node scripts/run-android-check.mjs')
+    expect(pkg.scripts.check).toBe(
+      'npm run check:desktop && npm run check:android && npm run check:secrets',
+    )
+  })
 })
