@@ -20,6 +20,7 @@ import { cleanup } from './transcription/claude'
 import { realPasteDeps } from './insert/paste-deps'
 import { pasteText } from './insert/paste'
 import { runDiagnostic } from './diagnostics'
+import { createDiagnosticReport } from './diagnostic-report'
 import { learnFromEdit } from './learn'
 
 export interface IpcContext {
@@ -144,6 +145,29 @@ export function registerIpc(ctx: IpcContext): void {
   ipcMain.handle(IPC.DIAG_RUN, (_e, name: DiagName) =>
     runDiagnostic(name, ctx.settings, ctx.listener.isRunning)
   )
+  ipcMain.handle(IPC.DIAG_COPY_REPORT, (_e, results: import('@shared/types').DiagResult[]) => {
+    const settings = ctx.settings.getSettings()
+    const secrets = ctx.settings.getSecrets()
+    const report = createDiagnosticReport({
+      platform: process.platform,
+      arch: process.arch,
+      packaged: process.defaultApp !== true,
+      triggerKey: settings.triggerKey,
+      hotkeyRunning: ctx.listener.isRunning,
+      endpoints: {
+        whisper: Boolean(settings.whisperBaseUrl),
+        cleanup: Boolean(settings.claudeBaseUrl),
+        sync: Boolean(settings.syncBaseUrl)
+      },
+      secrets: {
+        whisper: Boolean(secrets.whisperApiKey),
+        cleanup: Boolean(secrets.claudeApiKey),
+        sync: Boolean(secrets.syncToken)
+      },
+      results: Array.isArray(results) ? results : []
+    })
+    clipboard.writeText(report)
+  })
   ipcMain.handle(IPC.OPEN_DASHBOARD, () => {
     ctx.openDashboard()
   })

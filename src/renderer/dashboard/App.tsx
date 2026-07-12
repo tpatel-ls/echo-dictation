@@ -40,7 +40,7 @@ export function App(): JSX.Element {
         {page === 'dictionary' && <Dictionary notify={notify} />}
         {page === 'stats' && <Stats />}
         {page === 'settings' && <Settings notify={notify} />}
-        {page === 'diagnostics' && <Diagnostics />}
+        {page === 'diagnostics' && <Diagnostics notify={notify} />}
       </main>
       <Toast message={toast?.message ?? null} action={toast?.action} />
     </div>
