@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { basename, dirname, join } from 'node:path'
 import { writeFileAtomic, type AtomicFileOperations } from '../src/main/store/atomic-file'
 
 function operations(overrides: Partial<AtomicFileOperations> = {}): AtomicFileOperations {
@@ -11,6 +12,10 @@ function operations(overrides: Partial<AtomicFileOperations> = {}): AtomicFileOp
   }
 }
 
+function temporaryPath(path: string): string {
+  return join(dirname(path), `.${basename(path)}.test-write.tmp`)
+}
+
 describe('writeFileAtomic', () => {
   it('writes beside the destination before atomically replacing it', () => {
     const fs = operations()
@@ -18,12 +23,12 @@ describe('writeFileAtomic', () => {
     writeFileAtomic('/data/echo/settings.json', '{"ok":true}', {}, fs)
 
     expect(fs.writeFile).toHaveBeenCalledWith(
-      '/data/echo/.settings.json.test-write.tmp',
+      temporaryPath('/data/echo/settings.json'),
       '{"ok":true}',
       undefined
     )
     expect(fs.rename).toHaveBeenCalledWith(
-      '/data/echo/.settings.json.test-write.tmp',
+      temporaryPath('/data/echo/settings.json'),
       '/data/echo/settings.json'
     )
     expect(fs.remove).not.toHaveBeenCalled()
@@ -35,7 +40,7 @@ describe('writeFileAtomic', () => {
     writeFileAtomic('/data/secrets.bin', 'secret', { mode: 0o600 }, fs)
 
     expect(fs.writeFile).toHaveBeenCalledWith(
-      '/data/.secrets.bin.test-write.tmp',
+      temporaryPath('/data/secrets.bin'),
       'secret',
       { mode: 0o600 }
     )
@@ -46,7 +51,7 @@ describe('writeFileAtomic', () => {
     const fs = operations({ rename: vi.fn(() => { throw failure }) })
 
     expect(() => writeFileAtomic('/data/settings.json', '{}', {}, fs)).toThrow(failure)
-    expect(fs.remove).toHaveBeenCalledWith('/data/.settings.json.test-write.tmp')
+    expect(fs.remove).toHaveBeenCalledWith(temporaryPath('/data/settings.json'))
   })
 
   it('does not hide the original error when temporary cleanup also fails', () => {

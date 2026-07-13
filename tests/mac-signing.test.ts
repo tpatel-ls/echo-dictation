@@ -46,6 +46,8 @@ describe('mac signing helpers', () => {
     expect(buildScript).toContain('Contents/Info.plist')
     expect(buildScript).toContain('"Speech"')
     expect(buildScript).toContain('codesign')
+    const helper = readFileSync(join(process.cwd(), 'native', 'EchoSpeechHelper.swift'), 'utf8')
+    expect(helper).toContain('#if compiler(>=6.2)')
   })
 
   it('keeps the global Option helper event-driven while idle', () => {

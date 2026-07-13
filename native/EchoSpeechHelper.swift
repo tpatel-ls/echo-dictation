@@ -41,6 +41,7 @@ func legacyLocaleAvailable(_ localeIdentifier: String) -> Bool {
   return SFSpeechRecognizer(locale: locale)?.isAvailable ?? false
 }
 
+#if compiler(>=6.2)
 @available(macOS 26.0, *)
 func speechAnalyzerStatus(localeIdentifier: String) async -> (available: Bool, localeAvailable: Bool, installedLocales: [String]) {
   let locale = Locale(identifier: localeIdentifier)
@@ -48,6 +49,7 @@ func speechAnalyzerStatus(localeIdentifier: String) async -> (available: Bool, l
   let equivalent = await DictationTranscriber.supportedLocale(equivalentTo: locale)
   return (equivalent != nil, equivalent != nil, installed)
 }
+#endif
 
 func statusPayload(type: String, localeIdentifier: String = "en-US") async -> [String: Any] {
   let authorization = authorizationString()
@@ -56,6 +58,7 @@ func statusPayload(type: String, localeIdentifier: String = "en-US") async -> [S
   var analyzerLocaleAvailable = false
   var installedLocales: [String] = []
 
+  #if compiler(>=6.2)
   if #available(macOS 26.0, *) {
     let analyzer = await speechAnalyzerStatus(localeIdentifier: localeIdentifier)
     analyzerAvailable = analyzer.available
@@ -65,6 +68,7 @@ func statusPayload(type: String, localeIdentifier: String = "en-US") async -> [S
       engine = "SpeechAnalyzer"
     }
   }
+  #endif
 
   return [
     "type": type,
@@ -91,6 +95,7 @@ func ensureAuthorized() throws {
   }
 }
 
+#if compiler(>=6.2)
 @available(macOS 26.0, *)
 func transcribeWithSpeechAnalyzer(url: URL, localeIdentifier: String) async throws -> String {
   let locale = Locale(identifier: localeIdentifier)
@@ -132,6 +137,7 @@ func transcribeWithSpeechAnalyzer(url: URL, localeIdentifier: String) async thro
     throw error
   }
 }
+#endif
 
 func transcribeWithLegacyRecognizer(url: URL, localeIdentifier: String) async throws -> String {
   let locale = Locale(identifier: localeIdentifier)
@@ -182,6 +188,7 @@ func transcribe(path: String, localeIdentifier: String) async throws -> (text: S
   }
 
   var analyzerFailure: Error?
+  #if compiler(>=6.2)
   if #available(macOS 26.0, *) {
     do {
       return (try await transcribeWithSpeechAnalyzer(url: url, localeIdentifier: localeIdentifier), "SpeechAnalyzer")
@@ -191,6 +198,7 @@ func transcribe(path: String, localeIdentifier: String) async throws -> (text: S
       // SpeechAnalyzer asset/runtime miss should not prevent a usable fallback.
     }
   }
+  #endif
 
   // SpeechAnalyzer is entirely on-device and does not require the legacy
   // SFSpeechRecognizer authorization. Only request that permission when the
