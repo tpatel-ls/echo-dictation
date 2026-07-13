@@ -42,6 +42,8 @@ describe('repository automation policy', () => {
     expect(workflow).toContain('security-events: write')
     expect(workflow).toContain('javascript-typescript')
     expect(workflow).toContain('java-kotlin')
+    expect(workflow).toContain('build-mode: manual')
+    expect(workflow).toContain(':app:assembleDebug')
     expect(workflow).toContain('github/codeql-action/init@v3')
     expect(workflow).toContain('github/codeql-action/analyze@v3')
     expect(workflow).toContain('schedule:')
