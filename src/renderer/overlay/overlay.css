@@ -42,13 +42,13 @@ body {
   justify-content: center;
   gap: 7px;
   box-sizing: border-box;
-  width: 38px;
-  height: 11px;
+  width: 54px;
+  height: 16px;
   padding: 0;
   border-radius: 999px;
   background: rgba(13, 15, 19, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.11);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.17);
+  box-shadow: 0 6px 17px rgba(0, 0, 0, 0.38);
   transition:
     width 0.2s cubic-bezier(0.22, 1, 0.36, 1),
     height 0.2s cubic-bezier(0.22, 1, 0.36, 1),
@@ -57,21 +57,21 @@ body {
 }
 
 .ov-idle-bars {
-  height: 7px;
+  height: 9px;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
 }
 .ov-idle-bars i {
   display: block;
-  width: 2px;
-  height: 3px;
+  width: 2.5px;
+  height: 4px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.46);
+  background: rgba(255, 255, 255, 0.58);
 }
 .ov-idle-bars i:nth-child(2) {
-  height: 6px;
-  background: rgba(255, 255, 255, 0.68);
+  height: 8px;
+  background: rgba(255, 255, 255, 0.82);
 }
 
 .ov-listening {
