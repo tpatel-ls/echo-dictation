@@ -7,6 +7,9 @@ export interface ClaudeDeps {
   timeoutMs?: number
 }
 
+export const AUTO_CLEANUP_TIMEOUT_MS = 3500
+const COMMAND_TIMEOUT_MS = 12_000
+
 export class CleanupError extends Error {
   constructor(
     message: string,
@@ -50,6 +53,7 @@ const SYSTEM_PROMPT =
   'Never use em dashes or en dashes in the output; use a comma, period, or parentheses instead. ' +
   'Accuracy is critical: correct only what is clearly a speech-recognition error, and when unsure ' +
   'keep the speaker’s exact words. ' +
+  'Do not paraphrase or swap synonyms; for example, never change "telling" to "saying". ' +
   'Preserve the speaker’s meaning and wording faithfully — do NOT summarize, answer, ' +
   'translate, add content, or comment. Your entire response is inserted at the speaker’s cursor ' +
   'exactly as-is, so return ONLY the final text: no preamble or lead-in (never "Here is the ' +
@@ -118,7 +122,7 @@ function withGlossary(base: string, glossary: string[]): string {
 
 /** One Anthropic /v1/messages round-trip: `system` + a single user message, parsed to text with
  *  `fallback` returned on an empty response. Throws CleanupError on network/HTTP failure. */
-async function post(
+async function postMessages(
   system: string,
   userContent: string,
   fallback: string,
@@ -128,7 +132,7 @@ async function post(
 ): Promise<string> {
   const url = joinUrl(settings.claudeBaseUrl, 'v1/messages')
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? 12_000)
+  const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? COMMAND_TIMEOUT_MS)
   let res: Response
   try {
     res = await deps.fetch(url, {
@@ -169,6 +173,71 @@ async function post(
   return out ? stripEmDashes(stripWrapper(out)) : fallback
 }
 
+interface ResponsesPayload {
+  output?: Array<{
+    content?: Array<{ type?: string; text?: string }>
+  }>
+  // Accepted only as a defensive compatibility fallback for proxy variants.
+  content?: Array<{ type?: string; text?: string }>
+}
+
+async function postResponses(
+  system: string,
+  userContent: string,
+  fallback: string,
+  settings: Pick<Settings, 'claudeBaseUrl' | 'accuracyModel'>,
+  apiKey: string,
+  deps: ClaudeDeps
+): Promise<string> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? AUTO_CLEANUP_TIMEOUT_MS)
+  let res: Response
+  try {
+    res = await deps.fetch(joinUrl(settings.claudeBaseUrl, 'v1/responses'), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        Authorization: `Bearer ${apiKey}`
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: settings.accuracyModel,
+        store: false,
+        max_output_tokens: 2000,
+        input: [
+          { role: 'system', content: [{ type: 'input_text', text: system }] },
+          { role: 'user', content: [{ type: 'input_text', text: userContent }] }
+        ]
+      })
+    })
+  } catch (error) {
+    if (controller.signal.aborted) throw new CleanupError('AI cleanup timed out')
+    throw new CleanupError(`Network error reaching cleanup proxy: ${(error as Error).message}`)
+  } finally {
+    clearTimeout(timer)
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new CleanupError(`Cleanup proxy returned ${res.status}: ${body.slice(0, 200)}`, res.status)
+  }
+
+  const data = (await res.json()) as ResponsesPayload
+  const output = (data.output ?? [])
+    .flatMap((item) => item.content ?? [])
+    .filter((item) => item.type === 'output_text')
+    .map((item) => item.text ?? '')
+    .join('')
+    .trim()
+  const compatibilityOutput = (data.content ?? [])
+    .filter((item) => item.type === 'text')
+    .map((item) => item.text ?? '')
+    .join('')
+    .trim()
+  const out = output || compatibilityOutput
+  return out ? stripEmDashes(stripWrapper(out)) : fallback
+}
+
 /**
  * Send raw transcript text to the Anthropic-compatible proxy for cleanup. Throws CleanupError on
  * failure; callers decide whether to fall back to raw text. `glossary` lists the user's dictionary
@@ -176,7 +245,7 @@ async function post(
  */
 export async function cleanup(
   text: string,
-  settings: Pick<Settings, 'claudeBaseUrl' | 'claudeModel'>,
+  settings: Pick<Settings, 'claudeBaseUrl' | 'claudeModel' | 'accuracyModel'>,
   apiKey: string,
   deps: ClaudeDeps = { fetch },
   glossary: string[] = [],
@@ -192,7 +261,7 @@ export async function cleanup(
   // restored on the way back.
   const protectedText = protectBreaks(text)
   const out = restoreBreaks(
-    await post(system, cleanupUserContent(protectedText), protectedText, settings, apiKey, deps)
+    await postResponses(system, cleanupUserContent(protectedText), protectedText, settings, apiKey, deps)
   )
   return looksLikeAssistantReply(text, out) ? text : out
 }
@@ -210,7 +279,7 @@ export async function command(
   glossary: string[] = []
 ): Promise<string> {
   const system = withGlossary(COMMAND_SYSTEM_PROMPT, glossary)
-  return post(system, `Instruction: ${instruction}\n\nText:\n${text}`, text, settings, apiKey, deps)
+  return postMessages(system, `Instruction: ${instruction}\n\nText:\n${text}`, text, settings, apiKey, deps)
 }
 
 function looksLikeAssistantReply(input: string, output: string): boolean {

@@ -20,11 +20,15 @@ const MAX_INSTANT_WORDS = 12
 export function needsAiCleanup(text: string): boolean {
   const t = text.trim()
   if (!t) return true
-  if (wordCount(t) > MAX_INSTANT_WORDS) return true
   if (t.includes('\n')) return true
   if (FILLERS.test(t) || STUTTER.test(t) || META_DIRECTIONS.test(t) || BACKTRACKING.test(t)) return true
   if (!/^["'(]?[A-Z0-9]/.test(t)) return true
   if (!/[.!?…]["')]?$/.test(t)) return true
+  const words = wordCount(t)
+  if (words > MAX_INSTANT_WORDS) {
+    const sentenceMarks = t.match(/[.!?\u2026](?=\s|$|["')])/g)?.length ?? 0
+    return sentenceMarks < Math.ceil(words / 24)
+  }
   return false
 }
 

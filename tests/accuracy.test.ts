@@ -82,10 +82,58 @@ describe('recognizeAccurately', () => {
     expect(adjudicator).not.toHaveBeenCalled()
   })
 
-  it('balanced mode retries remotely and uses native only after a non-clean primary', async () => {
+  it('balanced mode keeps a short clean dictation on the one-decode fast path', async () => {
+    const primary = vi.fn<RecognitionDeps['primary']>(async () => 'Please send the update.')
+
+    const outcome = await recognizeAccurately(wav, request(), deps({ primary }))
+
+    expect(outcome.winner.text).toBe('Please send the update.')
+    expect(primary).toHaveBeenCalledOnce()
+  })
+
+  it('balanced mode uses three-decode consensus for long dictation without calling an LLM', async () => {
+    const primary = vi.fn<RecognitionDeps['primary']>(async (_wav, _request, opts) =>
+      opts.temperature === 0
+        ? 'We need GitHub issues and then implement them using the match scales and limit after all specifications are ready.'
+        : 'We need GitHub issues and then implement them using MCP skills and subagents after all specifications are ready.'
+    )
+    const adjudicator = vi.fn(async () => null)
+
+    const outcome = await recognizeAccurately(wav, request(), deps({ primary, adjudicator }))
+
+    expect(primary.mock.calls.map((call) => call[2].temperature)).toEqual([0, 0.3, 0.8])
+    expect(outcome.winner).toMatchObject({
+      source: 'remote-recovery',
+      text: 'We need GitHub issues and then implement them using MCP skills and subagents after all specifications are ready.'
+    })
+    expect(adjudicator).not.toHaveBeenCalled()
+  })
+
+  it('treats punctuation-only candidate differences as consensus and keeps the best-punctuated text', async () => {
+    const primary = vi.fn<RecognitionDeps['primary']>(async (_wav, _request, opts) => {
+      if (opts.temperature === 0) {
+        return 'We need plantain chips then create GitHub issues several tickets and detailed specifications before implementation'
+      }
+      if (opts.temperature === 0.3) {
+        return 'We need plantain chips. Then create GitHub issues, several tickets, and detailed specifications before implementation.'
+      }
+      return 'We need plantin chips. Then create GitHub issues, tickets, and specifications before implementation.'
+    })
+    const adjudicator = vi.fn(async () => null)
+
+    const outcome = await recognizeAccurately(wav, request(), deps({ primary, adjudicator }))
+
+    expect(outcome.winner.text).toBe(
+      'We need plantain chips. Then create GitHub issues, several tickets, and detailed specifications before implementation.'
+    )
+    expect(adjudicator).not.toHaveBeenCalled()
+  })
+
+  it('balanced mode samples two remote recoveries after a non-clean primary', async () => {
     const primary = vi
       .fn<RecognitionDeps['primary']>()
       .mockResolvedValueOnce('How do I force figure out?')
+      .mockResolvedValueOnce('How do I figure it out?')
       .mockResolvedValueOnce('How do I figure it out?')
     const secondary = {
       transcribe: vi.fn(async (): Promise<TranscriptCandidate> => ({
@@ -97,16 +145,16 @@ describe('recognizeAccurately', () => {
 
     const outcome = await recognizeAccurately(wav, request(), deps({ primary, secondary }))
 
-    expect(outcome.winner.source).toBe('native')
-    expect(primary.mock.calls.map((call) => call[2].temperature)).toEqual([0, 0.3])
-    expect(secondary.transcribe).toHaveBeenCalledWith('/tmp/echo-input.wav', 'en-US')
+    expect(outcome.winner.source).toBe('remote-recovery')
+    expect(primary.mock.calls.map((call) => call[2].temperature)).toEqual([0, 0.3, 0.8])
+    expect(secondary.transcribe).not.toHaveBeenCalled()
   })
 
-  it('balanced mode bounds native latency and keeps the safe recovery candidate', async () => {
-    vi.useFakeTimers()
+  it('balanced mode does not wait for the slower native recognizer', async () => {
     const primary = vi
       .fn<RecognitionDeps['primary']>()
       .mockResolvedValueOnce('How do I force figure out?')
+      .mockResolvedValueOnce('How do I figure it out?')
       .mockResolvedValueOnce('How do I figure it out?')
     const secondary = {
       transcribe: vi.fn(
@@ -117,15 +165,13 @@ describe('recognizeAccurately', () => {
       )
     }
 
-    const pending = recognizeAccurately(wav, request(), deps({ primary, secondary }))
-    await vi.advanceTimersByTimeAsync(1500)
-
-    await expect(pending).resolves.toMatchObject({
+    await expect(recognizeAccurately(wav, request(), deps({ primary, secondary }))).resolves.toMatchObject({
       winner: { source: 'remote-recovery', text: 'How do I figure it out?' }
     })
+    expect(secondary.transcribe).not.toHaveBeenCalled()
   })
 
-  it('maximum mode uses a sampling ensemble so phonetic agreement can beat a fluent wrong primary', async () => {
+  it('maximum mode uses exact majority consensus before spending time on an LLM', async () => {
     const primary = vi.fn<RecognitionDeps['primary']>(async (_wav, _request, opts) => {
       if (opts.temperature === 0) return "I'm a home, I'm a coffee."
       if (opts.temperature === 0.3) return "How's it going?"
@@ -140,16 +186,8 @@ describe('recognizeAccurately', () => {
     )
 
     expect(primary.mock.calls.map((call) => call[2].temperature)).toEqual([0, 0.3, 0.3, 0.3, 0.8])
-    expect(adjudicator).toHaveBeenCalledOnce()
-    const adjudicatedCandidates = adjudicator.mock.calls[0]?.[0] ?? []
-    expect(adjudicatedCandidates.map((candidate) => candidate.text)).toEqual([
-      "I'm a home, I'm a coffee.",
-      "How's it going?",
-      "How's it going?",
-      "How's it going?",
-      "How's it away?"
-    ])
-    expect(outcome.winner).toMatchObject({ source: 'adjudicated', text: "How's it going?" })
+    expect(adjudicator).not.toHaveBeenCalled()
+    expect(outcome.winner).toMatchObject({ source: 'remote-recovery', text: "How's it going?" })
   })
 
   it('falls back to the best clean candidate when adjudication fails', async () => {
@@ -266,6 +304,7 @@ describe('recognizeAccurately', () => {
       .fn<RecognitionDeps['primary']>()
       .mockResolvedValueOnce('How do I force figure out?')
       .mockResolvedValueOnce("You're welcome.")
+      .mockResolvedValueOnce("You're welcome.")
 
     await expect(recognizeAccurately(wav, request(), deps({ primary }))).resolves.toMatchObject({
       winner: { source: 'remote-primary', text: 'How do I force figure out?' }
@@ -276,6 +315,7 @@ describe('recognizeAccurately', () => {
     const primary = vi
       .fn<RecognitionDeps['primary']>()
       .mockResolvedValueOnce('hello hello hello hello')
+      .mockResolvedValueOnce("You're welcome.")
       .mockResolvedValueOnce("You're welcome.")
 
     await expect(recognizeAccurately(wav, request(), deps({ primary }))).rejects.toThrow(

@@ -52,9 +52,11 @@ describe('needsAiCleanup', () => {
     expect(needsAiCleanup('The the report is ready.')).toBe(true) // stutter
   })
 
-  it('cleans anything long, multi-line, or with meta directions', () => {
+  it('cleans run-on long text, multi-line text, or text with meta directions', () => {
     expect(
-      needsAiCleanup('This is a much longer dictation that keeps going and definitely deserves a proper cleanup pass to organize it.')
+      needsAiCleanup(
+        'This is a much longer dictation that keeps going through the first topic and then the second topic and then more implementation detail and then another decision and then follow-up work and several owners and deadlines without any useful sentence break until the very end.'
+      )
     ).toBe(true)
     expect(needsAiCleanup('First line.\nSecond line.')).toBe(true)
     expect(needsAiCleanup('Write an email to Bryan.')).toBe(true)
@@ -62,6 +64,14 @@ describe('needsAiCleanup', () => {
     expect(needsAiCleanup('Send it Tuesday, no wait, Wednesday.')).toBe(true)
     expect(needsAiCleanup('Use Tuesday, I mean Wednesday.')).toBe(true)
     expect(needsAiCleanup('Actually, change it to Wednesday.')).toBe(true)
+  })
+
+  it('skips AI cleanup for longer text that ASR already punctuated into clear sentences', () => {
+    expect(
+      needsAiCleanup(
+        'We need plantain chips. Then create GitHub issues, several tickets, and detailed specifications. Implement them using MCP skills and subagents.'
+      )
+    ).toBe(false)
   })
 
   it('cleans empty-ish input defensively', () => {
