@@ -24,6 +24,7 @@ import type { SnippetsStore } from './store/snippets'
 import { retainAudioCopy } from './store/history-file'
 import { WhisperPrewarm } from './transcription/prewarm'
 import { repairTranscriptConsistency } from '@shared/transcript-repair'
+import { polishTranscriptStructure } from '@shared/transcript-polish'
 import {
   isLowConfidenceRecognitionError,
   recognizeAccurately,
@@ -195,7 +196,9 @@ export class DictationController {
 
       // Dictionary guarantees custom spellings; spoken formatting commands ("new paragraph",
       // "leave space", "new line") become real breaks instantly, before any AI pass.
-      const raw = applyVoiceCommands(repairTranscriptConsistency(this.correct(heard, dict)))
+      const raw = polishTranscriptStructure(
+        applyVoiceCommands(repairTranscriptConsistency(this.correct(heard, dict)))
+      )
       if (!raw) {
         this.history.insert(
           row({ status: 'empty', meta, appContext, model: s.whisperModel, latency: Date.now() - t0 })
@@ -307,7 +310,7 @@ export class DictationController {
       { secondary: this.secondaryRecognizer }
     )
 
-    const raw = applyVoiceCommands(this.correct(outcome.winner.text, dict))
+    const raw = polishTranscriptStructure(applyVoiceCommands(this.correct(outcome.winner.text, dict)))
     if (!raw) throw new Error('No speech detected')
     let cleaned: string | null = null
     if (s.cleanupMode === 'auto' && needsAiCleanup(raw)) {
@@ -394,7 +397,6 @@ export class DictationController {
 
   private send(e: DictationStateEvent): void {
     if (!this.overlay.isDestroyed()) this.overlay.webContents.send(IPC.DICTATION_STATE, e)
-    if (e.phase === 'idle' && !this.overlay.isDestroyed()) this.overlay.hide()
   }
 
   private startLinger(): void {
@@ -485,7 +487,7 @@ function prepareTranscriptText(text: string, dict: DictionaryEntry[]): string {
       corrected = text
     }
   }
-  return applyVoiceCommands(repairTranscriptConsistency(corrected))
+  return polishTranscriptStructure(applyVoiceCommands(repairTranscriptConsistency(corrected)))
 }
 
 function friendlyError(e: unknown, service = 'Whisper'): string {

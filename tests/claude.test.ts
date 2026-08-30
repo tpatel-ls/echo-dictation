@@ -171,6 +171,7 @@ describe('cleanup', () => {
       expect(system).toMatch(/full stop/i)
       expect(system).toMatch(/question mark/i)
       expect(system).toMatch(/standard American English/i)
+      expect(system).toMatch(/possessive/i)
       expect(system).toMatch(/topic shift/i)
       expect(system).toMatch(/actually.*final correction/i)
       expect(system).toMatch(/email/i)

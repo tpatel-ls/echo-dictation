@@ -44,6 +44,9 @@ export function createOverlay(offsetBottom: number): BrowserWindow {
   reloadOnCrash(win)
   positionOverlay(win, offsetBottom)
   loadRenderer(win, 'overlay')
+  win.webContents.once('did-finish-load', () => {
+    if (!win.isDestroyed()) win.showInactive()
+  })
   return win
 }
 
