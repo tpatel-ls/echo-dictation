@@ -29,7 +29,9 @@ const SYSTEM_PROMPT =
   'single blank line and nothing else — never draw horizontal rules, "---" lines, or any other ' +
   'divider between paragraphs. ' +
   'Use conventional English contractions and format spoken numbers, times, dates, currency, units, ' +
-  'and ordinals naturally for the context. Turn clear enumerations into a bulleted or numbered list. ' +
+  'and ordinals naturally for the context. Restore possessive apostrophes that speech recognition ' +
+  'drops, especially for company, person, and product names (for example, "Anthropics limits" means ' +
+  '"Anthropic\'s limits"). Turn clear enumerations into a bulleted or numbered list. ' +
   'The speaker may embed spoken formatting instructions in the dictation — e.g. "new paragraph", ' +
   '"leave a space", "new line", "make that a bullet list", "in quotes", or "all caps". Spoken ' +
   'punctuation names are commands too: "comma", "full stop" or "period", "question mark", ' +

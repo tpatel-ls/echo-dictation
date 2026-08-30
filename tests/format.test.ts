@@ -58,7 +58,7 @@ describe('needsAiCleanup', () => {
         'This is a much longer dictation that keeps going through the first topic and then the second topic and then more implementation detail and then another decision and then follow-up work and several owners and deadlines without any useful sentence break until the very end.'
       )
     ).toBe(true)
-    expect(needsAiCleanup('First line.\nSecond line.')).toBe(true)
+    expect(needsAiCleanup('First line.\nSecond line.')).toBe(false)
     expect(needsAiCleanup('Write an email to Bryan.')).toBe(true)
     expect(needsAiCleanup('Scratch that, use Thursday.')).toBe(true)
     expect(needsAiCleanup('Send it Tuesday, no wait, Wednesday.')).toBe(true)

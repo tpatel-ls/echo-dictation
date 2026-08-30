@@ -195,6 +195,10 @@ async function finalize(
     request.settings.accuracyMode === 'maximum' ? 3 : 2
   )
   if (consensus) return { winner: consensus, candidates }
+  if (request.settings.accuracyMode === 'balanced') {
+    const fuzzyConsensus = chooseFuzzyConsensus(clean, options)
+    if (fuzzyConsensus) return { winner: fuzzyConsensus, candidates }
+  }
   const disagreement = candidates.length > 1 && hasMeaningfulDisagreement(candidates)
   let acceptedAdjudication = false
 
@@ -327,6 +331,37 @@ function chooseExactConsensus(
   const bestPunctuation = Math.max(...strongest.map((candidate) => punctuationScore(candidate.text)))
   return chooseTranscript(
     strongest.filter((candidate) => punctuationScore(candidate.text) === bestPunctuation),
+    options
+  )
+}
+
+/**
+ * Long hypotheses that differ by only a word or two do not need another network model. Pick the
+ * medoid candidate (the one closest to every other candidate) only when every pair agrees strongly.
+ * Short commands stay out of this path because a single word such as "on" vs "off" is material.
+ */
+function chooseFuzzyConsensus(
+  candidates: TranscriptCandidate[],
+  options: { language: 'en'; glossary: string[] }
+): TranscriptCandidate | null {
+  if (candidates.length < 3 || candidates.some((candidate) => transcriptWordCount(candidate.text) < 50)) {
+    return null
+  }
+
+  const normalized = candidates.map((candidate) => normalizeForSupport(candidate.text))
+  const scores = candidates.map(() => 0)
+  for (let left = 0; left < candidates.length; left++) {
+    for (let right = left + 1; right < candidates.length; right++) {
+      const similarity = supportSimilarity(normalized[left] ?? '', normalized[right] ?? '')
+      if (similarity < 0.94) return null
+      scores[left] = (scores[left] ?? 0) + similarity
+      scores[right] = (scores[right] ?? 0) + similarity
+    }
+  }
+
+  const bestScore = Math.max(...scores)
+  return chooseTranscript(
+    candidates.filter((_, index) => Math.abs((scores[index] ?? 0) - bestScore) < 0.0001),
     options
   )
 }

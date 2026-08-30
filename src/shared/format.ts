@@ -14,13 +14,13 @@ const MAX_INSTANT_WORDS = 12
 
 /**
  * Fast path: a short dictation Whisper already punctuated cleanly (capitalized start, terminal
- * punctuation, no fillers/stutters, no breaks, no spoken directions) gains nothing from the AI
- * pass — skip it and insert instantly. Anything doubtful returns true and gets cleaned.
+ * punctuation, no fillers/stutters, no spoken directions) gains nothing from the AI pass. Skip it
+ * and insert instantly. Intentional line or paragraph breaks alone do not require another model.
+ * Anything doubtful returns true and gets cleaned.
  */
 export function needsAiCleanup(text: string): boolean {
   const t = text.trim()
   if (!t) return true
-  if (t.includes('\n')) return true
   if (FILLERS.test(t) || STUTTER.test(t) || META_DIRECTIONS.test(t) || BACKTRACKING.test(t)) return true
   if (!/^["'(]?[A-Z0-9]/.test(t)) return true
   if (!/[.!?…]["')]?$/.test(t)) return true

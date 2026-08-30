@@ -174,6 +174,27 @@ describe('recognizeAccurately', () => {
     expect(adjudicator).not.toHaveBeenCalled()
   })
 
+  it('uses local fuzzy consensus for high-agreement long candidates instead of waiting for an LLM', async () => {
+    const sharedEnding =
+      ' The team documented the remaining risks, assigned follow-up work, scheduled the final review, notified support, checked the monitoring plan, and confirmed that every dependency had a clear owner and deadline.'
+    const primary = vi.fn<RecognitionDeps['primary']>(async (_wav, _request, opts) => {
+      if (opts.temperature === 0) {
+        return 'The product team reviewed the launch plan on Monday and confirmed every owner. They also checked the GitHub issues, release notes, support coverage, rollout sequence, customer communication, monitoring dashboards, and final approval before implementation begins.' + sharedEnding
+      }
+      if (opts.temperature === 0.3) {
+        return 'The product team reviewed the launch plan on Tuesday and confirmed every owner. They also checked the GitHub issues, release notes, support coverage, rollout sequence, customer communication, monitoring dashboards, and final approval before implementation begins.' + sharedEnding
+      }
+      return 'The product team reviewed the launch plan on Tuesday and confirmed every owner. They also checked the GitHub issues, release notes, support coverage, rollout sequence, customer communication, monitoring dashboards, and final approval before the release begins.' + sharedEnding
+    })
+    const adjudicator = vi.fn(async () => null)
+
+    const outcome = await recognizeAccurately(wav, request(), deps({ primary, adjudicator }))
+
+    expect(outcome.winner.text).toContain('on Tuesday')
+    expect(outcome.winner.text).toContain('before implementation begins')
+    expect(adjudicator).not.toHaveBeenCalled()
+  })
+
   it('balanced mode samples two remote recoveries after a non-clean primary', async () => {
     const primary = vi
       .fn<RecognitionDeps['primary']>()

@@ -52,16 +52,20 @@ export function Waveform({
       smooth.current += (target - smooth.current) * 0.3
 
       ctx.clearRect(0, 0, width, height)
+      const voiceActive = live && smooth.current > 0.055
       const grad = ctx.createLinearGradient(0, 0, 0, height)
-      if (live) {
-        grad.addColorStop(0, 'rgba(255,255,255,0.96)')
-        grad.addColorStop(1, 'rgba(255,255,255,0.72)')
+      if (voiceActive) {
+        grad.addColorStop(0, 'rgba(115,190,255,1)')
+        grad.addColorStop(1, 'rgba(55,137,255,0.88)')
+      } else if (live) {
+        grad.addColorStop(0, 'rgba(255,255,255,0.92)')
+        grad.addColorStop(1, 'rgba(255,255,255,0.62)')
       } else {
-        grad.addColorStop(0, 'rgba(255,255,255,0.6)')
-        grad.addColorStop(1, 'rgba(255,255,255,0.4)')
+        grad.addColorStop(0, 'rgba(255,255,255,0.56)')
+        grad.addColorStop(1, 'rgba(255,255,255,0.34)')
       }
       ctx.fillStyle = grad
-      ctx.shadowColor = 'rgba(255,255,255,0.35)'
+      ctx.shadowColor = voiceActive ? 'rgba(74,156,255,0.48)' : 'rgba(255,255,255,0.22)'
       ctx.shadowBlur = live ? 4 : 0
 
       for (let i = 0; i < N; i++) {
