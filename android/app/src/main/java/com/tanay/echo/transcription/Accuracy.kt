@@ -13,7 +13,7 @@ enum class AccuracyMode {
     companion object {
         fun from(value: String): AccuracyMode = entries.firstOrNull {
             it.name.equals(value.trim(), ignoreCase = true)
-        } ?: MAXIMUM
+        } ?: BALANCED
     }
 }
 
@@ -102,7 +102,8 @@ private suspend fun finalizeRecognition(
         throw LowConfidenceRecognitionException()
     }
 
-    val winner = chooseTranscript(clean, glossary) ?: throw LowConfidenceRecognitionException()
+    val pool = if (clean.isNotEmpty() || mode == AccuracyMode.MAXIMUM) clean else candidates
+    val winner = chooseTranscript(pool, glossary) ?: throw LowConfidenceRecognitionException()
     return RecognitionOutcome(winner, candidates.toList())
 }
 

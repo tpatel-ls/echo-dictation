@@ -59,6 +59,9 @@ describe('needsAiCleanup', () => {
     expect(needsAiCleanup('First line.\nSecond line.')).toBe(true)
     expect(needsAiCleanup('Write an email to Bryan.')).toBe(true)
     expect(needsAiCleanup('Scratch that, use Thursday.')).toBe(true)
+    expect(needsAiCleanup('Send it Tuesday, no wait, Wednesday.')).toBe(true)
+    expect(needsAiCleanup('Use Tuesday, I mean Wednesday.')).toBe(true)
+    expect(needsAiCleanup('Actually, change it to Wednesday.')).toBe(true)
   })
 
   it('cleans empty-ish input defensively', () => {

@@ -2,7 +2,7 @@
 
 Echo is an accuracy-first English dictation app for macOS, Windows x64, and Android. Hold a
 global key on desktop or use the Android voice keyboard/floating mic, speak naturally, and Echo
-inserts a faithful transcript at the cursor. It includes a bottom recording bar, searchable
+inserts a faithful transcript at the cursor. It includes a compact bottom recording bar, searchable
 history, learned dictionary corrections, snippets, context-aware cleanup, and cross-device sync.
 
 The app talks to your OpenAI-compatible `/audio/transcriptions` endpoint. Optional cleanup and
@@ -31,13 +31,15 @@ in parallel and favors correctness over final-response latency.
    and assistant-style replies.
 5. Ground disagreements through the configured Responses API. A reconstruction must be supported
    by recognizer candidates; Echo never asks the model to answer the dictated content.
-6. Apply deterministic dictionary aliases, spoken formatting, snippets, and optional cleanup.
-7. If confidence remains low, insert nothing and keep retained audio available for retry.
+6. Apply deterministic dictionary aliases, spoken punctuation/formatting, snippets, and automatic
+   English cleanup for paragraphing, lists, number formatting, and self-corrections.
+7. Balanced/Fast keep the best usable English candidate after bounded recovery. Maximum remains
+   fail-closed and keeps retained audio available for retry when confidence is low.
 
 The three desktop modes are:
 
-- **Maximum** (default): five concurrent remote hypotheses plus native recognition when available.
-- **Balanced**: one fast decode, with recovery only when its quality is not clean.
+- **Balanced** (default): one fast decode, with recovery only when its quality is not clean.
+- **Maximum**: five concurrent remote hypotheses plus native recognition when available.
 - **Fast**: one deterministic decode, still protected by the rejection gate.
 
 ## Desktop development
@@ -89,8 +91,8 @@ Command, Caps Lock, or F8.
 
 Local artifact outputs:
 
-- `dist/Echo-0.1.0-arm64.dmg`
-- `dist/Echo-0.1.0-arm64-mac.zip`
+- `dist/Echo-0.2.0-arm64.dmg`
+- `dist/Echo-0.2.0-arm64-mac.zip`
 
 ## Install on Windows for all users
 
@@ -101,7 +103,7 @@ npm install
 npm run dist:win
 ```
 
-Run `dist/Echo-0.1.0-setup.exe` and accept the UAC prompt. The NSIS installer is pinned to x64,
+Run `dist/Echo-0.2.0-setup.exe` and accept the UAC prompt. The NSIS installer is pinned to x64,
 installs machine-wide, creates desktop/Start Menu shortcuts, and registers
 `Echo.exe --hidden` under the 64-bit HKLM Run key so every user starts Echo at sign-in. Each user
 still has separate settings/history and can disable **Launch at login**; a disabled profile exits
@@ -112,7 +114,7 @@ and `System.Speech`; the target PC does not need .NET. For the independent nativ
 install **English (United States)** under Windows **Time & language > Speech**.
 
 The Windows installer is currently unsigned. Windows may show a SmartScreen warning on first run.
-The local artifact is `dist/Echo-0.1.0-setup.exe`.
+The local artifact is `dist/Echo-0.2.0-setup.exe`.
 
 ## Install on Android
 
@@ -169,8 +171,8 @@ Deployment details are in [the sync server guide](src/server/README.md).
   the clipboard and in History when paste is blocked.
 - **Windows trigger does nothing:** do not mix privilege levels. Echo must run elevated when the
   target app is elevated.
-- **Wrong-language text:** keep language `en` and use Maximum accuracy. Current builds reject the
-  known foreign-script drift instead of inserting it.
+- **Wrong-language text:** English is pinned automatically. Balanced retries suspicious output;
+  Maximum can be selected when fail-closed multi-candidate agreement is preferred.
 - **No transcript:** verify the selected microphone, endpoint, API key, and English speech pack.
 - **Android cannot insert:** enable the Echo keyboard, or grant the floating mic Accessibility and
   draw-over-apps permissions.

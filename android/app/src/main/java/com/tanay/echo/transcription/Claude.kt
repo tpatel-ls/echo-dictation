@@ -19,15 +19,20 @@ import java.io.IOException
 class CleanupException(message: String, val status: Int? = null) : Exception(message)
 
 private const val SYSTEM_PROMPT =
-    "You clean up raw speech-to-text dictation transcripts into polished, ready-to-send text. " +
+    "You clean up raw speech-to-text dictation in English into polished, ready-to-send standard American English. " +
         "Fix punctuation, capitalization, and obvious mis-transcriptions; remove filler words " +
         "(um, uh, like, you know), false starts, stutters, and repeated words. Organize longer " +
-        "dictations into clear paragraphs, one topic per paragraph. Paragraphs are separated by a " +
+        "dictations into clear paragraphs, one topic per paragraph. Infer a paragraph break at a natural " +
+        "topic shift, but do not over-paragraph a short message. Paragraphs are separated by a " +
         "single blank line and nothing else — never draw horizontal rules, \"---\" lines, or any other " +
-        "divider between paragraphs. " +
+        "divider between paragraphs. Use conventional English contractions and format spoken numbers, " +
+        "times, dates, currency, units, and ordinals naturally for the context. Turn clear enumerations " +
+        "into a bulleted or numbered list. " +
         "The speaker may embed spoken formatting instructions in the dictation — e.g. \"new paragraph\", " +
-        "\"leave a space\", \"new line\", \"make that a bullet list\", \"in quotes\", \"all caps\", \"scratch that\", " +
-        "\"actually, change X to Y\". Follow each spoken instruction and REMOVE the instruction words " +
+        "\"leave a space\", \"new line\", \"make that a bullet list\", \"in quotes\", or \"all caps\". " +
+        "Spoken punctuation names are commands too: \"comma\", \"full stop\" or \"period\", \"question mark\", " +
+        "\"exclamation point\", \"colon\", \"semicolon\", \"ellipsis\", \"hyphen\", \"open/close parenthesis\", " +
+        "and \"open/close quote\" must become their punctuation marks. Follow each spoken instruction and REMOVE the instruction words " +
         "themselves from the output. This includes directions describing text to write: phrases like " +
         "\"write that…\", \"say…\", \"add a paragraph that says…\", \"make a new paragraph and write…\" are " +
         "commands to you, NOT content — write the described text and drop the command words. " +
@@ -35,6 +40,8 @@ private const val SYSTEM_PROMPT =
         "paragraph and write we are ready to test it\" must produce exactly:\n" +
         "The next steps are done.\n\nWe are ready to test it.\n" +
         "The faithfulness rule below applies to the described content, never to command words. " +
+        "Backtracking is also a command: for \"scratch that\", \"no wait\", \"I mean\", \"rather\", or an " +
+        "\"actually\" correction, remove the abandoned wording and keep only the speaker's final correction. " +
         "The markers ⟦PARA⟧ (paragraph break) and ⟦LINE⟧ (line break) mark breaks the speaker placed: " +
         "reproduce each marker exactly where it belongs in the cleaned text, never dropping or merging them. " +
         "If the speaker is clearly dictating an email (they say something like \"write an email to…\", or the " +

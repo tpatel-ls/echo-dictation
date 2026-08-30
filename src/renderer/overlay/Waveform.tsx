@@ -38,7 +38,10 @@ export function Waveform({
     if (!ctx) return
     ctx.scale(dpr, dpr)
 
-    const totalW = N * BAR_W + (N - 1) * GAP
+    const scale = Math.min(1, width / (N * BAR_W + (N - 1) * GAP))
+    const barWidth = Math.max(1.25, BAR_W * scale)
+    const gap = Math.max(0.75, GAP * scale)
+    const totalW = N * barWidth + (N - 1) * gap
     const startX = (width - totalW) / 2
     const mid = (N - 1) / 2
 
@@ -72,9 +75,9 @@ export function Waveform({
           amp = 0.14 + (Math.sin(t.current * 2.4 - i * 0.45) * 0.5 + 0.5) * 0.22
         }
         const bh = Math.max(2.5, Math.min(1, amp) * height)
-        const x = startX + i * (BAR_W + GAP)
+        const x = startX + i * (barWidth + gap)
         const y = (height - bh) / 2
-        roundRect(ctx, x, y, BAR_W, bh, BAR_W / 2)
+        roundRect(ctx, x, y, barWidth, bh, barWidth / 2)
         ctx.fill()
       }
       raf.current = requestAnimationFrame(draw)

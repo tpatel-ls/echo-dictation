@@ -9,6 +9,11 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class AccuracyTest {
     @Test
+    fun unknownAccuracyModeDefaultsToBalanced() {
+        assertEquals(AccuracyMode.BALANCED, AccuracyMode.from("unknown"))
+    }
+
+    @Test
     fun balancedModeRetriesARejectedPrimary() = runTest {
         val temperatures = mutableListOf<Double>()
         val outcome = recognizeAccurately(
@@ -82,5 +87,18 @@ class AccuracyTest {
         } catch (_: LowConfidenceRecognitionException) {
             // expected
         }
+    }
+
+    @Test
+    fun balancedModeKeepsBestSuspiciousEnglishCandidateAfterBoundedRescue() = runTest {
+        val index = AtomicInteger()
+        val hypotheses = listOf("How do I force figure out?", "You're welcome.")
+
+        val outcome = recognizeAccurately(
+            mode = AccuracyMode.BALANCED,
+            decode = { hypotheses[index.getAndIncrement()] },
+        )
+
+        assertEquals("How do I force figure out?", outcome.winner.text)
     }
 }

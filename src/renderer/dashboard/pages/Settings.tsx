@@ -102,7 +102,7 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
             </Field>
             <Field
               label="Accuracy"
-              hint="Maximum compares several decodes with Apple Speech. Balanced uses rescue only when needed."
+              hint="Balanced inserts one fast high-quality decode and runs recovery only when needed. Maximum compares several decodes with native speech where available."
             >
               <Select
                 value={s.accuracyMode}
@@ -135,7 +135,7 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
           <Section title="AI cleanup (Claude)">
             <Field
               label="Cleanup mode"
-              hint="Raw = fastest. On-demand = polish from history. Auto = clean every dictation before inserting."
+              hint="Auto applies smart English punctuation, paragraphs, lists, and self-corrections before inserting."
             >
               <Select
                 value={s.cleanupMode}

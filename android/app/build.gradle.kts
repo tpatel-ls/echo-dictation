@@ -25,8 +25,8 @@ android {
         applicationId = "com.tanay.echo"
         minSdk = 26 // Android 8.0 — enables adaptive icons + EncryptedSharedPreferences
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "DEFAULT_WHISPER_BASE_URL", "\"${echoDefault("whisperBaseUrl")}\"")

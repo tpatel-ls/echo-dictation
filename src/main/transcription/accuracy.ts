@@ -189,7 +189,13 @@ async function finalize(
     throw new LowConfidenceRecognitionError()
   }
 
-  const winner = chooseTranscript(clean, options)
+  // Fast/Balanced are availability-first: after bounded rescue, keep a usable suspicious English
+  // hypothesis instead of dropping the dictation. Deterministic rejects (foreign script, decoder
+  // garbage, assistant replies, or empty output) remain ineligible. Maximum stays fail-closed.
+  const winner = chooseTranscript(
+    clean.length || request.settings.accuracyMode === 'maximum' ? clean : candidates,
+    options
+  )
   if (winner) return { winner, candidates }
   if (!candidates.length && errors.length) throw errors[0]
   throw new LowConfidenceRecognitionError()
