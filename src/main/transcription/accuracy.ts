@@ -71,6 +71,7 @@ export function isLowConfidenceRecognitionError(e: unknown): boolean {
 }
 
 const NATIVE_TIMEOUT_MS = 1500
+const BALANCED_FAST_PATH_WORDS = 12
 
 export async function recognizeAccurately(
   wav: RecognitionAudio,
@@ -98,11 +99,16 @@ export async function recognizeAccurately(
   const primaryCandidate = await decodeRemote(wav, request, primary, 'remote-primary', 0, deps.now)
   candidates.push(primaryCandidate)
   const primaryGrade = assessTranscript(primaryCandidate.text, qualityOptions(request)).grade
-  if (mode === 'fast' || primaryGrade === 'clean') return finalize(candidates, request, deps, errors)
+  if (
+    mode === 'fast' ||
+    (primaryGrade === 'clean' && transcriptWordCount(primaryCandidate.text) <= BALANCED_FAST_PATH_WORDS)
+  ) {
+    return finalize(candidates, request, deps, errors)
+  }
 
   const settled = await Promise.allSettled([
     decodeRemote(wav, request, primary, 'remote-recovery', 0.3, deps.now),
-    nativeWithTimeout(wav, deps)
+    decodeRemote(wav, request, primary, 'remote-recovery', 0.8, deps.now)
   ])
   collectSettled(settled, candidates, errors)
   return finalize(candidates, request, deps, errors)
@@ -166,6 +172,12 @@ async function finalize(
 ): Promise<RecognitionOutcome> {
   const options = qualityOptions(request)
   const clean = candidates.filter((candidate) => assessTranscript(candidate.text, options).grade === 'clean')
+  const consensus = chooseExactConsensus(
+    clean,
+    options,
+    request.settings.accuracyMode === 'maximum' ? 3 : 2
+  )
+  if (consensus) return { winner: consensus, candidates }
   const disagreement = candidates.length > 1 && hasMeaningfulDisagreement(candidates)
   let acceptedAdjudication = false
 
@@ -279,7 +291,8 @@ function editDistance(a: string, b: string): number {
 
 function chooseExactConsensus(
   candidates: TranscriptCandidate[],
-  options: { language: 'en'; glossary: string[] }
+  options: { language: 'en'; glossary: string[] },
+  minimumVotes = 2
 ): TranscriptCandidate | null {
   const groups = new Map<string, TranscriptCandidate[]>()
   for (const candidate of candidates) {
@@ -290,9 +303,19 @@ function chooseExactConsensus(
     groups.set(key, group)
   }
 
-  const consensusGroups = [...groups.values()].filter((group) => group.length >= 2)
+  const consensusGroups = [...groups.values()].filter((group) => group.length >= minimumVotes)
   consensusGroups.sort((a, b) => b.length - a.length)
-  return consensusGroups.length ? chooseTranscript(consensusGroups[0], options) : null
+  if (!consensusGroups.length) return null
+  const strongest = consensusGroups[0]
+  const bestPunctuation = Math.max(...strongest.map((candidate) => punctuationScore(candidate.text)))
+  return chooseTranscript(
+    strongest.filter((candidate) => punctuationScore(candidate.text) === bestPunctuation),
+    options
+  )
+}
+
+function transcriptWordCount(text: string): number {
+  return text.match(/[\p{L}\p{N}']+/gu)?.length ?? 0
 }
 
 async function runAdjudicator(
@@ -311,7 +334,13 @@ function hasMeaningfulDisagreement(candidates: TranscriptCandidate[]): boolean {
 }
 
 function normalize(text: string): string {
-  return text.trim().toLowerCase().replace(/\s+/g, ' ')
+  return text.toLowerCase().match(/[\p{L}\p{N}]+/gu)?.join(' ') ?? ''
+}
+
+function punctuationScore(text: string): number {
+  const sentenceMarks = text.match(/[.!?\u2026]/g)?.length ?? 0
+  const clauseMarks = text.match(/[,;:]/g)?.length ?? 0
+  return sentenceMarks * 10 + clauseMarks
 }
 
 function qualityOptions(request: AccuracyRequest): { language: 'en'; glossary: string[] } {

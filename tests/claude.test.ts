@@ -6,7 +6,8 @@ import {
   stripWrapper,
   protectBreaks,
   restoreBreaks,
-  CleanupError
+  CleanupError,
+  AUTO_CLEANUP_TIMEOUT_MS
 } from '../src/main/transcription/claude'
 
 describe('protectBreaks / restoreBreaks', () => {
@@ -93,22 +94,34 @@ describe('stripEmDashes', () => {
   })
 })
 
-const s = { claudeBaseUrl: 'https://mac.ts.net', claudeModel: 'claude-sonnet-4-6' }
+const s = {
+  claudeBaseUrl: 'https://mac.ts.net',
+  claudeModel: 'claude-sonnet-4-6',
+  accuracyModel: 'gpt-5.4-mini'
+}
+
+function responsesText(text: string): Response {
+  return new Response(
+    JSON.stringify({ output: [{ type: 'message', content: [{ type: 'output_text', text }] }] }),
+    { status: 200 }
+  )
+}
+
+function cleanupSystem(body: any): string {
+  return body.input[0].content[0].text as string
+}
 
 describe('cleanup', () => {
-  it('posts the Anthropic messages shape and parses text content', async () => {
+  it('uses the fast Responses model and parses text content', async () => {
     const fetchMock = vi.fn(async (url: unknown, init: any) => {
-      expect(url).toBe('https://mac.ts.net/v1/messages')
-      expect(init.headers['x-api-key']).toBe('KEY')
-      expect(init.headers['anthropic-version']).toBe('2023-06-01')
+      expect(url).toBe('https://mac.ts.net/v1/responses')
+      expect(init.headers.Authorization).toBe('Bearer KEY')
       const body = JSON.parse(init.body)
-      expect(body.model).toBe('claude-sonnet-4-6')
-      expect(body.messages[0].content).toContain('<raw_transcript>')
-      expect(body.messages[0].content).toContain('um hello, uh, world')
-      return new Response(
-        JSON.stringify({ content: [{ type: 'text', text: 'Hello, world.' }] }),
-        { status: 200 }
-      )
+      expect(body.model).toBe('gpt-5.4-mini')
+      expect(body.store).toBe(false)
+      expect(body.input[1].content[0].text).toContain('<raw_transcript>')
+      expect(body.input[1].content[0].text).toContain('um hello, uh, world')
+      return responsesText('Hello, world.')
     })
     const out = await cleanup('um hello, uh, world', s, 'KEY', {
       fetch: fetchMock as unknown as typeof fetch
@@ -117,7 +130,7 @@ describe('cleanup', () => {
   })
 
   it('falls back to input when the model returns no text', async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ content: [] }), { status: 200 }))
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ output: [] }), { status: 200 }))
     const out = await cleanup('keep me', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch })
     expect(out).toBe('keep me')
   })
@@ -125,12 +138,7 @@ describe('cleanup', () => {
   it('falls back to the raw transcript when cleanup returns an assistant reply', async () => {
     const fetchMock = vi.fn(
       async () =>
-        new Response(
-          JSON.stringify({
-            content: [{ type: 'text', text: "You're welcome! Let me know if you need help with anything." }]
-          }),
-          { status: 200 }
-        )
+        responsesText("You're welcome! Let me know if you need help with anything.")
     )
     const out = await cleanup('Thank you.', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch })
     expect(out).toBe('Thank you.')
@@ -139,8 +147,8 @@ describe('cleanup', () => {
   it('includes the dictionary glossary in the system prompt when provided', async () => {
     const fetchMock = vi.fn(async (_url: unknown, init: any) => {
       const body = JSON.parse(init.body)
-      expect(body.system).toContain('Bryan, Tanay')
-      return new Response(JSON.stringify({ content: [{ type: 'text', text: 'x' }] }), { status: 200 })
+      expect(cleanupSystem(body)).toContain('Bryan, Tanay')
+      return responsesText('x')
     })
     await cleanup('x', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch }, ['Bryan', 'Tanay'])
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -149,15 +157,15 @@ describe('cleanup', () => {
   it('keeps the base system prompt unchanged without a glossary', async () => {
     const fetchMock = vi.fn(async (_url: unknown, init: any) => {
       const body = JSON.parse(init.body)
-      expect(body.system).not.toMatch(/vocabulary/i)
-      return new Response(JSON.stringify({ content: [{ type: 'text', text: 'x' }] }), { status: 200 })
+      expect(cleanupSystem(body)).not.toMatch(/vocabulary/i)
+      return responsesText('x')
     })
     await cleanup('x', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch })
   })
 
   it('instructs the model to organize paragraphs, obey spoken commands, and format emails', async () => {
     const fetchMock = vi.fn(async (_url: unknown, init: any) => {
-      const system = JSON.parse(init.body).system as string
+      const system = cleanupSystem(JSON.parse(init.body))
       expect(system).toMatch(/paragraph/i)
       expect(system).toMatch(/spoken (formatting )?instruction/i)
       expect(system).toMatch(/full stop/i)
@@ -167,8 +175,9 @@ describe('cleanup', () => {
       expect(system).toMatch(/actually.*final correction/i)
       expect(system).toMatch(/email/i)
       expect(system).toMatch(/do not summarize|never summarize/i)
+      expect(system).toMatch(/do not paraphrase/i)
       expect(system).toMatch(/never use em dashes/i)
-      return new Response(JSON.stringify({ content: [{ type: 'text', text: 'x' }] }), { status: 200 })
+      return responsesText('x')
     })
     await cleanup('x', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch })
   })
@@ -210,10 +219,14 @@ describe('cleanup', () => {
     ).rejects.toThrow(/timed out/i)
   })
 
+  it('keeps automatic cleanup under a 3.5 second default ceiling', async () => {
+    expect(AUTO_CLEANUP_TIMEOUT_MS).toBe(3500)
+  })
+
   it('appends the style directive to the system prompt when provided', async () => {
     const fetchMock = vi.fn(async (_url: unknown, init: any) => {
-      expect(JSON.parse(init.body).system).toContain('professional')
-      return new Response(JSON.stringify({ content: [{ type: 'text', text: 'x' }] }), { status: 200 })
+      expect(cleanupSystem(JSON.parse(init.body))).toContain('professional')
+      return responsesText('x')
     })
     await cleanup('x', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch }, [], 'Format as professional writing.')
     expect(fetchMock).toHaveBeenCalledTimes(1)

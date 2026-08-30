@@ -23,6 +23,7 @@ import type { DictionaryStore } from './store/dictionary'
 import type { SnippetsStore } from './store/snippets'
 import { retainAudioCopy } from './store/history-file'
 import { WhisperPrewarm } from './transcription/prewarm'
+import { repairTranscriptConsistency } from '@shared/transcript-repair'
 import {
   isLowConfidenceRecognitionError,
   recognizeAccurately,
@@ -163,7 +164,7 @@ export class DictationController {
 
       // Dictionary guarantees custom spellings; spoken formatting commands ("new paragraph",
       // "leave space", "new line") become real breaks instantly, before any AI pass.
-      const raw = applyVoiceCommands(this.correct(heard, dict))
+      const raw = applyVoiceCommands(repairTranscriptConsistency(this.correct(heard, dict)))
       if (!raw) {
         this.history.insert(
           row({ status: 'empty', meta, appContext, model: s.whisperModel, latency: Date.now() - t0 })
@@ -179,7 +180,11 @@ export class DictationController {
       const expansion = expandSnippet(raw, snippets)
       if (expansion !== null) {
         text = expansion
-      } else if (s.cleanupMode === 'auto' && needsAiCleanup(raw)) {
+      } else if (
+        s.cleanupMode === 'auto' &&
+        outcome.winner.source !== 'adjudicated' &&
+        needsAiCleanup(raw)
+      ) {
         // (short dictations Whisper already punctuated cleanly skip the AI pass — instant insert)
         try {
           // Context-aware tone: adapt the cleanup register to the focused app (best-effort, from
