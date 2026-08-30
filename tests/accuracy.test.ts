@@ -109,6 +109,51 @@ describe('recognizeAccurately', () => {
     expect(adjudicator).not.toHaveBeenCalled()
   })
 
+  it('starts all long-audio decodes together and exposes the primary result immediately', async () => {
+    const resolvers: Array<(text: string) => void> = []
+    const primary = vi.fn<RecognitionDeps['primary']>(
+      () =>
+        new Promise<string>((resolve) => {
+          resolvers.push(resolve)
+        })
+    )
+    const onPrimary = vi.fn()
+    const pending = recognizeAccurately(
+      { ...wav, durationMs: 30_000 },
+      request(),
+      deps({ primary, onPrimary })
+    )
+
+    await vi.waitFor(() => expect(primary).toHaveBeenCalledTimes(3))
+    expect(primary.mock.calls.map((call) => call[2].temperature)).toEqual([0, 0.3, 0.8])
+    expect(onPrimary).not.toHaveBeenCalled()
+
+    resolvers[0]?.(
+      'We need to review the launch plan and then create the GitHub issues before implementation starts.'
+    )
+    await vi.waitFor(() =>
+      expect(onPrimary).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: 'remote-primary',
+          text: 'We need to review the launch plan and then create the GitHub issues before implementation starts.'
+        })
+      )
+    )
+
+    resolvers[1]?.(
+      'We need to review the launch plan, then create the GitHub issues before implementation starts.'
+    )
+    resolvers[2]?.(
+      'We need to review the launch plan, then create the GitHub issues before implementation starts.'
+    )
+    await expect(pending).resolves.toMatchObject({
+      winner: {
+        source: 'remote-recovery',
+        text: 'We need to review the launch plan, then create the GitHub issues before implementation starts.'
+      }
+    })
+  })
+
   it('treats punctuation-only candidate differences as consensus and keeps the best-punctuated text', async () => {
     const primary = vi.fn<RecognitionDeps['primary']>(async (_wav, _request, opts) => {
       if (opts.temperature === 0) {
@@ -426,6 +471,96 @@ describe('DictationController accuracy integration', () => {
       expect(failedRow.audio_path).toMatch(/audio/)
       if (!failedRow.audio_path) throw new Error('expected retained audio path')
       expect(readFileSync(failedRow.audio_path)).toEqual(Buffer.from([1, 2, 3, 4]))
+    } finally {
+      rmSync(userData, { recursive: true, force: true })
+    }
+  })
+
+  it('starts cleanup from the primary transcript while accuracy voting is still in flight', async () => {
+    const userData = mkdtempSync(join(tmpdir(), 'echo-speculative-cleanup-'))
+    const raw =
+      'So we need to review the launch plan and then create the GitHub issues and after that assign every ticket to the right owner before implementation starts'
+    let finishRecognition: (() => void) | undefined
+    let finishCleanup: ((text: string) => void) | undefined
+    const recognitionBarrier = new Promise<void>((resolve) => {
+      finishRecognition = resolve
+    })
+    const cleanupBarrier = new Promise<string>((resolve) => {
+      finishCleanup = resolve
+    })
+    const cleanupMock = vi.fn(() => cleanupBarrier)
+    const pasteText = vi.fn(async () => {})
+    const history = { insert: vi.fn((row: NewTranscript) => ({ id: 1, ...row })) }
+    const recognizeAccuratelyMock = vi.fn(async (_audio: RecognitionAudio, _request: unknown, deps: any) => {
+      const candidate: TranscriptCandidate = { source: 'remote-primary', text: raw, elapsedMs: 400 }
+      deps.onPrimary?.(candidate)
+      await recognitionBarrier
+      return { winner: candidate, candidates: [candidate] }
+    })
+
+    vi.doMock('electron', () => ({ app: { getPath: () => userData }, type: {} }))
+    vi.doMock('../src/main/transcription/accuracy', () => ({
+      isLowConfidenceRecognitionError: () => false,
+      recognizeAccurately: recognizeAccuratelyMock
+    }))
+    vi.doMock('../src/main/transcription/claude', () => ({ cleanup: cleanupMock, command: vi.fn() }))
+    vi.doMock('../src/main/transcription/prewarm', () => ({
+      WhisperPrewarm: class {
+        start(): void {}
+        stop(): void {}
+      }
+    }))
+    vi.doMock('../src/main/insert/paste', () => ({ pasteText }))
+    vi.doMock('../src/main/insert/paste-deps', () => ({
+      realPasteDeps: () => ({}),
+      realSelectionDeps: () => ({})
+    }))
+    vi.doMock('../src/main/insert/window-focus', () => ({
+      snapshotForegroundWindow: vi.fn(async () => ({ title: 'Visual Studio Code', focus: vi.fn() }))
+    }))
+    vi.doMock('../src/main/insert/selection', () => ({ captureSelection: vi.fn(async () => null) }))
+    vi.doMock('../src/main/windows', () => ({ positionOverlay: vi.fn() }))
+
+    try {
+      const { DictationController } = await import('../src/main/dictation')
+      const controller = new DictationController(
+        {
+          isDestroyed: () => false,
+          webContents: { send: vi.fn() },
+          showInactive: vi.fn(),
+          hide: vi.fn()
+        } as any,
+        {
+          getSettings: () => ({
+            ...DEFAULT_SETTINGS,
+            accuracyMode: 'balanced',
+            cleanupMode: 'auto',
+            whisperBaseUrl: 'https://whisper.example/v1',
+            claudeBaseUrl: 'https://claude.example/v1'
+          }),
+          getSecrets: () => ({ whisperApiKey: 'WHISPER', claudeApiKey: 'CLAUDE', syncToken: '' })
+        } as any,
+        history as any,
+        { list: () => [], recordApplied: vi.fn() } as any,
+        { list: () => [] } as any
+      )
+
+      const pending = controller.handleAudio(Uint8Array.from([1, 2, 3, 4]).buffer, {
+        durationMs: 30_000,
+        sampleRate: 16_000
+      })
+
+      await vi.waitFor(() => expect(cleanupMock).toHaveBeenCalledOnce())
+      expect(pasteText).not.toHaveBeenCalled()
+      finishRecognition?.()
+      finishCleanup?.('We need to review the launch plan, create the GitHub issues, and assign every ticket.')
+
+      await expect(pending).resolves.toMatchObject({ ok: true })
+      expect(cleanupMock).toHaveBeenCalledOnce()
+      expect(pasteText).toHaveBeenCalledWith(
+        'We need to review the launch plan, create the GitHub issues, and assign every ticket.',
+        expect.anything()
+      )
     } finally {
       rmSync(userData, { recursive: true, force: true })
     }

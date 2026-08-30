@@ -140,9 +140,39 @@ export class DictationController {
     try {
       tempAudioPath = writeTemporaryAudio(buf)
       const glossary = dict.map((e) => e.word)
+      const speculativeCleanup: {
+        current: { raw: string; result: Promise<string | null> } | null
+      } = { current: null }
+      const onPrimary = (candidate: { text: string }): void => {
+        if (
+          speculativeCleanup.current ||
+          s.cleanupMode !== 'auto' ||
+          this.selectionProbe !== null ||
+          !s.claudeBaseUrl ||
+          !sec.claudeApiKey
+        ) {
+          return
+        }
+        const previewRaw = prepareTranscriptText(candidate.text, dict)
+        if (!previewRaw || !needsAiCleanup(previewRaw)) return
+        // Start formatting as soon as the first decode lands. A caught promise makes this safe
+        // even when a recovery candidate later wins and the speculative result is discarded.
+        speculativeCleanup.current = {
+          raw: previewRaw,
+          result: cleanup(
+            previewRaw,
+            s,
+            sec.claudeApiKey,
+            undefined,
+            glossary,
+            styleDirective(registerForTitle(appContext))
+          ).catch(() => null)
+        }
+      }
       const outcome = await recognizeAccurately({
         path: tempAudioPath,
-        buffer: buf
+        buffer: buf,
+        durationMs: meta.durationMs
       }, {
         settings: s,
         whisperApiKey: sec.whisperApiKey,
@@ -151,7 +181,8 @@ export class DictationController {
         glossary,
         prompt: buildBiasPrompt(dict)
       }, {
-        secondary: this.secondaryRecognizer
+        secondary: this.secondaryRecognizer,
+        onPrimary
       })
       const heard = outcome.winner.text
 
@@ -189,15 +220,18 @@ export class DictationController {
         try {
           // Context-aware tone: adapt the cleanup register to the focused app (best-effort, from
           // the window title). Neutral titles yield a null directive ⇒ the base cleanup prompt.
-          cleaned = await cleanup(
-            raw,
-            s,
-            sec.claudeApiKey,
-            undefined,
-            glossary,
-            styleDirective(registerForTitle(appContext))
-          )
-          text = cleaned
+          cleaned =
+            speculativeCleanup.current?.raw === raw
+              ? await speculativeCleanup.current.result
+              : await cleanup(
+                  raw,
+                  s,
+                  sec.claudeApiKey,
+                  undefined,
+                  glossary,
+                  styleDirective(registerForTitle(appContext))
+                )
+          if (cleaned) text = cleaned
         } catch {
           /* proxy down — fall back to raw text, no failure */
         }
@@ -261,7 +295,7 @@ export class DictationController {
     const file = readFileSync(existing.audio_path)
     const buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer
     const outcome = await recognizeAccurately(
-      { path: existing.audio_path, buffer },
+      { path: existing.audio_path, buffer, durationMs: existing.duration_ms },
       {
         settings: s,
         whisperApiKey: sec.whisperApiKey,
@@ -439,6 +473,19 @@ function deleteTemporaryAudio(path: string): void {
 function preview(text: string): string {
   const t = text.trim().replace(/\s+/g, ' ')
   return t.length > 48 ? `${t.slice(0, 48)}…` : t
+}
+
+/** Apply the deterministic text layer without mutating dictionary usage counters. */
+function prepareTranscriptText(text: string, dict: DictionaryEntry[]): string {
+  let corrected = text
+  if (text && dict.length) {
+    try {
+      corrected = applyDictionary(text, dict).text
+    } catch {
+      corrected = text
+    }
+  }
+  return applyVoiceCommands(repairTranscriptConsistency(corrected))
 }
 
 function friendlyError(e: unknown, service = 'Whisper'): string {

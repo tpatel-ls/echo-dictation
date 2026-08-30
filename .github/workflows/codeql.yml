@@ -50,5 +50,7 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew :app:assembleDebug --no-daemon
+          # CodeQL must observe Kotlin/Javac execution. A restored Gradle build-cache entry
+          # skips both compilers and produces an empty CodeQL database.
+          ./gradlew clean :app:assembleDebug --no-daemon --no-build-cache --rerun-tasks
       - uses: github/codeql-action/analyze@v3

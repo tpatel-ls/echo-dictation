@@ -31,6 +31,7 @@ describe('adjudicate', () => {
       expect(JSON.stringify(body.input)).toContain('Glossary')
       expect(JSON.stringify(body.input)).toContain('phonetic')
       expect(JSON.stringify(body.input)).toContain('reconstruct')
+      expect(JSON.stringify(body.input)).toContain('letter')
 
       return new Response(
         JSON.stringify({
@@ -42,6 +43,26 @@ describe('adjudicate', () => {
 
     expect(await adjudicate(candidates, 'Visual Studio Code', settings, 'KEY', deps(fetchMock))).toBe(
       'It is not working correctly.'
+    )
+  })
+
+  it('returns the exact selected candidate when the model responds with only a letter', async () => {
+    const distinctCandidates: TranscriptCandidate[] = [
+      { source: 'remote-primary', text: 'Create the get hub issues.', elapsedMs: 180 },
+      { source: 'remote-recovery', text: 'Create the GitHub issues.', elapsedMs: 220 },
+      { source: 'remote-recovery', text: 'Create GitHub issue.', elapsedMs: 240 }
+    ]
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          output: [{ type: 'message', content: [{ type: 'output_text', text: 'B' }] }]
+        }),
+        { status: 200 }
+      )
+    )
+
+    await expect(adjudicate(distinctCandidates, 'Visual Studio Code', settings, 'KEY', deps(fetchMock))).resolves.toBe(
+      'Create the GitHub issues.'
     )
   })
 
@@ -111,5 +132,26 @@ describe('adjudicate', () => {
       'It is not working correctly.'
     )
     expect(models).toEqual(['gpt-5.4-mini', 'claude-sonnet-4-6'])
+  })
+
+  it('bounds a stalled adjudicator request without trying a slower fallback model', async () => {
+    const fetchMock = vi.fn(
+      (_url: unknown, init: any) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal.addEventListener('abort', () => {
+            const error = new Error('aborted')
+            error.name = 'AbortError'
+            reject(error)
+          })
+        })
+    )
+
+    await expect(
+      adjudicate(candidates, 'Visual Studio Code', settings, 'KEY', {
+        fetch: fetchMock as unknown as typeof fetch,
+        timeoutMs: 5
+      })
+    ).rejects.toThrow(/timed out/i)
+    expect(fetchMock).toHaveBeenCalledOnce()
   })
 })
