@@ -67,6 +67,66 @@ describe('pasteText', () => {
     expect(clip).toBe('X')
   })
 
+  it('retries transient Windows input failures and refocuses before every attempt', async () => {
+    const order: string[] = []
+    let clip = 'OLD'
+    let attempts = 0
+
+    await pasteText('DICTATED', {
+      readClipboard: () => clip,
+      writeClipboard: (text) => {
+        clip = text
+      },
+      refocus: async () => {
+        order.push('refocus')
+      },
+      sendPaste: async () => {
+        attempts++
+        order.push(`paste:${attempts}`)
+        if (attempts < 3) throw new Error('SendInput failed (Windows error 87)')
+      },
+      delay: async (ms) => {
+        order.push(`delay:${ms}`)
+      },
+      retryDelayMs: 40,
+      restoreDelayMs: 120
+    })
+
+    expect(order).toEqual([
+      'refocus',
+      'paste:1',
+      'delay:40',
+      'refocus',
+      'paste:2',
+      'delay:40',
+      'refocus',
+      'paste:3',
+      'delay:120'
+    ])
+    expect(clip).toBe('OLD')
+  })
+
+  it('never loses dictated text when Windows blocks every insertion attempt', async () => {
+    let clip = 'OLD'
+    const paste = vi.fn(async () => {
+      throw new Error('SendInput failed (Windows error 5)')
+    })
+
+    await expect(
+      pasteText('DICTATED', {
+        readClipboard: () => clip,
+        writeClipboard: (text) => {
+          clip = text
+        },
+        sendPaste: paste,
+        delay: async () => {}
+      })
+    ).rejects.toThrow('Text copied to clipboard')
+
+    expect(paste).toHaveBeenCalledTimes(3)
+    expect(clip).toBe('DICTATED')
+  })
+
   it('leaves dictated text on the clipboard when macOS blocks auto-paste', async () => {
     let clip = 'OLD'
     await expect(

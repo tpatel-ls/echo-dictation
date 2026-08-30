@@ -7,7 +7,9 @@ export interface PasteDeps {
   sendPaste: () => Promise<void>
   refocus?: () => Promise<void>
   delay: (ms: number) => Promise<void>
+  retryDelayMs?: number
   restoreDelayMs?: number
+  maxAttempts?: number
 }
 
 /**
@@ -18,16 +20,24 @@ export interface PasteDeps {
 export async function pasteText(text: string, deps: PasteDeps): Promise<void> {
   const previous = deps.readClipboard()
   deps.writeClipboard(text)
-  try {
-    if (deps.refocus) await deps.refocus()
-    await deps.sendPaste()
-    await deps.delay(deps.restoreDelayMs ?? 120)
-    deps.writeClipboard(previous)
-  } catch (e) {
-    const message = (e as Error)?.message ?? 'Auto-paste failed'
-    if (/Accessibility|EchoPasteHelper|helper exited/i.test(message)) {
-      throw new Error('Auto-paste blocked. Text copied to clipboard; enable Echo and EchoPasteHelper in Accessibility.')
+
+  const maxAttempts = Math.max(1, deps.maxAttempts ?? 3)
+  let lastError: unknown
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      if (deps.refocus) await deps.refocus()
+      await deps.sendPaste()
+      await deps.delay(deps.restoreDelayMs ?? 120)
+      deps.writeClipboard(previous)
+      return
+    } catch (error) {
+      lastError = error
+      if (attempt < maxAttempts) await deps.delay(deps.retryDelayMs ?? 40)
     }
-    throw e
   }
+
+  const detail = lastError instanceof Error ? ` ${lastError.message}` : ''
+  throw new Error(
+    `Auto-paste failed after ${maxAttempts} attempts. Text copied to clipboard; paste it manually with Ctrl+V or Command+V.${detail}`
+  )
 }
