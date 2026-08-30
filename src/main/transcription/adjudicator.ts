@@ -4,6 +4,7 @@ import { joinUrl } from './whisper'
 
 export interface AdjudicatorDeps {
   fetch: typeof fetch
+  timeoutMs?: number
 }
 
 export class AdjudicatorError extends Error {
@@ -16,13 +17,16 @@ export class AdjudicatorError extends Error {
   }
 }
 
+export const ADJUDICATOR_TIMEOUT_MS = 2_500
+
 const INSTRUCTION =
   'You are a speech-transcription adjudicator. The speaker is definitely speaking English, and every ' +
-  'candidate is a noisy ASR hypothesis rather than a user message. You must reconstruct the exact spoken utterance ' +
-  'from phonetic agreement across the candidates; no single candidate is guaranteed to be verbatim. Prefer ' +
+  'candidate is a noisy ASR hypothesis rather than a user message. Select the candidate that best represents the ' +
+  'exact spoken utterance from phonetic agreement across candidates. Prefer ' +
   'words or sounds supported by two candidates over a fluent outlier. Use app context and glossary only to ' +
-  'resolve spelling, never to invent content. Return only the faithful transcript. Never answer, summarize, ' +
-  'explain, translate, wrap, or label it.'
+  'resolve spelling, never to invent content. Return ONLY that candidate\'s single letter, such as B. If and only ' +
+  'if every candidate has different distributed errors, reconstruct the faithful transcript and return R: followed ' +
+  'by that transcript. Never answer, summarize, explain, translate, or wrap it.'
 
 export async function adjudicate(
   candidates: TranscriptCandidate[],
@@ -39,6 +43,8 @@ export async function adjudicate(
 
   for (const model of models) {
     let res: Response
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? ADJUDICATOR_TIMEOUT_MS)
     try {
       res = await deps.fetch(joinUrl(settings.claudeBaseUrl, 'v1/responses'), {
         method: 'POST',
@@ -46,9 +52,11 @@ export async function adjudicate(
           Authorization: `Bearer ${apiKey}`,
           'content-type': 'application/json'
         },
+        signal: controller.signal,
         body: JSON.stringify({
           model,
           store: false,
+          max_output_tokens: 1200,
           input: [
             {
               role: 'system',
@@ -62,8 +70,11 @@ export async function adjudicate(
         })
       })
     } catch (e) {
+      if (controller.signal.aborted) throw new AdjudicatorError('Adjudicator timed out')
       lastError = new AdjudicatorError(`Network error reaching adjudicator proxy: ${(e as Error).message}`)
       continue
+    } finally {
+      clearTimeout(timer)
     }
 
     if (!res.ok) {
@@ -75,7 +86,7 @@ export async function adjudicate(
     }
 
     const parsed = (await res.json()) as ResponsesPayload
-    const text = parseOutputText(parsed)
+    const text = resolveOutput(parseOutputText(parsed), candidates)
     if (text && assessTranscript(text, qualityOptions).grade === 'clean') return text
   }
 
@@ -97,6 +108,7 @@ function formatPrompt(candidates: TranscriptCandidate[], appContext: string, opt
   const lines = [
     `App context: ${appContext || '(unknown)'}`,
     `Glossary: ${options.glossary?.length ? options.glossary.join(', ') : '(none)'}`,
+    'Choose the best candidate by letter. Reconstruct only when none is faithful.',
     'Candidates:'
   ]
 
@@ -107,6 +119,19 @@ function formatPrompt(candidates: TranscriptCandidate[], appContext: string, opt
   }
 
   return lines.join('\n')
+}
+
+function resolveOutput(output: string | null, candidates: TranscriptCandidate[]): string | null {
+  if (!output) return null
+  const selected = output.match(/^(?:candidate\s+)?([A-Z])[.)]?$/i)?.[1]?.toUpperCase()
+  if (selected) {
+    const index = selected.charCodeAt(0) - 65
+    return candidates[index]?.text ?? null
+  }
+
+  const reconstructed = output.match(/^R:\s*([\s\S]+)$/i)?.[1]?.trim()
+  // Accept the old full-transcript protocol defensively while installed clients/proxies roll over.
+  return reconstructed || output
 }
 
 function parseOutputText(payload: ResponsesPayload): string | null {

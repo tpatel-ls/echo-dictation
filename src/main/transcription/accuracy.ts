@@ -16,6 +16,8 @@ export interface SecondaryRecognizer {
 export interface RecognitionAudio {
   path: string
   buffer: ArrayBuffer
+  /** Recording length lets balanced mode overlap independent long-form decodes. */
+  durationMs?: number
 }
 
 export interface AccuracyRequest {
@@ -55,6 +57,8 @@ export interface RecognitionDeps {
   primary: PrimaryRecognizer
   adjudicator?: AdjudicatorRecognizer
   secondary?: SecondaryRecognizer
+  /** Publishes the first decode so formatting can overlap the remaining accuracy checks. */
+  onPrimary?: (candidate: TranscriptCandidate) => void
   nativeTimeoutMs?: number
   now?: () => number
 }
@@ -72,6 +76,7 @@ export function isLowConfidenceRecognitionError(e: unknown): boolean {
 
 const NATIVE_TIMEOUT_MS = 1500
 const BALANCED_FAST_PATH_WORDS = 12
+const PARALLEL_ENSEMBLE_MIN_AUDIO_MS = 5_000
 
 export async function recognizeAccurately(
   wav: RecognitionAudio,
@@ -85,7 +90,7 @@ export async function recognizeAccurately(
 
   if (mode === 'maximum') {
     const settled = await Promise.allSettled([
-      decodeRemote(wav, request, primary, 'remote-primary', 0, deps.now),
+      decodePrimary(wav, request, primary, deps),
       decodeRemote(wav, request, primary, 'remote-recovery', 0.3, deps.now),
       decodeRemote(wav, request, primary, 'remote-recovery', 0.3, deps.now),
       decodeRemote(wav, request, primary, 'remote-recovery', 0.3, deps.now),
@@ -96,7 +101,19 @@ export async function recognizeAccurately(
     return finalize(candidates, request, deps, errors)
   }
 
-  const primaryCandidate = await decodeRemote(wav, request, primary, 'remote-primary', 0, deps.now)
+  // Long recordings are certain to need the balanced accuracy ensemble. Starting all three
+  // independent decodes at release removes an entire serial GB10 round trip.
+  if ((wav.durationMs ?? 0) >= PARALLEL_ENSEMBLE_MIN_AUDIO_MS) {
+    const settled = await Promise.allSettled([
+      decodePrimary(wav, request, primary, deps),
+      decodeRemote(wav, request, primary, 'remote-recovery', 0.3, deps.now),
+      decodeRemote(wav, request, primary, 'remote-recovery', 0.8, deps.now)
+    ])
+    collectSettled(settled, candidates, errors)
+    return finalize(candidates, request, deps, errors)
+  }
+
+  const primaryCandidate = await decodePrimary(wav, request, primary, deps)
   candidates.push(primaryCandidate)
   const primaryGrade = assessTranscript(primaryCandidate.text, qualityOptions(request)).grade
   if (
@@ -312,6 +329,21 @@ function chooseExactConsensus(
     strongest.filter((candidate) => punctuationScore(candidate.text) === bestPunctuation),
     options
   )
+}
+
+async function decodePrimary(
+  wav: RecognitionAudio,
+  request: AccuracyRequest,
+  primary: PrimaryRecognizer,
+  deps: Partial<RecognitionDeps>
+): Promise<TranscriptCandidate> {
+  const candidate = await decodeRemote(wav, request, primary, 'remote-primary', 0, deps.now)
+  try {
+    deps.onPrimary?.(candidate)
+  } catch {
+    // Preview work is opportunistic and must never break recognition.
+  }
+  return candidate
 }
 
 function transcriptWordCount(text: string): number {
