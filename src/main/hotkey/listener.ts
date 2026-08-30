@@ -176,7 +176,9 @@ const defaultHotkeyDeps: HotkeyListenerDeps = {
   helperPath: () => nativeHelperPath('EchoKeyHelper'),
   spawn: (path) => spawn(path, [], {
     stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true
+    // Let the windowless WinExe create the hidden message window used by Windows Raw Input.
+    // CREATE_NO_WINDOW is unnecessary here and destabilizes keyboard capture on this device.
+    windowsHide: false
   }) as HotkeyHelperProcess
 }
 
