@@ -18,7 +18,7 @@ body {
   font-family: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
 }
 
-/* ── Echo Flow Bar — bottom-center glass dictation surface ─────────────────── */
+/* Compact bottom-center dictation bar. */
 
 .ov-root {
   width: 100vw;
@@ -26,16 +26,16 @@ body {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding-bottom: 10px;
+  padding-bottom: 6px;
   overflow: hidden;
 }
 
 .ov-pill-wrap {
   opacity: 0;
-  transform: translateY(10px) scale(0.96);
+  transform: translateY(6px) scale(0.98);
   transition:
-    opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+    opacity 0.14s ease-out,
+    transform 0.16s ease-out;
 }
 .ov-pill-wrap.is-visible {
   opacity: 1;
@@ -46,40 +46,25 @@ body {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 54px;
-  min-width: 336px;
-  padding: 0 18px;
-  border-radius: 27px;
-  background:
-    linear-gradient(180deg, rgba(35, 38, 48, 0.84), rgba(12, 14, 20, 0.9)),
-    radial-gradient(circle at 50% 0%, rgba(167, 139, 250, 0.18), transparent 55%);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow:
-    0 24px 60px -20px rgba(0, 0, 0, 0.72),
-    0 8px 22px -16px rgba(124, 58, 237, 0.72),
-    inset 0 1.3px 0 rgba(255, 255, 255, 0.24),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(24px);
-}
-
-.ov-capsule::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-  mask: linear-gradient(#000, transparent 34%);
+  justify-content: center;
+  gap: 8px;
+  height: 38px;
+  min-width: 128px;
+  max-width: 300px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: rgba(18, 20, 25, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
 }
 
 .ov-live-dot {
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
   border-radius: 999px;
   flex: none;
-  background: #ff3b30;
-  box-shadow: 0 0 0 5px rgba(255, 59, 48, 0.14), 0 0 16px rgba(255, 59, 48, 0.65);
+  background: #ff6848;
+  box-shadow: 0 0 0 3px rgba(255, 104, 72, 0.12);
   animation: ovPulse 1.5s ease-in-out infinite;
 }
 
@@ -87,18 +72,18 @@ body {
 .ov-time {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  color: rgba(247, 248, 255, 0.86);
-  font-size: 12px;
-  font-weight: 650;
+  gap: 5px;
+  color: rgba(244, 245, 248, 0.84);
+  font-size: 11.5px;
+  font-weight: 560;
   letter-spacing: 0;
   white-space: nowrap;
 }
 
 .ov-time {
-  min-width: 34px;
+  min-width: 28px;
   justify-content: flex-end;
-  color: rgba(247, 248, 255, 0.6);
+  color: rgba(244, 245, 248, 0.46);
   font-variant-numeric: tabular-nums;
 }
 
@@ -107,35 +92,35 @@ body {
 }
 
 .ov-check {
-  width: 21px;
-  height: 21px;
-  border-radius: 50%;
+  width: 17px;
+  height: 17px;
+  border-radius: 5px;
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.22);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28);
+  color: #72df9a;
+  background: rgba(92, 214, 139, 0.16);
+  box-shadow: 0 0 0 1px rgba(92, 214, 139, 0.22);
   animation: ovCheck 0.26s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .ov-text {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.94);
-  max-width: 260px;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.88);
+  max-width: 248px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .ov-msg-muted {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.72);
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.58);
 }
 .ov-msg-warn {
-  font-size: 13px;
+  font-size: 11.5px;
   color: #ffd166;
-  max-width: 280px;
+  max-width: 264px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

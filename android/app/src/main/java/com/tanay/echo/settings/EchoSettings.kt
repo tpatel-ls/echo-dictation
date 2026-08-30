@@ -51,15 +51,15 @@ class EchoSettings(context: Context) {
         set(v) = prefs.edit().putString("claudeApiKey", v.trim()).apply()
 
     var claudeModel: String
-        get() = prefs.getString("claudeModel", "claude-sonnet-4-6") ?: "claude-sonnet-4-6"
-        set(v) = prefs.edit().putString("claudeModel", v.trim().ifEmpty { "claude-sonnet-4-6" }).apply()
+        get() = prefs.getString("claudeModel", "claude-sonnet-5") ?: "claude-sonnet-5"
+        set(v) = prefs.edit().putString("claudeModel", v.trim().ifEmpty { "claude-sonnet-5" }).apply()
 
     var accuracyModel: String
         get() = prefs.getString("accuracyModel", "gpt-5.4-mini") ?: "gpt-5.4-mini"
         set(v) = prefs.edit().putString("accuracyModel", v.trim().ifEmpty { "gpt-5.4-mini" }).apply()
 
     var accuracyMode: AccuracyMode
-        get() = AccuracyMode.from(prefs.getString("accuracyMode", AccuracyMode.MAXIMUM.name).orEmpty())
+        get() = AccuracyMode.from(prefs.getString("accuracyMode", AccuracyMode.BALANCED.name).orEmpty())
         set(v) = prefs.edit().putString("accuracyMode", v.name).apply()
 
     /** Context-aware AI formatting: adapt tone to the focused app (casual in chat, polished in email/

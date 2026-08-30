@@ -160,6 +160,11 @@ describe('cleanup', () => {
       const system = JSON.parse(init.body).system as string
       expect(system).toMatch(/paragraph/i)
       expect(system).toMatch(/spoken (formatting )?instruction/i)
+      expect(system).toMatch(/full stop/i)
+      expect(system).toMatch(/question mark/i)
+      expect(system).toMatch(/standard American English/i)
+      expect(system).toMatch(/topic shift/i)
+      expect(system).toMatch(/actually.*final correction/i)
       expect(system).toMatch(/email/i)
       expect(system).toMatch(/do not summarize|never summarize/i)
       expect(system).toMatch(/never use em dashes/i)
@@ -187,6 +192,22 @@ describe('cleanup', () => {
     await expect(cleanup('x', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch })).rejects.toBeInstanceOf(
       CleanupError
     )
+  })
+
+  it('bounds a stalled cleanup request', async () => {
+    const fetchMock = vi.fn(
+      async (_url: unknown, init: RequestInit | undefined) =>
+        await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+        })
+    )
+
+    await expect(
+      cleanup('keep this text', s, 'KEY', {
+        fetch: fetchMock as unknown as typeof fetch,
+        timeoutMs: 5
+      })
+    ).rejects.toThrow(/timed out/i)
   })
 
   it('appends the style directive to the system prompt when provided', async () => {

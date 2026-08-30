@@ -32,6 +32,52 @@ class VoiceCommandsTest {
     }
 
     @Test
+    fun `spoken punctuation names become English punctuation`() {
+        assertEquals(
+            "Meet at seven, not eight. Are you free? Yes!",
+            applyVoiceCommands(
+                "Meet at seven comma not eight full stop Are you free question mark Yes exclamation point",
+            ),
+        )
+        assertEquals(
+            "First: ready; second: waiting.",
+            applyVoiceCommands("First colon ready semicolon second colon waiting period"),
+        )
+    }
+
+    @Test
+    fun `quotes parentheses ellipses and hyphens are supported`() {
+        assertEquals(
+            "He said \"this works\". Use (beta) - ready\u2026",
+            applyVoiceCommands(
+                "He said open quote this works close quote full stop Use open parenthesis beta close parenthesis hyphen ready ellipsis",
+            ),
+        )
+        assertEquals("\"Ready\".", applyVoiceCommands("open quote Ready close quote full stop"))
+    }
+
+    @Test
+    fun `does not duplicate punctuation already emitted around a command`() {
+        assertEquals(
+            "Ready.\n\nNext step.",
+            applyVoiceCommands("Ready. Full stop. New paragraph. Next step."),
+        )
+        assertEquals("Hello, world.", applyVoiceCommands("Hello, comma, world."))
+    }
+
+    @Test
+    fun `common paragraph variants are supported`() {
+        assertEquals(
+            "First thought\n\nSecond thought",
+            applyVoiceCommands("First thought blank line second thought"),
+        )
+        assertEquals(
+            "First thought\n\nSecond thought",
+            applyVoiceCommands("First thought start a new paragraph second thought"),
+        )
+    }
+
+    @Test
     fun `whisper punctuation around the command is absorbed`() {
         assertEquals(
             "Sounds good.\n\nLet me know if that works.",
@@ -57,6 +103,14 @@ class VoiceCommandsTest {
             "The new line of products ships in May.",
             applyVoiceCommands("The new line of products ships in May."),
         )
+        assertEquals(
+            "Use a comma between the clauses.",
+            applyVoiceCommands("Use a comma between the clauses."),
+        )
+        assertEquals("The period ended yesterday.", applyVoiceCommands("The period ended yesterday."))
+        assertEquals("The trial period ends tomorrow.", applyVoiceCommands("The trial period ends tomorrow."))
+        assertEquals("Use comma-separated values.", applyVoiceCommands("Use comma-separated values."))
+        assertEquals("Press the hyphen key.", applyVoiceCommands("Press the hyphen key."))
     }
 
     @Test

@@ -9,6 +9,7 @@ export function wordCount(text: string): number {
 const FILLERS = /\b(?:um+|uh+|erm+|hmm+)\b/i
 const STUTTER = /\b(\w+)\s+\1\b/i
 const META_DIRECTIONS = /\b(?:email|write that|say that|scratch that|bullet)\b/i
+const BACKTRACKING = /\b(?:no[, ]+wait|i mean|rather|actually)\b/i
 const MAX_INSTANT_WORDS = 12
 
 /**
@@ -21,7 +22,7 @@ export function needsAiCleanup(text: string): boolean {
   if (!t) return true
   if (wordCount(t) > MAX_INSTANT_WORDS) return true
   if (t.includes('\n')) return true
-  if (FILLERS.test(t) || STUTTER.test(t) || META_DIRECTIONS.test(t)) return true
+  if (FILLERS.test(t) || STUTTER.test(t) || META_DIRECTIONS.test(t) || BACKTRACKING.test(t)) return true
   if (!/^["'(]?[A-Z0-9]/.test(t)) return true
   if (!/[.!?…]["')]?$/.test(t)) return true
   return false

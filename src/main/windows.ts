@@ -12,10 +12,10 @@ function loadRenderer(win: BrowserWindow, name: RendererName): void {
   else void win.loadFile(join(__dirname, `../renderer/${name}/index.html`))
 }
 
-export const OVERLAY_WIDTH = 420
-export const OVERLAY_HEIGHT = 150
+export const OVERLAY_WIDTH = 330
+export const OVERLAY_HEIGHT = 72
 
-/** The center-bottom pill. Transparent, click-through, and — critically — never focusable. */
+/** The compact center-bottom bar. Transparent, click-through, and never focusable. */
 export function createOverlay(offsetBottom: number): BrowserWindow {
   const win = new BrowserWindow({
     width: OVERLAY_WIDTH,

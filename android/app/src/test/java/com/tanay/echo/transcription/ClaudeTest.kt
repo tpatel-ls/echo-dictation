@@ -116,6 +116,9 @@ class ClaudeTest {
         assertTrue(needsAiCleanup("The the report is ready.")) // stutter
         assertTrue(needsAiCleanup("First line.\nSecond line."))
         assertTrue(needsAiCleanup("Write an email to Bryan."))
+        assertTrue(needsAiCleanup("Send it Tuesday, no wait, Wednesday."))
+        assertTrue(needsAiCleanup("Use Tuesday, I mean Wednesday."))
+        assertTrue(needsAiCleanup("Actually, change it to Wednesday."))
         assertTrue(needsAiCleanup(""))
         assertTrue(needsAiCleanup("This is a much longer dictation that keeps going and definitely deserves a proper cleanup pass."))
     }
@@ -126,6 +129,11 @@ class ClaudeTest {
     fun `base system prompt has no vocabulary or style line`() {
         val s = buildCleanupSystem(emptyList(), null)
         assertTrue(s.contains("clean up raw speech-to-text", ignoreCase = true))
+        assertTrue(s.contains("standard American English", ignoreCase = true))
+        assertTrue(s.contains("full stop", ignoreCase = true))
+        assertTrue(s.contains("question mark", ignoreCase = true))
+        assertTrue(s.contains("topic shift", ignoreCase = true))
+        assertTrue(s.contains("final correction", ignoreCase = true))
         assertFalse(s.contains("custom vocabulary", ignoreCase = true))
     }
 

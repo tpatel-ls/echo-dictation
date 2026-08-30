@@ -261,10 +261,21 @@ describe('recognizeAccurately', () => {
     expect(outcome.winner).toMatchObject({ source: 'remote-primary', text: 'Deploy Þór now.' })
   })
 
-  it('rejects low confidence when every candidate is non-clean', async () => {
+  it('keeps the best suspicious English candidate when rescue cannot improve it', async () => {
     const primary = vi
       .fn<RecognitionDeps['primary']>()
       .mockResolvedValueOnce('How do I force figure out?')
+      .mockResolvedValueOnce("You're welcome.")
+
+    await expect(recognizeAccurately(wav, request(), deps({ primary }))).resolves.toMatchObject({
+      winner: { source: 'remote-primary', text: 'How do I force figure out?' }
+    })
+  })
+
+  it('still rejects deterministic decoder garbage when no usable candidate exists', async () => {
+    const primary = vi
+      .fn<RecognitionDeps['primary']>()
+      .mockResolvedValueOnce('hello hello hello hello')
       .mockResolvedValueOnce("You're welcome.")
 
     await expect(recognizeAccurately(wav, request(), deps({ primary }))).rejects.toThrow(

@@ -3,6 +3,15 @@ import { DEFAULT_SETTINGS } from '@shared/types'
 import { normalizeSettings } from '../src/main/store/settings-migration'
 
 describe('normalizeSettings', () => {
+  it('defaults to the fast, polished English experience', () => {
+    expect(DEFAULT_SETTINGS).toMatchObject({
+      cleanupMode: 'auto',
+      accuracyMode: 'balanced',
+      claudeModel: 'claude-sonnet-5',
+      micMode: 'warm'
+    })
+  })
+
   it('keeps supported values and ignores unknown persisted keys', () => {
     const result = normalizeSettings({
       ...DEFAULT_SETTINGS,

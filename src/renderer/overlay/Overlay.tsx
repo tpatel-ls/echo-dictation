@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DictationPhase, DictationStateEvent } from '@shared/types'
 import { encodeWav } from '@shared/wav'
-import { Check, Loader2, Mic2 } from 'lucide-react'
+import { Check, Loader2 } from 'lucide-react'
 import { MicCapture } from './capture'
 import { Waveform } from './Waveform'
 
@@ -116,20 +116,16 @@ export function Overlay(): JSX.Element {
           {phase === 'listening' && (
             <>
               <span className="ov-live-dot" />
-              <Waveform levelRef={levelRef} mode="live" width={204} height={34} />
-              <span className="ov-status">
-                <Mic2 size={14} />
-                Listening
-              </span>
+              <Waveform levelRef={levelRef} mode="live" width={88} height={18} />
+              <span className="ov-status">Listening</span>
               <span className="ov-time">{elapsed}</span>
             </>
           )}
 
           {phase === 'transcribing' && (
             <>
-              <Waveform levelRef={levelRef} mode="calm" width={204} height={34} />
               <span className="ov-status">
-                <Loader2 size={14} className="ov-spin" />
+                <Loader2 size={12} className="ov-spin" />
                 Transcribing
               </span>
             </>
