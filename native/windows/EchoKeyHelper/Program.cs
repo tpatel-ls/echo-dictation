@@ -1,20 +1,18 @@
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 
 internal static class Program
 {
-    private const int WhKeyboardLl = 13;
-    private const int WmKeyDown = 0x0100;
-    private const int WmKeyUp = 0x0101;
-    private const int WmSysKeyDown = 0x0104;
-    private const int WmSysKeyUp = 0x0105;
-    private const uint LlkhfInjected = 0x10;
+    private const int WmInput = 0x00FF;
+    private const uint RidInput = 0x10000003;
+    private const uint RimTypeKeyboard = 1;
+    private const uint RidevInputSink = 0x00000100;
+    private const ushort RiKeyBreak = 0x0001;
+    private const ushort RiKeyE0 = 0x0002;
     private static readonly object OutputLock = new();
-    private static readonly LowLevelKeyboardProc HookProc = OnKeyboard;
-    private static IntPtr hook;
 
+    [STAThread]
     public static int Main(string[] args)
     {
         if (args.Contains("--check") || args.Contains("--prompt"))
@@ -23,54 +21,32 @@ internal static class Program
             return 0;
         }
 
-        using var process = Process.GetCurrentProcess();
-        using var module = process.MainModule;
-        hook = SetWindowsHookEx(WhKeyboardLl, HookProc, GetModuleHandle(module?.ModuleName), 0);
-        if (hook == IntPtr.Zero)
+        using var form = new MessageLoopForm(OnKeyboard);
+        if (!form.RegisterKeyboard())
         {
             Write(new { type = "error", message = new Win32Exception().Message });
             return 2;
         }
 
         Write(new { type = "ready" });
-        try
-        {
-            while (GetMessage(out var message, IntPtr.Zero, 0, 0) > 0)
-            {
-                TranslateMessage(ref message);
-                DispatchMessage(ref message);
-            }
-        }
-        finally
-        {
-            UnhookWindowsHookEx(hook);
-        }
+        Application.Run(form);
         return 0;
     }
 
-    private static IntPtr OnKeyboard(int code, IntPtr wParam, IntPtr lParam)
+    private static void OnKeyboard(RawKeyboard data)
     {
-        if (code >= 0)
-        {
-            var data = Marshal.PtrToStructure<KbdLlHookStruct>(lParam);
-            if ((data.flags & LlkhfInjected) == 0 && TryKey(data.vkCode, out var key))
-            {
-                var message = wParam.ToInt32();
-                if (message is WmKeyDown or WmSysKeyDown)
-                    Write(new { type = "key", key, down = true });
-                else if (message is WmKeyUp or WmSysKeyUp)
-                    Write(new { type = "key", key, down = false });
-            }
-        }
-        return CallNextHookEx(hook, code, wParam, lParam);
+        if (!TryKey(data, out var key)) return;
+        Write(new { type = "key", key, down = (data.Flags & RiKeyBreak) == 0 });
     }
 
-    private static bool TryKey(uint vkCode, out string key)
+    private static bool TryKey(RawKeyboard data, out string key)
     {
-        key = vkCode switch
+        key = data.VKey switch
         {
             0xA3 => "rightControl",
             0xA2 => "leftControl",
+            // Raw Input commonly reports generic VK_CONTROL and uses E0 for the right key.
+            0x11 => (data.Flags & RiKeyE0) != 0 ? "rightControl" : "leftControl",
             0x14 => "capsLock",
             0x77 => "f8",
             _ => ""
@@ -83,48 +59,116 @@ internal static class Program
         lock (OutputLock) Console.WriteLine(JsonSerializer.Serialize(value));
     }
 
-    private delegate IntPtr LowLevelKeyboardProc(int code, IntPtr wParam, IntPtr lParam);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct KbdLlHookStruct
+    private sealed class MessageLoopForm : Form
     {
-        public uint vkCode;
-        public uint scanCode;
-        public uint flags;
-        public uint time;
-        public UIntPtr dwExtraInfo;
+        private readonly Action<RawKeyboard> onKeyboard;
+
+        public MessageLoopForm(Action<RawKeyboard> onKeyboard)
+        {
+            this.onKeyboard = onKeyboard;
+            ShowInTaskbar = false;
+            FormBorderStyle = FormBorderStyle.None;
+            WindowState = FormWindowState.Minimized;
+            Opacity = 0;
+        }
+
+        public bool RegisterKeyboard()
+        {
+            var devices = new[]
+            {
+                new RawInputDevice
+                {
+                    UsagePage = 0x01,
+                    Usage = 0x06,
+                    Flags = RidevInputSink,
+                    Target = Handle
+                }
+            };
+            return RegisterRawInputDevices(
+                devices,
+                (uint)devices.Length,
+                (uint)Marshal.SizeOf<RawInputDevice>()
+            );
+        }
+
+        protected override void WndProc(ref Message message)
+        {
+            if (message.Msg == WmInput) ReadKeyboard(message.LParam);
+            base.WndProc(ref message);
+        }
+
+        private void ReadKeyboard(IntPtr rawInputHandle)
+        {
+            var headerSize = (uint)Marshal.SizeOf<RawInputHeader>();
+            uint size = 0;
+            if (GetRawInputData(rawInputHandle, RidInput, IntPtr.Zero, ref size, headerSize) == uint.MaxValue)
+                return;
+            if (size < headerSize + Marshal.SizeOf<RawKeyboard>()) return;
+
+            var buffer = Marshal.AllocHGlobal((int)size);
+            try
+            {
+                if (GetRawInputData(rawInputHandle, RidInput, buffer, ref size, headerSize) == uint.MaxValue)
+                    return;
+                var input = Marshal.PtrToStructure<RawInput>(buffer);
+                if (input.Header.Type == RimTypeKeyboard) onKeyboard(input.Keyboard);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct Msg
+    private struct RawInputDevice
     {
-        public IntPtr hwnd;
-        public uint message;
-        public UIntPtr wParam;
-        public IntPtr lParam;
-        public uint time;
-        public int ptX;
-        public int ptY;
+        public ushort UsagePage;
+        public ushort Usage;
+        public uint Flags;
+        public IntPtr Target;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RawInputHeader
+    {
+        public uint Type;
+        public uint Size;
+        public IntPtr Device;
+        public UIntPtr WParam;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RawKeyboard
+    {
+        public ushort MakeCode;
+        public ushort Flags;
+        public ushort Reserved;
+        public ushort VKey;
+        public uint Message;
+        public uint ExtraInformation;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RawInput
+    {
+        public RawInputHeader Header;
+        public RawKeyboard Keyboard;
     }
 
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc callback, IntPtr module, uint threadId);
+    private static extern bool RegisterRawInputDevices(
+        [In] RawInputDevice[] devices,
+        uint numDevices,
+        uint size
+    );
 
-    [DllImport("user32.dll")]
-    private static extern bool UnhookWindowsHookEx(IntPtr hookHandle);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr CallNextHookEx(IntPtr hookHandle, int code, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    private static extern int GetMessage(out Msg message, IntPtr window, uint min, uint max);
-
-    [DllImport("user32.dll")]
-    private static extern bool TranslateMessage(ref Msg message);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr DispatchMessage(ref Msg message);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern IntPtr GetModuleHandle(string? moduleName);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetRawInputData(
+        IntPtr rawInput,
+        uint command,
+        IntPtr data,
+        ref uint size,
+        uint headerSize
+    );
 }
