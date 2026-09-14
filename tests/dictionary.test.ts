@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applyDictionary, buildBiasPrompt, extractCorrections } from '@shared/dictionary'
+import { applyDictionary, buildBiasPrompt, buildWhisperPrompt, extractCorrections } from '@shared/dictionary'
 import type { DictionaryEntry } from '@shared/types'
 
 let nextId = 1
@@ -116,6 +116,18 @@ describe('buildBiasPrompt', () => {
 
   it('returns empty string for an empty dictionary', () => {
     expect(buildBiasPrompt([])).toBe('')
+  })
+})
+
+describe('buildWhisperPrompt', () => {
+  it('wraps the terms in a punctuated sentence so Whisper keeps punctuating', () => {
+    expect(buildWhisperPrompt([entry('Bryan'), entry('Claude Code', ['clock code'])])).toBe(
+      'Names and terms used here include Bryan, Claude Code.'
+    )
+  })
+
+  it('sends no prompt for an empty dictionary', () => {
+    expect(buildWhisperPrompt([])).toBe('')
   })
 })
 

@@ -85,6 +85,16 @@ export function buildBiasPrompt(entries: DictionaryEntry[], maxChars = 600): str
   return out
 }
 
+/**
+ * The Whisper prompt itself. Whisper continues the style of its prompt: a bare comma list made it drop
+ * sentence punctuation and ignore the spellings, while the same words inside a punctuated sentence
+ * kept both (measured on the GB10 route).
+ */
+export function buildWhisperPrompt(entries: DictionaryEntry[]): string {
+  const terms = buildBiasPrompt(entries)
+  return terms ? `Names and terms used here include ${terms}.` : ''
+}
+
 // ── Learning: diff an edited transcript against the original ─────────────────
 
 interface Token {
