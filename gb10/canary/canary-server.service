@@ -1,0 +1,19 @@
+[Unit]
+Description=Canary-Qwen 2.5B speech recognizer for Echo (NeMo SALM, CUDA) — loopback only, behind the auth shim
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/asr/canary
+Environment=CANARY_MODEL=nvidia/canary-qwen-2.5b
+Environment=HF_HUB_OFFLINE=1
+# Triton JIT-compiles a small CUDA helper against Python headers. Without sudo, run
+# `uv python install 3.12` and set C_INCLUDE_PATH to its include/python3.12 in a drop-in:
+# ~/.config/systemd/user/canary-server.service.d/python-headers.conf
+ExecStart=%h/asr/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 8003 --log-level warning
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

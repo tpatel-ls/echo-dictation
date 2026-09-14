@@ -3,6 +3,7 @@ OpenAI-compatible auth shim in front of the GB10 speech recognizers.
 
   Internet -> Tailscale Funnel (HTTPS) -> THIS shim (127.0.0.1:8080, Bearer auth)
      model=parakeet*  -> Parakeet TDT server   (127.0.0.1:8002, see parakeet/server.py)
+     model=canary*    -> Canary-Qwen server    (127.0.0.1:8003, see canary/server.py)
      anything else    -> whisper.cpp whisper-server (127.0.0.1:8000)
 
 Exposes POST /v1/audio/transcriptions (OpenAI multipart: `file` + `model`).
@@ -25,6 +26,9 @@ from starlette.requests import Request
 KEY_PATH = os.environ.get("WHISPER_KEY_FILE", os.path.expanduser("~/whisper/KEY.txt"))
 BACKEND = os.environ.get("WHISPER_BACKEND", "http://127.0.0.1:8000")
 PARAKEET_BACKEND = os.environ.get("PARAKEET_BACKEND", "http://127.0.0.1:8002")
+CANARY_BACKEND = os.environ.get("CANARY_BACKEND", "http://127.0.0.1:8003")
+# OpenAI-contract recognizers, chosen by model-name prefix. Everything else is whisper.cpp.
+NEMO_ROUTES = {"parakeet": PARAKEET_BACKEND, "canary": CANARY_BACKEND}
 FFMPEG = os.environ.get("FFMPEG_BIN", "ffmpeg")
 
 with open(KEY_PATH) as fh:
@@ -58,7 +62,7 @@ def health():
         "ok": True,
         "backend": BACKEND,
         "model": "whisper-1->large-v3-turbo",
-        "parakeet_backend": PARAKEET_BACKEND,
+        "routes": NEMO_ROUTES,
     }
 
 
@@ -112,9 +116,10 @@ async def transcriptions(
         )
 
     files = {"file": ("audio.wav", wav, "audio/wav")}
-    if model.lower().startswith("parakeet"):
+    nemo_backend = next((url for prefix, url in NEMO_ROUTES.items() if model.lower().startswith(prefix)), None)
+    if nemo_backend:
         resp = await client.post(
-            f"{PARAKEET_BACKEND}/v1/audio/transcriptions",
+            f"{nemo_backend}/v1/audio/transcriptions",
             files=files,
             data={"model": model, "response_format": "json"},
         )

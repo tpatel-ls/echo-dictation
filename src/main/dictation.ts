@@ -22,11 +22,13 @@ import type { HistoryStore } from './store/history'
 import type { DictionaryStore } from './store/dictionary'
 import type { SnippetsStore } from './store/snippets'
 import { retainAudioCopy } from './store/history-file'
+import { appendRotatingLog } from './diagnostic-log'
 import { WhisperPrewarm } from './transcription/prewarm'
 import { repairTranscriptConsistency } from '@shared/transcript-repair'
 import { polishTranscriptStructure } from '@shared/transcript-polish'
+import { supportsLivePreview } from '@shared/live-preview'
+import { normalizeSpokenForms } from '@shared/spoken-forms'
 import {
-  isDeterministicModel,
   isLowConfidenceRecognitionError,
   recognizeAccurately,
   type SecondaryRecognizer
@@ -131,7 +133,7 @@ export class DictationController {
    */
   async handlePreview(buf: ArrayBuffer): Promise<string | null> {
     const s = this.settings.getSettings()
-    if (!this.listening || !s.livePreview || !isDeterministicModel(s.whisperModel)) return null
+    if (!this.listening || !s.livePreview || !supportsLivePreview(s.previewModel)) return null
     const epoch = this.listenEpoch
     let dict: DictionaryEntry[] = []
     try {
@@ -140,7 +142,8 @@ export class DictationController {
       /* previews work fine without the dictionary */
     }
     try {
-      const text = await transcribe(buf, s, this.settings.getSecrets().whisperApiKey, undefined, {
+      const route = { whisperBaseUrl: s.whisperBaseUrl, whisperModel: s.previewModel }
+      const text = await transcribe(buf, route, this.settings.getSecrets().whisperApiKey, undefined, {
         retries: 0,
         timeoutMs: PREVIEW_TIMEOUT_MS
       })
@@ -223,6 +226,7 @@ export class DictationController {
         onPrimary
       })
       const heard = outcome.winner.text
+      const recognizedAt = Date.now()
 
       // Command Mode: a selection captured at hotkey-down means this utterance is a spoken
       // instruction on that selection, not text to insert. Nothing selected ⇒ normal dictation.
@@ -234,7 +238,7 @@ export class DictationController {
       // Dictionary guarantees custom spellings; spoken formatting commands ("new paragraph",
       // "leave space", "new line") become real breaks instantly, before any AI pass.
       const raw = polishTranscriptStructure(
-        applyVoiceCommands(repairTranscriptConsistency(this.correct(heard, dict)))
+        normalizeSpokenForms(applyVoiceCommands(repairTranscriptConsistency(this.correct(heard, dict))))
       )
       if (!raw) {
         this.history.insert(
@@ -247,6 +251,7 @@ export class DictationController {
 
       let text = raw
       let cleaned: string | null = null
+      let cleanupNote = 'skipped'
       // A voice snippet (the whole utterance matches a cue) pastes its saved block as-is, no cleanup.
       const expansion = expandSnippet(raw, snippets)
       if (expansion !== null) {
@@ -257,6 +262,7 @@ export class DictationController {
         needsAiCleanup(raw)
       ) {
         // (short dictations Whisper already punctuated cleanly skip the AI pass — instant insert)
+        const cleanupStarted = Date.now()
         try {
           // Context-aware tone: adapt the cleanup register to the focused app (best-effort, from
           // the window title). Neutral titles yield a null directive ⇒ the base cleanup prompt.
@@ -272,12 +278,24 @@ export class DictationController {
                   styleDirective(registerForTitle(appContext))
                 )
           if (cleaned) text = cleaned
-        } catch {
-          /* proxy down — fall back to raw text, no failure */
+          cleanupNote = `${Date.now() - cleanupStarted}ms`
+        } catch (e) {
+          // Proxy down — fall back to raw text, no failure.
+          cleanupNote = `failed-after-${Date.now() - cleanupStarted}ms(${(e as Error).message})`
         }
       }
 
+      const pasteStarted = Date.now()
       await pasteText(text, realPasteDeps(this.pendingFocus?.focus))
+      logDictationTiming({
+        audio: `${meta.durationMs}ms`,
+        recognize: `${recognizedAt - t0}ms`,
+        winner: outcome.winner.source,
+        candidates: outcome.candidates.length,
+        cleanup: cleanupNote,
+        paste: `${Date.now() - pasteStarted}ms`,
+        total: `${Date.now() - t0}ms`
+      })
 
       const audioPath = s.retainAudio && tempAudioPath ? retainAudioCopy(tempAudioPath) : null
       const transcript = this.history.insert(
@@ -347,7 +365,9 @@ export class DictationController {
       { secondary: this.secondaryRecognizer }
     )
 
-    const raw = polishTranscriptStructure(applyVoiceCommands(this.correct(outcome.winner.text, dict)))
+    const raw = polishTranscriptStructure(
+      normalizeSpokenForms(applyVoiceCommands(this.correct(outcome.winner.text, dict)))
+    )
     if (!raw) throw new Error('No speech detected')
     let cleaned: string | null = null
     if (s.cleanupMode === 'auto' && needsAiCleanup(raw)) {
@@ -492,6 +512,14 @@ function row(p: RowParams): NewTranscript {
   }
 }
 
+/** Per-stage timings, never transcript text, so a slow paste can be traced to its stage. */
+function logDictationTiming(fields: Record<string, string | number>): void {
+  const line = Object.entries(fields)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' ')
+  appendRotatingLog(join(app.getPath('userData'), 'dictation.log'), `${new Date().toISOString()} ${line}\n`)
+}
+
 /** Write exactly one temporary WAV for recognizers that need a filesystem path. */
 function writeTemporaryAudio(buf: ArrayBuffer): string {
   const dir = join(app.getPath('temp'), 'echo-dictation')
@@ -524,7 +552,7 @@ function prepareTranscriptText(text: string, dict: DictionaryEntry[]): string {
       corrected = text
     }
   }
-  return polishTranscriptStructure(applyVoiceCommands(repairTranscriptConsistency(corrected)))
+  return polishTranscriptStructure(normalizeSpokenForms(applyVoiceCommands(repairTranscriptConsistency(corrected))))
 }
 
 function friendlyError(e: unknown, service = 'Whisper'): string {

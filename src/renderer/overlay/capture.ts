@@ -29,11 +29,17 @@ export class MicCapture {
   private preferredDeviceId = ''
   private deviceChangedWhileRecording = false
   private levelCb: (level: number) => void = () => {}
+  private frameCb: (frame: Float32Array, sampleRate: number) => void = () => {}
 
   sampleRate = 48000
 
   onLevel(cb: (level: number) => void): void {
     this.levelCb = cb
+  }
+
+  /** Every captured frame as it arrives — feeds the incremental live-preview buffer. */
+  onFrame(cb: (frame: Float32Array, sampleRate: number) => void): void {
+    this.frameCb = cb
   }
 
   setPreferredDevice(deviceId: string): void {
@@ -77,6 +83,7 @@ export class MicCapture {
     this.node.port.onmessage = (e: MessageEvent<Float32Array>): void => {
       const frame = e.data
       this.frames.push(frame)
+      this.frameCb(frame, this.sampleRate)
       let sum = 0
       for (let i = 0; i < frame.length; i++) sum += frame[i] * frame[i]
       this.levelCb(Math.sqrt(sum / frame.length))
@@ -88,11 +95,6 @@ export class MicCapture {
     this.source.connect(this.node)
     this.node.connect(this.sink)
     this.sink.connect(ctx.destination)
-  }
-
-  /** The frames captured so far, without stopping — feeds the live transcript preview. */
-  snapshot(): { frames: Float32Array[]; sampleRate: number } {
-    return { frames: this.frames.slice(), sampleRate: this.sampleRate }
   }
 
   async stop(): Promise<{ frames: Float32Array[]; sampleRate: number }> {

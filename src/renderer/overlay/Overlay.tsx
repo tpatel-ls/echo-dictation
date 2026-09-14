@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { DictationPhase, DictationStateEvent, Settings } from '@shared/types'
 import { encodeWav } from '@shared/wav'
 import {
-  isDeterministicModel,
   PREVIEW_INTERVAL_MS,
-  previewFrames,
-  previewTail
+  PreviewAudio,
+  previewTail,
+  supportsLivePreview
 } from '@shared/live-preview'
 import { Check } from 'lucide-react'
 import { MicCapture } from './capture'
@@ -20,16 +20,20 @@ export function Overlay(): JSX.Element {
   const previewEnabled = useRef(false)
   /** Bumped on every phase change so a preview loop from an earlier dictation stops itself. */
   const previewRun = useRef(0)
+  const previewAudio = useRef(new PreviewAudio())
 
   useEffect(() => {
     const cap = new MicCapture()
     cap.onLevel((l) => {
       levelRef.current = l
     })
+    cap.onFrame((frame, sampleRate) => {
+      if (previewEnabled.current) previewAudio.current.push(frame, sampleRate)
+    })
     capture.current = cap
     window.api.overlayReady()
     const applyPreview = (s: Settings): void => {
-      previewEnabled.current = s.livePreview && isDeterministicModel(s.whisperModel)
+      previewEnabled.current = s.livePreview && supportsLivePreview(s.previewModel)
     }
     window.api.settings
       .get()
@@ -58,12 +62,10 @@ export function Overlay(): JSX.Element {
     if (!previewEnabled.current) return
     while (previewRun.current === run) {
       await new Promise((resolve) => setTimeout(resolve, PREVIEW_INTERVAL_MS))
-      const cap = capture.current
-      if (!cap || previewRun.current !== run) return
-      const { frames, sampleRate } = cap.snapshot()
-      const recent = previewFrames(frames, sampleRate)
-      if (!recent) continue
-      const text = await window.api.previewAudio(encodeWav(recent, sampleRate)).catch(() => null)
+      if (previewRun.current !== run) return
+      const wav = previewAudio.current.wav()
+      if (!wav) continue
+      const text = await window.api.previewAudio(wav).catch(() => null)
       if (previewRun.current !== run) return
       if (text) setPreviewText(previewTail(text))
     }
@@ -76,6 +78,7 @@ export function Overlay(): JSX.Element {
       case 'listening':
         setMessage('')
         setPhase('listening')
+        previewAudio.current.reset()
         try {
           await capture.current?.start()
           void runPreview(run)

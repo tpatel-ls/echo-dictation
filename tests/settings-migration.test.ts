@@ -18,6 +18,11 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ livePreview: 'no' }).livePreview).toBe(true)
   })
 
+  it('decodes the live preview with Parakeet unless another preview model is saved', () => {
+    expect(normalizeSettings({}).previewModel).toBe('parakeet-tdt-0.6b-v2')
+    expect(normalizeSettings({ previewModel: 'parakeet-tdt-0.6b-v3' }).previewModel).toBe('parakeet-tdt-0.6b-v3')
+  })
+
   it('keeps supported values and ignores unknown persisted keys', () => {
     const result = normalizeSettings({
       ...DEFAULT_SETTINGS,
