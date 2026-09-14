@@ -4,8 +4,10 @@ import {
   chooseTranscript,
   type TranscriptCandidate
 } from '@shared/transcript-quality'
+import { applyDictionary } from '@shared/dictionary'
 import { isDeterministicModel } from '@shared/live-preview'
 import { normalizeSpokenForms } from '@shared/spoken-forms'
+import type { DictionaryEntry } from '@shared/types'
 import { adjudicate } from './adjudicator'
 import { transcribe } from './whisper'
 
@@ -34,6 +36,8 @@ export interface AccuracyRequest {
   appContext: string
   glossary: string[]
   prompt?: string
+  /** Personal dictionary, applied to every candidate so models vote on the corrected words. */
+  dictionary?: DictionaryEntry[]
 }
 
 export interface RecognitionOutcome {
@@ -176,8 +180,10 @@ async function decodeRemote(
 ): Promise<TranscriptCandidate> {
   const started = timestamp(now)
   const text = await primary(wav, request, { temperature, prompt: request.prompt, ...(model ? { model } : {}) })
-  // Models disagree on "seven P R s" vs "7 PRs"; compare and pick on written forms.
-  return { source, text: normalizeSpokenForms(text), elapsedMs: timestamp(now) - started, ...(model ? { model } : {}) }
+  // Models disagree on "seven P R s" vs "7 PRs", and only Whisper sees the dictionary prompt; compare
+  // and pick on written forms with known mishearings ("clock code" → "Claude Code") already fixed.
+  const corrected = applyDictionary(normalizeSpokenForms(text), request.dictionary ?? []).text
+  return { source, text: corrected, elapsedMs: timestamp(now) - started, ...(model ? { model } : {}) }
 }
 
 async function finalizeCrossCheck(
@@ -186,6 +192,13 @@ async function finalizeCrossCheck(
   deps: Partial<RecognitionDeps>,
   errors: unknown[]
 ): Promise<RecognitionOutcome> {
+  // A near-silent tap makes Whisper invent "Thank you." while the other models return nothing. When
+  // most models heard no words, there were none.
+  const silent = candidates.filter((candidate) => !normalizeForSupport(candidate.text)).length
+  if (candidates.length >= 2 && silent * 2 > candidates.length) {
+    return { winner: { source: 'remote-primary', text: '', elapsedMs: 0 }, candidates }
+  }
+
   const options = qualityOptions(request)
   const grades = candidates.map((candidate) => assessTranscript(candidate.text, options).grade)
   const clean = candidates.filter((_, index) => grades[index] === 'clean')

@@ -8,7 +8,9 @@ import {
   restoreBreaks,
   CleanupError,
   AUTO_CLEANUP_TIMEOUT_MS,
-  FALLBACK_CLEANUP_TIMEOUT_MS
+  FALLBACK_CLEANUP_TIMEOUT_MS,
+  MAX_AUTO_CLEANUP_TIMEOUT_MS,
+  cleanupTimeoutFor
 } from '../src/main/transcription/claude'
 
 describe('protectBreaks / restoreBreaks', () => {
@@ -262,6 +264,12 @@ describe('cleanup', () => {
 
   it('keeps automatic cleanup under a 3.5 second default ceiling', async () => {
     expect(AUTO_CLEANUP_TIMEOUT_MS).toBe(3500)
+  })
+
+  it('gives longer dictations a longer first cleanup budget, capped', () => {
+    expect(cleanupTimeoutFor('short note')).toBe(AUTO_CLEANUP_TIMEOUT_MS)
+    expect(cleanupTimeoutFor(Array(95).fill('word').join(' '))).toBe(4850)
+    expect(cleanupTimeoutFor(Array(1000).fill('word').join(' '))).toBe(MAX_AUTO_CLEANUP_TIMEOUT_MS)
   })
 
   it('appends the style directive to the system prompt when provided', async () => {

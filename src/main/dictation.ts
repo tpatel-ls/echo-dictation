@@ -220,7 +220,8 @@ export class DictationController {
         claudeApiKey: sec.claudeApiKey,
         appContext,
         glossary,
-        prompt: buildBiasPrompt(dict)
+        prompt: buildBiasPrompt(dict),
+        dictionary: dict
       }, {
         secondary: this.secondaryRecognizer,
         onPrimary
@@ -363,7 +364,8 @@ export class DictationController {
         claudeApiKey: sec.claudeApiKey,
         appContext: existing.app_context,
         glossary,
-        prompt: buildBiasPrompt(dict)
+        prompt: buildBiasPrompt(dict),
+        dictionary: dict
       },
       { secondary: this.secondaryRecognizer }
     )
