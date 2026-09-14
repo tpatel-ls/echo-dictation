@@ -9,6 +9,13 @@ export interface ClaudeDeps {
 
 export const AUTO_CLEANUP_TIMEOUT_MS = 3500
 export const FALLBACK_CLEANUP_TIMEOUT_MS = 10_000
+export const MAX_AUTO_CLEANUP_TIMEOUT_MS = 6_000
+
+/** A longer dictation takes the model longer to rewrite; scale the first attempt's budget with length. */
+export function cleanupTimeoutFor(text: string): number {
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0
+  return Math.min(MAX_AUTO_CLEANUP_TIMEOUT_MS, Math.max(AUTO_CLEANUP_TIMEOUT_MS, 2_000 + words * 30))
+}
 
 type CleanupSettings = Pick<Settings, 'claudeBaseUrl' | 'claudeModel' | 'accuracyModel'> &
   Partial<Pick<Settings, 'fallbackModel'>>
@@ -299,7 +306,10 @@ async function postCleanup(
         protectedText,
         { claudeBaseUrl: settings.claudeBaseUrl, accuracyModel: model },
         apiKey,
-        { ...deps, timeoutMs: deps.timeoutMs ?? (index === 0 ? AUTO_CLEANUP_TIMEOUT_MS : FALLBACK_CLEANUP_TIMEOUT_MS) }
+        {
+          ...deps,
+          timeoutMs: deps.timeoutMs ?? (index === 0 ? cleanupTimeoutFor(protectedText) : FALLBACK_CLEANUP_TIMEOUT_MS)
+        }
       )
     } catch (e) {
       lastError = e

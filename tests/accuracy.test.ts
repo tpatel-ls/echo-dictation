@@ -198,6 +198,39 @@ describe('recognizeAccurately', () => {
       expect(outcome.winner).toMatchObject({ source: 'adjudicated', text: 'Mic testing.' })
     })
 
+    it('applies the personal dictionary to every model before voting', async () => {
+      const primary = byModel({
+        'whisper-1': 'I did 18 PRs with Claude Code.',
+        'parakeet-tdt-0.6b-v2': 'I did 18 PRs with clock code.',
+        'canary-qwen-2.5b': 'i did 18 prs with clock code'
+      })
+      const dictionary = [
+        { id: 1, word: 'Claude Code', misheard: ['clock code'], source: 'manual' as const, created_at: 0, times_applied: 0 }
+      ]
+
+      const outcome = await recognizeAccurately(
+        { ...wav, durationMs: 2_000 },
+        request({ settings: crossCheck, dictionary }),
+        deps({ primary })
+      )
+
+      expect(outcome.winner.text).toBe('I did 18 PRs with Claude Code.')
+    })
+
+    it('treats a tap that most models heard as silence as no speech', async () => {
+      const primary = byModel({ 'whisper-1': 'Thank you.', 'parakeet-tdt-0.6b-v2': '', 'canary-qwen-2.5b': '' })
+      const adjudicator = vi.fn(async () => 'Thank you.')
+
+      const outcome = await recognizeAccurately(
+        { ...wav, durationMs: 400 },
+        request({ settings: crossCheck }),
+        deps({ primary, adjudicator })
+      )
+
+      expect(outcome.winner.text).toBe('')
+      expect(adjudicator).not.toHaveBeenCalled()
+    })
+
     it('treats contractions as the same words when voting', async () => {
       const primary = byModel({
         'whisper-1': 'Mic testing, how is it going?',
