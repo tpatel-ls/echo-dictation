@@ -177,7 +177,7 @@ async function decodeRemote(
   const started = timestamp(now)
   const text = await primary(wav, request, { temperature, prompt: request.prompt, ...(model ? { model } : {}) })
   // Models disagree on "seven P R s" vs "7 PRs"; compare and pick on written forms.
-  return { source, text: normalizeSpokenForms(text), elapsedMs: timestamp(now) - started }
+  return { source, text: normalizeSpokenForms(text), elapsedMs: timestamp(now) - started, ...(model ? { model } : {}) }
 }
 
 async function finalizeCrossCheck(

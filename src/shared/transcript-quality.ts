@@ -11,6 +11,8 @@ export interface TranscriptCandidate {
   source: CandidateSource
   text: string
   elapsedMs: number
+  /** The cross-check model that produced it; absent for the main model. */
+  model?: string
 }
 
 export interface QualityOptions {

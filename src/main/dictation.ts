@@ -291,7 +291,10 @@ export class DictationController {
         audio: `${meta.durationMs}ms`,
         recognize: `${recognizedAt - t0}ms`,
         winner: outcome.winner.source,
-        candidates: outcome.candidates.length,
+        decodes: outcome.candidates
+          .filter((candidate) => candidate.source !== 'adjudicated')
+          .map((candidate) => `${candidate.model ?? s.whisperModel}:${candidate.elapsedMs}ms`)
+          .join(','),
         cleanup: cleanupNote,
         paste: `${Date.now() - pasteStarted}ms`,
         total: `${Date.now() - t0}ms`
