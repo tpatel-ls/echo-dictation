@@ -1,29 +1,31 @@
 import { useEffect, useRef, type MutableRefObject } from 'react'
 
-const N = 23
-const BAR_W = 3
-const GAP = 2.5
-
 /**
- * Symmetric, center-weighted audio equalizer on a canvas, driven by the live mic
- * level (never React state). `live` bars rise with your voice + a per-bar phase
- * shimmer for organic life; `calm` draws a low traveling wave for the processing
- * state. Rendered at devicePixelRatio for crisp edges.
+ * Monochrome voice bars on a canvas, driven by the live mic level (never React state). `live` bars
+ * rise with your voice, center-weighted with a per-bar shimmer so silence still breathes; `calm`
+ * draws a low traveling wave while the final text is decoded. Rendered at devicePixelRatio.
  */
 export function Waveform({
   levelRef,
   mode,
-  width = 180,
-  height = 30
+  width = 72,
+  height = 16,
+  bars = 11,
+  barWidth = 3,
+  gap = 3
 }: {
   levelRef: MutableRefObject<number>
   mode: 'live' | 'calm'
   width?: number
   height?: number
+  bars?: number
+  barWidth?: number
+  gap?: number
 }): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const raf = useRef(0)
   const smooth = useRef(0)
+  const heights = useRef<number[]>([])
   const t = useRef(0)
   const modeRef = useRef(mode)
   modeRef.current = mode
@@ -38,57 +40,42 @@ export function Waveform({
     if (!ctx) return
     ctx.scale(dpr, dpr)
 
-    const scale = Math.min(1, width / (N * BAR_W + (N - 1) * GAP))
-    const barWidth = Math.max(1.25, BAR_W * scale)
-    const gap = Math.max(0.75, GAP * scale)
-    const totalW = N * barWidth + (N - 1) * gap
+    const totalW = bars * barWidth + (bars - 1) * gap
     const startX = (width - totalW) / 2
-    const mid = (N - 1) / 2
+    const mid = (bars - 1) / 2
+    heights.current = Array.from({ length: bars }, () => 0.15)
 
     const draw = (): void => {
       t.current += 0.05
       const live = modeRef.current === 'live'
-      const target = live ? Math.min(1, levelRef.current * 6) : 0
-      smooth.current += (target - smooth.current) * 0.3
+      const target = live ? Math.min(1, levelRef.current * 7) : 0
+      smooth.current += (target - smooth.current) * 0.28
 
       ctx.clearRect(0, 0, width, height)
-      const voiceActive = live && smooth.current > 0.055
-      const grad = ctx.createLinearGradient(0, 0, 0, height)
-      if (voiceActive) {
-        grad.addColorStop(0, 'rgba(115,190,255,1)')
-        grad.addColorStop(1, 'rgba(55,137,255,0.88)')
-      } else if (live) {
-        grad.addColorStop(0, 'rgba(255,255,255,0.92)')
-        grad.addColorStop(1, 'rgba(255,255,255,0.62)')
-      } else {
-        grad.addColorStop(0, 'rgba(255,255,255,0.56)')
-        grad.addColorStop(1, 'rgba(255,255,255,0.34)')
-      }
-      ctx.fillStyle = grad
-      ctx.shadowColor = voiceActive ? 'rgba(74,156,255,0.48)' : 'rgba(255,255,255,0.22)'
-      ctx.shadowBlur = live ? 4 : 0
+      ctx.fillStyle = live ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.5)'
 
-      for (let i = 0; i < N; i++) {
-        const cw = 1 - Math.abs(i - mid) / mid
-        let amp: number
+      for (let i = 0; i < bars; i++) {
+        const centered = 1 - Math.abs(i - mid) / (mid + 1)
+        let goal: number
         if (live) {
-          const shimmer = (Math.sin(t.current * 6 + i * 0.7) * 0.5 + 0.5) * 0.35 + 0.65
-          const base = 0.12 + smooth.current * 0.95
-          amp = base * Math.pow(0.32 + cw * 0.68, 1.3) * shimmer
+          const shimmer = Math.sin(t.current * 5.2 + i * 1.3) * 0.5 + 0.5
+          goal = 0.14 + smooth.current * (0.45 + centered * 0.55) * (0.62 + shimmer * 0.38)
         } else {
-          amp = 0.14 + (Math.sin(t.current * 2.4 - i * 0.45) * 0.5 + 0.5) * 0.22
+          goal = 0.16 + (Math.sin(t.current * 2.6 - i * 0.55) * 0.5 + 0.5) * 0.3
         }
-        const bh = Math.max(2.5, Math.min(1, amp) * height)
+        const current = heights.current[i] ?? goal
+        const next = current + (goal - current) * (goal > current ? 0.5 : 0.18)
+        heights.current[i] = next
+        const bh = Math.max(barWidth, Math.min(1, next) * height)
         const x = startX + i * (barWidth + gap)
-        const y = (height - bh) / 2
-        roundRect(ctx, x, y, barWidth, bh, barWidth / 2)
+        roundRect(ctx, x, (height - bh) / 2, barWidth, bh, barWidth / 2)
         ctx.fill()
       }
       raf.current = requestAnimationFrame(draw)
     }
     raf.current = requestAnimationFrame(draw)
     return () => cancelAnimationFrame(raf.current)
-  }, [levelRef, width, height])
+  }, [levelRef, width, height, bars, barWidth, gap])
 
   return <canvas ref={canvasRef} style={{ width, height, display: 'block' }} />
 }

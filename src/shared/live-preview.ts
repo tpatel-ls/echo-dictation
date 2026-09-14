@@ -14,8 +14,6 @@ export interface PreviewWindow {
 export const PREVIEW_WINDOW: PreviewWindow = { minMs: 600, maxMs: 20_000 }
 /** Pause between one preview response and the next request. */
 export const PREVIEW_INTERVAL_MS = 350
-/** About two lines of the transcript bubble above the recording pill. */
-export const PREVIEW_MAX_CHARS = 110
 
 /** Greedy recognizers served on the GB10 (NVIDIA Parakeet, Canary-Qwen) return the same text for every
  *  re-decode of the same audio, so temperature samples add nothing. */
@@ -98,15 +96,4 @@ export class PreviewAudio {
     this.phase = position - frame.length
     return Float32Array.from(out)
   }
-}
-
-/** The newest words of a preview, trimmed on a word boundary so the bubble never shows half a word. */
-export function previewTail(text: string, maxChars: number = PREVIEW_MAX_CHARS): string {
-  const t = text.trim().replace(/\s+/g, ' ')
-  if (t.length <= maxChars) return t
-  const start = t.length - maxChars
-  const cut = t.slice(start)
-  if (t[start - 1] === ' ') return `…${cut}`
-  const space = cut.indexOf(' ')
-  return `…${space >= 0 ? cut.slice(space + 1) : cut}`
 }

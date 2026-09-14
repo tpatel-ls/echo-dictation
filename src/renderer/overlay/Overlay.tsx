@@ -1,15 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { DictationPhase, DictationStateEvent, Settings } from '@shared/types'
 import { encodeWav } from '@shared/wav'
-import {
-  PREVIEW_INTERVAL_MS,
-  PreviewAudio,
-  previewTail,
-  supportsLivePreview
-} from '@shared/live-preview'
+import { PREVIEW_INTERVAL_MS, PreviewAudio, supportsLivePreview } from '@shared/live-preview'
 import { Check } from 'lucide-react'
 import { MicCapture } from './capture'
 import { Waveform } from './Waveform'
+
+/** Enough words to fill the two visible lines; older words scroll out above. */
+const CARD_MAX_WORDS = 48
 
 export function Overlay(): JSX.Element {
   const [phase, setPhase] = useState<DictationPhase>('idle')
@@ -67,7 +65,7 @@ export function Overlay(): JSX.Element {
       if (!wav) continue
       const text = await window.api.previewAudio(wav).catch(() => null)
       if (previewRun.current !== run) return
-      if (text) setPreviewText(previewTail(text))
+      if (text) setPreviewText(text)
     }
   }
 
@@ -131,45 +129,56 @@ export function Overlay(): JSX.Element {
     }
   }
 
-  const showPreview = Boolean(previewText) && (phase === 'listening' || phase === 'transcribing')
+  const showCard = Boolean(previewText) && (phase === 'listening' || phase === 'transcribing')
 
   return (
     <div className="ov-root">
-      <div className="ov-pill-wrap">
-        {showPreview && (
-          <div className={`ov-transcript${phase === 'transcribing' ? ' ov-transcript-final' : ''}`}>
-            {previewText}
-          </div>
-        )}
-        <div className={`ov-capsule ov-${phase}`}>
-          {phase === 'idle' && (
-            <span className="ov-idle-bars" aria-label="Echo is ready">
-              <i />
-              <i />
-              <i />
+      <div className="ov-stack">
+        {showCard && <TranscriptCard text={previewText} finalizing={phase === 'transcribing'} />}
+        <div className={`ov-pill ov-${phase}`} role="status" aria-live="polite">
+          {phase === 'listening' && <Waveform levelRef={levelRef} mode="live" width={78} height={18} />}
+          {phase === 'transcribing' && (
+            <>
+              <Waveform levelRef={levelRef} mode="calm" width={78} height={18} />
+              <span className="ov-sheen" aria-hidden="true" />
+            </>
+          )}
+          {phase === 'inserted' && (
+            <span className="ov-check" aria-label="Inserted">
+              <Check size={12} strokeWidth={3.25} />
             </span>
           )}
-
-          {phase === 'listening' && (
-            <>
-              <span className="ov-live-dot" aria-hidden="true" />
-              <Waveform levelRef={levelRef} mode="live" width={74} height={14} />
-            </>
-          )}
-
-          {phase === 'transcribing' && <Waveform levelRef={levelRef} mode="calm" width={54} height={12} />}
-
-          {phase === 'inserted' && (
-            <>
-              <span className="ov-check">
-                <Check size={13} strokeWidth={3} />
-              </span>
-            </>
-          )}
-
-          {phase === 'empty' && <span className="ov-msg-muted">{message}</span>}
-          {phase === 'error' && <span className="ov-msg-warn">{message}</span>}
+          {phase === 'empty' && <span className="ov-msg ov-msg-muted">{message}</span>}
+          {phase === 'error' && <span className="ov-msg ov-msg-warn">{message}</span>}
         </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The words heard so far, bottom-anchored to two lines. Each word is keyed by its position in the
+ * whole utterance, so only newly heard words mount and fade in; revisions update in place.
+ */
+function TranscriptCard({ text, finalizing }: { text: string; finalizing: boolean }): JSX.Element {
+  const words = text.split(/\s+/).filter(Boolean)
+  const start = Math.max(0, words.length - CARD_MAX_WORDS)
+  const body = useRef<HTMLDivElement>(null)
+  const [overflowing, setOverflowing] = useState(false)
+
+  useLayoutEffect(() => {
+    const el = body.current
+    if (el) setOverflowing(el.scrollHeight > el.clientHeight + 1)
+  }, [text])
+
+  return (
+    <div className={`ov-card${finalizing ? ' ov-card-finalizing' : ''}`}>
+      <div ref={body} className={`ov-card-text${overflowing ? ' ov-card-overflow' : ''}`}>
+        {words.slice(start).map((word, index) => (
+          <span key={start + index} className="ov-word">
+            {word}
+          </span>
+        ))}
       </div>
     </div>
   )

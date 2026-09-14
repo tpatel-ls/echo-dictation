@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PreviewAudio, previewTail } from '@shared/live-preview'
+import { PreviewAudio } from '@shared/live-preview'
 
 function feed(preview: PreviewAudio, seconds: number, rate = 48_000, value = 0.25): void {
   const frame = new Float32Array(128).fill(value)
@@ -39,19 +39,5 @@ describe('PreviewAudio', () => {
     expect(Math.abs(dataBytes(preview.wav()) - 32_000)).toBeLessThanOrEqual(200)
     preview.reset()
     expect(preview.wav()).toBeNull()
-  })
-})
-
-describe('previewTail', () => {
-  it('collapses whitespace and keeps short text intact', () => {
-    expect(previewTail('  hello\n  world ', 40)).toBe('hello world')
-  })
-
-  it('shows the newest words and trims on a word boundary', () => {
-    expect(previewTail('we should ship the parakeet model today', 20)).toBe('…parakeet model today')
-  })
-
-  it('returns an empty string for silence', () => {
-    expect(previewTail('   ', 20)).toBe('')
   })
 })
