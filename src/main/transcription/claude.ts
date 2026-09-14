@@ -8,6 +8,10 @@ export interface ClaudeDeps {
 }
 
 export const AUTO_CLEANUP_TIMEOUT_MS = 3500
+export const FALLBACK_CLEANUP_TIMEOUT_MS = 10_000
+
+type CleanupSettings = Pick<Settings, 'claudeBaseUrl' | 'claudeModel' | 'accuracyModel'> &
+  Partial<Pick<Settings, 'fallbackModel'>>
 const COMMAND_TIMEOUT_MS = 12_000
 
 export class CleanupError extends Error {
@@ -247,7 +251,7 @@ async function postResponses(
  */
 export async function cleanup(
   text: string,
-  settings: Pick<Settings, 'claudeBaseUrl' | 'claudeModel' | 'accuracyModel'>,
+  settings: CleanupSettings,
   apiKey: string,
   deps: ClaudeDeps = { fetch },
   glossary: string[] = [],
@@ -267,20 +271,27 @@ export async function cleanup(
 }
 
 /**
- * Try the fast cleanup model, then the Claude model once if the proxy cannot serve the first (for
- * example "unknown provider" 502s). Auth failures and timeouts are not retried: the key is shared,
- * and a timeout has already spent the cleanup budget.
+ * Try the cleanup model, then the Claude model, then the GPT fallback model whenever the proxy
+ * cannot serve the previous one (unknown provider, overload, network). Auth failures and timeouts
+ * are not retried: the key is shared, and a timeout has already spent the cleanup budget. Fallback
+ * attempts get a longer budget because the newest GPT models are slower than Claude.
  */
 async function postCleanup(
   system: string,
   protectedText: string,
-  settings: Pick<Settings, 'claudeBaseUrl' | 'claudeModel' | 'accuracyModel'>,
+  settings: CleanupSettings,
   apiKey: string,
   deps: ClaudeDeps
 ): Promise<string> {
-  const models = [...new Set([settings.accuracyModel, settings.claudeModel].map((model) => model.trim()).filter(Boolean))]
+  const models = [
+    ...new Set(
+      [settings.accuracyModel, settings.claudeModel, settings.fallbackModel ?? '']
+        .map((model) => model.trim())
+        .filter(Boolean)
+    )
+  ]
   let lastError: unknown = new CleanupError('No cleanup model configured')
-  for (const model of models) {
+  for (const [index, model] of models.entries()) {
     try {
       return await postResponses(
         system,
@@ -288,7 +299,7 @@ async function postCleanup(
         protectedText,
         { claudeBaseUrl: settings.claudeBaseUrl, accuracyModel: model },
         apiKey,
-        deps
+        { ...deps, timeoutMs: deps.timeoutMs ?? (index === 0 ? AUTO_CLEANUP_TIMEOUT_MS : FALLBACK_CLEANUP_TIMEOUT_MS) }
       )
     } catch (e) {
       lastError = e

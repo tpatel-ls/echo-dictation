@@ -56,6 +56,8 @@ export interface Settings {
   claudeBaseUrl: string
   claudeModel: string
   accuracyModel: string
+  /** Last-resort cleanup model (e.g. the newest GPT) when the proxy cannot serve the others. */
+  fallbackModel: string
   /** Command Mode: when text is selected, treat a dictation as a spoken instruction on it (needs Claude). */
   commandModeEnabled: boolean
   launchAtLogin: boolean
@@ -86,6 +88,7 @@ export const DEFAULT_SETTINGS: Settings = {
   claudeBaseUrl: '',
   claudeModel: 'claude-sonnet-5',
   accuracyModel: 'gpt-5.4-mini',
+  fallbackModel: '',
   commandModeEnabled: false,
   launchAtLogin: true,
   micMode: 'warm',
