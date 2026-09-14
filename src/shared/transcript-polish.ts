@@ -34,7 +34,7 @@ const CONTRAST_TRANSITION = /^(?:so\b|however\b|but\b|therefore\b|instead\b|fina
  * boundaries can change.
  */
 export function polishTranscriptStructure(text: string): string {
-  const repaired = repairKnownPossessives(text)
+  const repaired = repairMicHomophone(repairKnownPossessives(text))
   if (countWords(repaired) < AUTO_PARAGRAPH_MIN_WORDS || repaired.includes('\n')) return repaired
 
   const sentences = splitSentences(repaired)
@@ -83,6 +83,23 @@ function repairKnownPossessives(text: string): string {
     repaired = repaired.replace(pattern, canonical)
   }
   return repaired
+}
+
+// "mic" and "Mike" sound identical, so every recognizer picks the name. Only microphone context
+// decides: a mic word right after it ("Mike testing") or a possessive/device word right before it
+// with a mic-state word after ("my Mike is muted"). Names ("Tell Mike to check it") never match.
+const MIC_PHRASE =
+  /\bmike\s+(test(?:ing|s)?|check(?:s|ing)?|drop|stand|volume|gain|input|levels?|settings|quality|placement|arm|cable)\b/giu
+const MIC_OBJECT =
+  /(?<=\b(?:my|your|the|our|their|his|her|this|that|external|usb|lapel|headset|studio|condenser|wireless|built-in|desk|podcast)\s+)mike(?=\s+(?:is|was|on|off|muted|working|broken|not|quality|volume|level|settings|input|gain|please)\b|[.,!?]|$)/giu
+
+function repairMicHomophone(text: string): string {
+  return text
+    .replace(MIC_PHRASE, (_match, next: string, offset: number, source: string) => {
+      const sentenceStart = /(?:^|[.!?]\s+|\n\s*)$/u.test(source.slice(0, offset))
+      return `${sentenceStart ? 'Mic' : 'mic'} ${next.toLowerCase()}`
+    })
+    .replace(MIC_OBJECT, 'mic')
 }
 
 function applyCase(match: string, canonical: string): string {
