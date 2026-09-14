@@ -31,14 +31,23 @@ const INSTRUCTION =
 export async function adjudicate(
   candidates: TranscriptCandidate[],
   appContext: string,
-  settings: Pick<Settings, 'claudeBaseUrl' | 'claudeModel' | 'accuracyModel'>,
+  settings: Pick<Settings, 'claudeBaseUrl' | 'claudeModel' | 'accuracyModel'> &
+    Partial<Pick<Settings, 'adjudicatorModel'>>,
   apiKey: string,
   deps: AdjudicatorDeps = { fetch },
   glossary: string[] = []
 ): Promise<string | null> {
   if (!candidates.length) return null
   const qualityOptions: QualityOptions = { language: 'en', glossary }
-  const models = [...new Set([settings.accuracyModel, settings.claudeModel].map((model) => model.trim()).filter(Boolean))]
+  // Picking a candidate letter is easy, and the adjudicator sits on the paste path under a 2.5 s
+  // budget, so a dedicated fast model goes first when configured.
+  const models = [
+    ...new Set(
+      [settings.adjudicatorModel ?? '', settings.accuracyModel, settings.claudeModel]
+        .map((model) => model.trim())
+        .filter(Boolean)
+    )
+  ]
   let lastError: AdjudicatorError | null = null
 
   for (const model of models) {

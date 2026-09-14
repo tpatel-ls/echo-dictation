@@ -190,6 +190,16 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
             >
               <TextInput width="w-52" value={s.fallbackModel} onChange={(v) => void patch({ fallbackModel: v })} />
             </Field>
+            <Field
+              label="Adjudicator model"
+              hint="Fast model that picks the right transcript when speech models disagree. Empty uses the cleanup model."
+            >
+              <TextInput
+                width="w-52"
+                value={s.adjudicatorModel}
+                onChange={(v) => void patch({ adjudicatorModel: v })}
+              />
+            </Field>
             <Field label="API key" hint={masked?.claudeApiKey ? `Current: ${masked.claudeApiKey}` : 'Not set'}>
               <TextInput type="password" value={claudeKey} placeholder="Enter to change" onChange={setClaudeKey} />
             </Field>
