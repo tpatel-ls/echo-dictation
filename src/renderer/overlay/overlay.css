@@ -15,10 +15,11 @@ body {
   -webkit-user-select: none;
   user-select: none;
   cursor: default;
-  font-family: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font-family: 'Inter', -apple-system, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Persistent, low-profile bottom dock. It expands only while Echo is active. */
+/* Bottom-center dock: a transcript card floats above a pill that morphs between states. */
 
 .ov-root {
   width: 100vw;
@@ -27,173 +28,163 @@ body {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding-bottom: 5px;
+  padding-bottom: 6px;
   overflow: hidden;
 }
 
-.ov-pill-wrap {
+.ov-stack {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  opacity: 1;
+  gap: 8px;
 }
 
-/* Live transcript bubble: the newest words, shown above the pill while speaking. */
-.ov-transcript {
-  box-sizing: border-box;
-  max-width: 440px;
-  padding: 6px 12px;
-  border-radius: 12px;
-  background: rgba(13, 15, 19, 0.94);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 6px 17px rgba(0, 0, 0, 0.38);
-  font-size: 12.5px;
-  line-height: 17px;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.92);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  animation: ovRise 0.18s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.ov-transcript.ov-transcript-final {
-  color: rgba(255, 255, 255, 0.62);
-}
+/* ── Pill ─────────────────────────────────────────────────────────────────── */
 
-@keyframes ovRise {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.ov-capsule {
+.ov-pill {
+  --ov-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
   box-sizing: border-box;
-  width: 54px;
-  height: 16px;
-  padding: 0;
-  border-radius: 999px;
-  background: rgba(13, 15, 19, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.17);
-  box-shadow: 0 6px 17px rgba(0, 0, 0, 0.38);
-  transition:
-    width 0.2s cubic-bezier(0.22, 1, 0.36, 1),
-    height 0.2s cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 0.18s ease,
-    box-shadow 0.18s ease;
-}
-
-.ov-idle-bars {
+  width: 40px;
   height: 9px;
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-.ov-idle-bars i {
-  display: block;
-  width: 2.5px;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.58);
-}
-.ov-idle-bars i:nth-child(2) {
-  height: 8px;
-  background: rgba(255, 255, 255, 0.82);
-}
-
-.ov-listening {
-  width: 104px;
-  height: 28px;
-  border-color: rgba(84, 164, 255, 0.28);
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(10, 10, 12, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   box-shadow:
-    0 7px 20px rgba(0, 0, 0, 0.38),
-    0 0 16px rgba(52, 137, 255, 0.09);
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 6px 18px rgba(0, 0, 0, 0.35);
+  transition:
+    width 0.32s var(--ov-spring),
+    height 0.32s var(--ov-spring),
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    opacity 0.2s ease;
 }
 
+.ov-idle {
+  opacity: 0.72;
+}
+
+.ov-listening,
 .ov-transcribing {
-  width: 72px;
-  height: 25px;
+  width: 112px;
+  height: 34px;
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 28px rgba(0, 0, 0, 0.45);
 }
 
 .ov-inserted {
-  width: 28px;
-  height: 24px;
-  border-color: rgba(92, 214, 139, 0.2);
+  width: 34px;
+  height: 34px;
 }
 
 .ov-empty,
 .ov-error {
   width: auto;
-  min-width: 92px;
-  max-width: 300px;
-  height: 29px;
-  padding: 0 11px;
+  min-width: 112px;
+  max-width: 320px;
+  height: 34px;
+  padding: 0 14px;
 }
 
-.ov-live-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  flex: none;
-  background: #56a8ff;
-  box-shadow: 0 0 0 3px rgba(86, 168, 255, 0.1);
-  animation: ovPulse 1.5s ease-in-out infinite;
+/* A light sweep across the pill while the final text is being decoded. */
+.ov-sheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.16) 50%, transparent 80%);
+  transform: translateX(-100%);
+  animation: ovSheen 1.15s ease-in-out infinite;
+  pointer-events: none;
 }
 
 .ov-check {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 999px;
-  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #72df9a;
-  background: rgba(92, 214, 139, 0.16);
-  box-shadow: 0 0 0 1px rgba(92, 214, 139, 0.22);
-  animation: ovCheck 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  color: #0a0a0c;
+  background: #ffffff;
+  animation: ovPop 0.34s var(--ov-spring);
 }
 
-.ov-msg-muted {
-  font-size: 11.5px;
-  color: rgba(255, 255, 255, 0.58);
-}
-.ov-msg-warn {
-  font-size: 11.5px;
-  color: #ffd166;
-  max-width: 264px;
+.ov-msg {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+}
+.ov-msg-muted {
+  color: rgba(255, 255, 255, 0.62);
+}
+.ov-msg-warn {
+  color: #ffcf6b;
 }
 
-@keyframes ovPulse {
-  0%,
-  100% {
-    transform: scale(0.92);
-    opacity: 0.82;
-  }
-  50% {
-    transform: scale(1);
-    opacity: 1;
+/* ── Live transcript card ─────────────────────────────────────────────────── */
+
+.ov-card {
+  box-sizing: border-box;
+  max-width: 440px;
+  padding: 9px 15px;
+  border-radius: 16px;
+  background: rgba(10, 10, 12, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 12px 32px rgba(0, 0, 0, 0.45);
+  animation: ovCardIn 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ov-card-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-end;
+  justify-content: center;
+  column-gap: 0.28em;
+  max-height: 40px;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 450;
+  color: rgba(255, 255, 255, 0.95);
+}
+.ov-card-overflow {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
+}
+
+.ov-word {
+  display: inline-block;
+  animation: ovWordIn 0.22s ease-out both;
+}
+
+.ov-card-finalizing .ov-card-text {
+  color: rgba(255, 255, 255, 0.6);
+  transition: color 0.2s ease;
+}
+
+/* ── Motion ───────────────────────────────────────────────────────────────── */
+
+@keyframes ovSheen {
+  to {
+    transform: translateX(100%);
   }
 }
 
-@keyframes ovCheck {
+@keyframes ovPop {
   from {
     opacity: 0;
-    transform: scale(0.6);
+    transform: scale(0.4);
   }
   to {
     opacity: 1;
@@ -201,12 +192,39 @@ body {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .ov-check {
-    animation: none;
+@keyframes ovCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
   }
-  .ov-live-dot,
-  .ov-capsule {
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes ovWordIn {
+  from {
+    opacity: 0;
+    filter: blur(3px);
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-pill,
+  .ov-card-finalizing .ov-card-text {
     transition-duration: 0.01ms;
+  }
+  .ov-sheen,
+  .ov-check,
+  .ov-card,
+  .ov-word {
+    animation: none;
   }
 }
