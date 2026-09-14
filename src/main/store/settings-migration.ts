@@ -9,7 +9,7 @@ import {
 import { normalizeEndpointUrl } from './endpoint-url'
 
 const TRIGGER_KEYS = new Set<TriggerKey>([
-  'RightControl', 'LeftControl', 'RightCommand', 'LeftCommand', 'EitherOption',
+  'EitherControl', 'RightControl', 'LeftControl', 'RightCommand', 'LeftCommand', 'EitherOption',
   'LeftOption', 'RightOption', 'CapsLock', 'F8'
 ])
 const CLEANUP_MODES = new Set<CleanupMode>(['off', 'auto', 'on-demand'])

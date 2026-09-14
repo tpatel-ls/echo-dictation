@@ -151,8 +151,9 @@ export class HotkeyListener {
   }
 }
 
-function matchesTrigger(triggerKey: TriggerKey, event: NativeKeyEvent): boolean {
+export function matchesTrigger(triggerKey: TriggerKey, event: Pick<NativeKeyEvent, 'key'>): boolean {
   if (triggerKey === 'EitherOption') return true
+  if (triggerKey === 'EitherControl') return event.key === 'leftControl' || event.key === 'rightControl'
   if (triggerKey === 'LeftOption') return event.key === 'leftOption'
   if (triggerKey === 'RightOption') return event.key === 'rightOption'
   if (triggerKey === 'LeftControl') return event.key === 'leftControl'

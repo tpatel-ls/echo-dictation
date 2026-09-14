@@ -3,6 +3,8 @@ import type { OSPlatform, TriggerKey } from './types'
 /** Human label for a trigger key, e.g. for the tray menu and Settings. */
 export function triggerLabel(key: TriggerKey): string {
   switch (key) {
+    case 'EitherControl':
+      return 'Left or Right Ctrl'
     case 'RightControl':
       return 'Right Ctrl'
     case 'LeftControl':
@@ -33,7 +35,7 @@ export function triggerOptions(platform: OSPlatform): TriggerKey[] {
   if (platform === 'darwin') {
     return ['EitherOption', 'LeftOption', 'RightOption', 'RightCommand', 'LeftCommand', 'CapsLock', 'F8']
   }
-  return ['RightControl', 'LeftControl', 'CapsLock', 'F8']
+  return ['EitherControl', 'RightControl', 'LeftControl', 'CapsLock', 'F8']
 }
 
 /** The sensible default trigger for a fresh install on this platform. */
