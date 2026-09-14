@@ -33,7 +33,9 @@ describe('triggerOptions', () => {
   })
   it('leads with Ctrl on Windows and omits the Mac-only modifiers', () => {
     const opts = triggerOptions('win32')
-    expect(opts[0]).toBe('RightControl')
+    expect(opts[0]).toBe('EitherControl')
+    expect(opts).toContain('RightControl')
+    expect(opts).toContain('LeftControl')
     expect(opts).not.toContain('RightCommand')
     expect(opts).not.toContain('RightOption')
   })
@@ -54,6 +56,7 @@ describe('triggerLabel', () => {
     expect(triggerLabel('RightOption')).toBe('Right ⌥')
   })
   it('renders the Windows keys', () => {
+    expect(triggerLabel('EitherControl')).toBe('Left or Right Ctrl')
     expect(triggerLabel('RightControl')).toBe('Right Ctrl')
     expect(triggerLabel('CapsLock')).toBe('Caps Lock')
   })

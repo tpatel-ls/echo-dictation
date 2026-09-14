@@ -70,6 +70,7 @@ describe('normalizeSettings', () => {
       triggerKey: 'RightOption',
       cleanupMode: 'auto'
     })
+    expect(normalizeSettings({ triggerKey: 'EitherControl' }).triggerKey).toBe('EitherControl')
     expect(normalizeSettings({ triggerKey: 'LeftAlt', cleanupMode: false })).toMatchObject({
       triggerKey: 'LeftOption',
       cleanupMode: 'off'

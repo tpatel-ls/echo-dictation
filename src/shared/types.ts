@@ -27,6 +27,7 @@ export type CleanupMode = 'off' | 'auto' | 'on-demand'
 export type MicMode = 'on-demand' | 'warm'
 export type AccuracyMode = 'fast' | 'balanced' | 'maximum'
 export type TriggerKey =
+  | 'EitherControl' // either Ctrl key
   | 'RightControl'
   | 'LeftControl'
   | 'RightCommand' // ⌘

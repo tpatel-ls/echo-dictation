@@ -7,6 +7,7 @@ vi.mock('electron', () => ({
 
 import {
   HotkeyListener,
+  matchesTrigger,
   type HotkeyListenerDeps
 } from '../src/main/hotkey/listener'
 
@@ -102,5 +103,14 @@ describe('HotkeyListener recovery', () => {
     expect(children).toHaveLength(2)
     await vi.advanceTimersByTimeAsync(1)
     expect(children).toHaveLength(3)
+  })
+})
+
+describe('matchesTrigger', () => {
+  it('lets either Ctrl key start dictation when EitherControl is chosen', () => {
+    expect(matchesTrigger('EitherControl', { key: 'leftControl' })).toBe(true)
+    expect(matchesTrigger('EitherControl', { key: 'rightControl' })).toBe(true)
+    expect(matchesTrigger('EitherControl', { key: 'capsLock' })).toBe(false)
+    expect(matchesTrigger('RightControl', { key: 'leftControl' })).toBe(false)
   })
 })
