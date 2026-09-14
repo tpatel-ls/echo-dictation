@@ -6,6 +6,14 @@ import type { PasteDeps } from './paste'
 import type { SelectionDeps } from './selection'
 import { helperPath } from '../native/helper-path'
 import { appendRotatingLog } from '../diagnostic-log'
+import { PasteHelperError, PasteHelperServer } from './paste-server'
+
+const windowsPasteServer = new PasteHelperServer({ helperPath: () => nativeHelperPath('EchoPasteHelper') })
+
+/** Start the Windows paste helper now so the first dictation's paste doesn't pay process startup. */
+export function warmPasteHelper(): void {
+  if (process.platform === 'win32' && existsSync(nativeHelperPath('EchoPasteHelper'))) windowsPasteServer.warm()
+}
 
 // Shared backing for both dependency sets — Electron's clipboard and the macOS helper chord — so the
 // two real* factories can't drift on clipboard access.
@@ -28,6 +36,19 @@ function sendHelper(action: 'copy' | 'paste'): () => Promise<void> {
   return async () => {
     const helper = nativeHelperPath('EchoPasteHelper')
     if (!existsSync(helper)) throw new Error(`Paste helper is not built at ${helper}`)
+    if (process.platform === 'win32') {
+      try {
+        await windowsPasteServer.send(action)
+        return
+      } catch (error) {
+        if (error instanceof PasteHelperError) {
+          pasteLog(`${action} helper failed (warm) message=${JSON.stringify(error.message)}`)
+          throw error
+        }
+        // A missing, outdated, or wedged warm helper falls back to the one-shot process below.
+        pasteLog(`${action} warm helper unavailable, starting one-shot: ${(error as Error).message}`)
+      }
+    }
     const result = await runHelper(helper, action === 'copy' ? ['--copy'] : [])
     if (result.code === 0) return
     pasteLog(
