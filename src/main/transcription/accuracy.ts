@@ -5,6 +5,7 @@ import {
   type TranscriptCandidate
 } from '@shared/transcript-quality'
 import { isDeterministicModel } from '@shared/live-preview'
+import { normalizeSpokenForms } from '@shared/spoken-forms'
 import { adjudicate } from './adjudicator'
 import { transcribe } from './whisper'
 
@@ -26,7 +27,8 @@ export interface AccuracyRequest {
   settings: Pick<
     Settings,
     'accuracyMode' | 'whisperBaseUrl' | 'whisperModel' | 'claudeBaseUrl' | 'claudeModel' | 'accuracyModel'
-  >
+  > &
+    Partial<Pick<Settings, 'crossCheckModels'>>
   whisperApiKey: string
   claudeApiKey: string
   appContext: string
@@ -42,6 +44,8 @@ export interface RecognitionOutcome {
 export interface RemoteDecodeOptions {
   temperature: 0 | 0.3 | 0.8
   prompt?: string
+  /** A cross-check model on the same endpoint; absent means the main model. */
+  model?: string
 }
 
 export type PrimaryRecognizer = (
@@ -79,6 +83,18 @@ export function isLowConfidenceRecognitionError(e: unknown): boolean {
 const NATIVE_TIMEOUT_MS = 1500
 const BALANCED_FAST_PATH_WORDS = 12
 const PARALLEL_ENSEMBLE_MIN_AUDIO_MS = 5_000
+/** Canary-Qwen's LLM decoder costs ~300 ms on a short phrase but seconds on a paragraph. */
+const SLOW_CROSS_CHECK_MAX_AUDIO_MS = 6_000
+const CROSS_CHECK_TIMEOUT_MS = 4_000
+
+/** Cross-check models worth waiting for on this recording. */
+export function crossCheckModelsFor(list: string | undefined, durationMs: number | undefined): string[] {
+  return (list ?? '')
+    .split(',')
+    .map((model) => model.trim())
+    .filter(Boolean)
+    .filter((model) => !/canary/i.test(model) || (durationMs ?? Infinity) < SLOW_CROSS_CHECK_MAX_AUDIO_MS)
+}
 
 export async function recognizeAccurately(
   wav: RecognitionAudio,
@@ -101,6 +117,18 @@ export async function recognizeAccurately(
     ])
     collectSettled(settled, candidates, errors)
     return finalize(candidates, request, deps, errors)
+  }
+
+  // Independent models make independent mistakes, unlike temperature samples of one model. Decode
+  // them all at once so the wait is the slowest model, not the sum.
+  const crossCheck = mode === 'balanced' ? crossCheckModelsFor(request.settings.crossCheckModels, wav.durationMs) : []
+  if (crossCheck.length) {
+    const settled = await Promise.allSettled([
+      decodePrimary(wav, request, primary, deps),
+      ...crossCheck.map((model) => decodeRemote(wav, request, primary, 'remote-recovery', 0, deps.now, model))
+    ])
+    collectSettled(settled, candidates, errors)
+    return finalizeCrossCheck(candidates, request, deps, errors)
   }
 
   // One decode is the whole answer: Fast opts out of recovery, and a deterministic recognizer returns
@@ -143,11 +171,53 @@ async function decodeRemote(
   primary: PrimaryRecognizer,
   source: 'remote-primary' | 'remote-recovery',
   temperature: 0 | 0.3 | 0.8,
-  now: (() => number) | undefined
+  now: (() => number) | undefined,
+  model?: string
 ): Promise<TranscriptCandidate> {
   const started = timestamp(now)
-  const text = await primary(wav, request, { temperature, prompt: request.prompt })
-  return { source, text, elapsedMs: timestamp(now) - started }
+  const text = await primary(wav, request, { temperature, prompt: request.prompt, ...(model ? { model } : {}) })
+  // Models disagree on "seven P R s" vs "7 PRs"; compare and pick on written forms.
+  return { source, text: normalizeSpokenForms(text), elapsedMs: timestamp(now) - started }
+}
+
+async function finalizeCrossCheck(
+  candidates: TranscriptCandidate[],
+  request: AccuracyRequest,
+  deps: Partial<RecognitionDeps>,
+  errors: unknown[]
+): Promise<RecognitionOutcome> {
+  const options = qualityOptions(request)
+  const grades = candidates.map((candidate) => assessTranscript(candidate.text, options).grade)
+  const clean = candidates.filter((_, index) => grades[index] === 'clean')
+  // Canary often returns unpunctuated lowercase text, which grades as suspicious formatting but is
+  // still a valid vote on the words; the best-punctuated member of the agreeing group is pasted.
+  const consensus = chooseExactConsensus(
+    candidates.filter((_, index) => grades[index] !== 'reject'),
+    options
+  )
+  if (consensus) return { winner: consensus, candidates }
+
+  // Three short hypotheses with no majority is where one misheard word ("my" vs "mic") changes the
+  // meaning, so it earns the adjudicator call. Long dictations keep the main model instead of waiting.
+  if (candidates.length >= 3 && hasMeaningfulDisagreement(candidates)) {
+    const adjudicated = await runAdjudicator([...candidates], request, deps).catch(() => null)
+    if (
+      adjudicated &&
+      assessTranscript(adjudicated, options).grade === 'clean' &&
+      isSupportedAdjudication(adjudicated, candidates, false)
+    ) {
+      const candidate: TranscriptCandidate = { source: 'adjudicated', text: adjudicated, elapsedMs: 0 }
+      candidates.push(candidate)
+      return { winner: candidate, candidates }
+    }
+  }
+
+  const main = candidates.find((candidate) => candidate.source === 'remote-primary')
+  if (main && assessTranscript(main.text, options).grade === 'clean') return { winner: main, candidates }
+  const winner = chooseTranscript(clean.length ? clean : candidates, options)
+  if (winner) return { winner, candidates }
+  if (!candidates.length && errors.length) throw errors[0]
+  throw new LowConfidenceRecognitionError()
 }
 
 async function nativeWithTimeout(
@@ -425,10 +495,18 @@ function timestamp(now: (() => number) | undefined): number {
 }
 
 const defaultPrimary: PrimaryRecognizer = (wav, request, opts) =>
-  transcribe(wav.buffer, request.settings, request.whisperApiKey, undefined, {
-    prompt: opts.prompt,
-    temperature: opts.temperature
-  })
+  transcribe(
+    wav.buffer,
+    opts.model ? { ...request.settings, whisperModel: opts.model } : request.settings,
+    request.whisperApiKey,
+    undefined,
+    {
+      prompt: opts.prompt,
+      temperature: opts.temperature,
+      // A cross-check vote is optional: never let a slow or failing extra model hold up the paste.
+      ...(opts.model ? { retries: 0, timeoutMs: CROSS_CHECK_TIMEOUT_MS } : {})
+    }
+  )
 
 const defaultAdjudicator: AdjudicatorRecognizer = (candidates, request) =>
   adjudicate(

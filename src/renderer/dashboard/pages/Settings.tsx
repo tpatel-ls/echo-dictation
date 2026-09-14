@@ -116,7 +116,7 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
             </Field>
             <Field
               label="Live preview"
-              hint="Show words in the bar while you speak. Runs with fast deterministic models such as Parakeet; Whisper models skip it so the final result stays fast."
+              hint="Show words above the bar while you speak, decoded by the Parakeet preview model."
             >
               <Toggle checked={s.livePreview} onChange={(v) => void patch({ livePreview: v })} />
             </Field>
@@ -130,8 +130,21 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
               serviceLabel="Whisper"
               onSave={(value) => patch({ whisperBaseUrl: value })}
             />
-            <Field label="Model">
+            <Field label="Model" hint="Decodes the text that gets pasted.">
               <TextInput width="w-44" value={s.whisperModel} onChange={(v) => void patch({ whisperModel: v })} />
+            </Field>
+            <Field
+              label="Cross-check models"
+              hint="Comma-separated models decoded alongside the main one in Balanced mode. Two agreeing models win; Canary models only vote on short phrases."
+            >
+              <TextInput
+                width="w-72"
+                value={s.crossCheckModels}
+                onChange={(v) => void patch({ crossCheckModels: v })}
+              />
+            </Field>
+            <Field label="Preview model" hint="Fast model for the live transcript while you speak.">
+              <TextInput width="w-44" value={s.previewModel} onChange={(v) => void patch({ previewModel: v })} />
             </Field>
             <Field label="API key" hint={masked?.whisperApiKey ? `Current: ${masked.whisperApiKey}` : 'Not set'}>
               <TextInput type="password" value={whisperKey} placeholder="Enter to change" onChange={setWhisperKey} />

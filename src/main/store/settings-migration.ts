@@ -58,6 +58,8 @@ export function normalizeSettings(
     cancelOnOtherKey: booleanValue(value.cancelOnOtherKey, defaults.cancelOnOtherKey),
     whisperBaseUrl: normalizeEndpointUrl(value.whisperBaseUrl, defaults.whisperBaseUrl),
     whisperModel: stringValue(value.whisperModel, defaults.whisperModel),
+    previewModel: stringValue(value.previewModel, defaults.previewModel),
+    crossCheckModels: stringValue(value.crossCheckModels, defaults.crossCheckModels),
     cleanupMode: cleanupMode(value.cleanupMode, defaults.cleanupMode),
     accuracyMode: ACCURACY_MODES.has(value.accuracyMode as AccuracyMode)
       ? value.accuracyMode as AccuracyMode

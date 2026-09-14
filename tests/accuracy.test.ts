@@ -119,6 +119,98 @@ describe('recognizeAccurately', () => {
     expect(adjudicator).not.toHaveBeenCalled()
   })
 
+  describe('cross-model voting', () => {
+    const crossCheck = { ...settings, whisperModel: 'whisper-1', crossCheckModels: 'parakeet-tdt-0.6b-v2, canary-qwen-2.5b' }
+    const byModel = (texts: Record<string, string>) =>
+      vi.fn<RecognitionDeps['primary']>(async (_wav, _request, opts) => texts[opts.model ?? 'whisper-1'] ?? '')
+
+    it('decodes every model in parallel once and keeps the agreeing, best-punctuated text', async () => {
+      const primary = byModel({
+        'whisper-1': 'Mike testing, Mike testing.',
+        'parakeet-tdt-0.6b-v2': 'Mic testing, mic testing.',
+        'canary-qwen-2.5b': 'mic testing mic testing'
+      })
+      const adjudicator = vi.fn(async () => null)
+
+      const outcome = await recognizeAccurately(
+        { ...wav, durationMs: 2_000 },
+        request({ settings: crossCheck }),
+        deps({ primary, adjudicator })
+      )
+
+      expect(primary.mock.calls.map((call) => [call[2].model ?? 'whisper-1', call[2].temperature])).toEqual([
+        ['whisper-1', 0],
+        ['parakeet-tdt-0.6b-v2', 0],
+        ['canary-qwen-2.5b', 0]
+      ])
+      expect(outcome.winner.text).toBe('Mic testing, mic testing.')
+      expect(adjudicator).not.toHaveBeenCalled()
+    })
+
+    it('compares spoken and written forms as the same words', async () => {
+      const primary = byModel({
+        'whisper-1': 'We integrated 7 PRs.',
+        'parakeet-tdt-0.6b-v2': 'We integrated seven P R s.'
+      })
+
+      const outcome = await recognizeAccurately(
+        { ...wav, durationMs: 9_000 },
+        request({ settings: crossCheck }),
+        deps({ primary })
+      )
+
+      expect(outcome.winner.text).toBe('We integrated 7 PRs.')
+    })
+
+    it('skips slow Canary models on long audio and keeps the main model when two disagree', async () => {
+      const primary = byModel({
+        'whisper-1': 'We need to review the launch plan and ping Kyle on Slack before the release.',
+        'parakeet-tdt-0.6b-v2': 'We need to review the launch plan and pinkyle on Slack before the release.'
+      })
+      const adjudicator = vi.fn(async () => null)
+
+      const outcome = await recognizeAccurately(
+        { ...wav, durationMs: 9_000 },
+        request({ settings: crossCheck }),
+        deps({ primary, adjudicator })
+      )
+
+      expect(primary.mock.calls.map((call) => call[2].model ?? 'whisper-1')).toEqual(['whisper-1', 'parakeet-tdt-0.6b-v2'])
+      expect(outcome.winner.text).toContain('ping Kyle')
+      expect(adjudicator).not.toHaveBeenCalled()
+    })
+
+    it('asks the adjudicator only when three short hypotheses all disagree', async () => {
+      const primary = byModel({
+        'whisper-1': 'Mike testing.',
+        'parakeet-tdt-0.6b-v2': 'My testing.',
+        'canary-qwen-2.5b': 'Mic tasting.'
+      })
+      const adjudicator = vi.fn(async () => 'Mic testing.')
+
+      const outcome = await recognizeAccurately(
+        { ...wav, durationMs: 1_500 },
+        request({ settings: crossCheck }),
+        deps({ primary, adjudicator })
+      )
+
+      expect(adjudicator).toHaveBeenCalledOnce()
+      expect(outcome.winner).toMatchObject({ source: 'adjudicated', text: 'Mic testing.' })
+    })
+
+    it('fast mode ignores cross-check models', async () => {
+      const primary = byModel({ 'whisper-1': 'Please send the update.' })
+
+      await recognizeAccurately(
+        wav,
+        request({ settings: { ...crossCheck, accuracyMode: 'fast' } }),
+        deps({ primary })
+      )
+
+      expect(primary).toHaveBeenCalledOnce()
+    })
+  })
+
   it('recognizes deterministic non-autoregressive model names', () => {
     expect(isDeterministicModel('parakeet-tdt-0.6b-v2')).toBe(true)
     expect(isDeterministicModel('nvidia/parakeet-tdt-0.6b-v3')).toBe(true)

@@ -47,6 +47,10 @@ export interface Settings {
   cancelOnOtherKey: boolean
   whisperBaseUrl: string
   whisperModel: string
+  /** Fast model on the same endpoint that decodes the live preview while the hotkey is held. */
+  previewModel: string
+  /** Other models on the same endpoint decoded in parallel to vote on the text (comma-separated). */
+  crossCheckModels: string
   cleanupMode: CleanupMode
   accuracyMode: AccuracyMode
   claudeBaseUrl: string
@@ -59,7 +63,7 @@ export interface Settings {
   /** Per-user preferred microphone device id. Empty follows the macOS system default. */
   audioInputDeviceId: string
   retainAudio: boolean
-  /** Show the running transcript in the overlay while dictating (deterministic models only). */
+  /** Show the running transcript above the overlay while dictating (needs a Parakeet preview model). */
   livePreview: boolean
   insertMode: 'paste'
   overlayOffsetBottom: number
@@ -75,6 +79,8 @@ export const DEFAULT_SETTINGS: Settings = {
   // /audio/transcriptions server; any Anthropic-compatible /v1/messages proxy).
   whisperBaseUrl: '',
   whisperModel: 'whisper-1',
+  previewModel: 'parakeet-tdt-0.6b-v2',
+  crossCheckModels: '',
   cleanupMode: 'auto',
   accuracyMode: 'balanced',
   claudeBaseUrl: '',

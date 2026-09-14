@@ -34,14 +34,42 @@ Behavior differences Echo accounts for:
 - The live preview in the recording bar is enabled only for Parakeet models, because repeated
   preview decodes would queue behind the final decode on a single Whisper server.
 
+## Cross-model voting
+
+Parakeet alone misheard short, context-free phrases ("mic testing" became "my testing"). Balanced
+mode can decode several models at once and vote, configured by **Cross-check models** in Settings:
+
+| Echo setting | Recommended value |
+| --- | --- |
+| Model (pasted text) | `whisper-1` |
+| Cross-check models | `parakeet-tdt-0.6b-v2, canary-qwen-2.5b` |
+| Preview model (live bubble) | `parakeet-tdt-0.6b-v2` |
+
+- All models decode in parallel, so the wait is the slowest model, not the sum.
+- Candidates are compared on written forms (`seven P R s` equals `7 PRs`). Two agreeing models win,
+  keeping the better-punctuated text.
+- Canary-Qwen 2.5B votes only on recordings under 6 seconds. Its LLM decoder takes about 300 ms on a
+  short phrase but about 1.8 s on a 21-second paragraph on the GB10.
+- Three short hypotheses with no majority go to the adjudicator. Longer recordings with no
+  majority keep the main model rather than waiting on an LLM.
+- A cross-check model gets one attempt with a 4-second limit, so a failing route never blocks a paste.
+
+Each dictation appends per-stage timings (recognition, cleanup, paste; never text) to
+`dictation.log` in Echo's user-data folder.
+
 ## Server layout
 
 Files in [`gb10/`](../gb10):
 
 - `parakeet/server.py`: FastAPI + NeMo recognizer on `127.0.0.1:8002`, loopback only, no auth.
 - `parakeet/parakeet-server.service`: systemd **user** unit (no sudo needed).
-- `shim.py`: the authenticated public shim. Routes `model=parakeet*` to Parakeet, everything else
-  to whisper.cpp, and skips ffmpeg when the upload is already 16 kHz mono PCM16 WAV.
+- `canary/server.py` + `canary/canary-server.service`: Canary-Qwen 2.5B (NeMo SALM) on
+  `127.0.0.1:8003`. Needs `pip install peft`, the `Qwen/Qwen3-1.7B` tokenizer files in the HF cache,
+  and Python headers for Triton's JIT (`uv python install 3.12`, then point `C_INCLUDE_PATH` at its
+  `include/python3.12` in a unit drop-in).
+- `shim.py`: the authenticated public shim. Routes `model=parakeet*` and `model=canary*` to their
+  servers, everything else to whisper.cpp, and skips ffmpeg when the upload is already 16 kHz mono
+  PCM16 WAV.
 
 Install on the GB10 (DGX OS, CUDA 13, aarch64):
 
