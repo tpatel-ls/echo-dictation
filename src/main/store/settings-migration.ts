@@ -70,6 +70,7 @@ export function normalizeSettings(
     micMode: MIC_MODES.has(value.micMode as MicMode) ? value.micMode as MicMode : defaults.micMode,
     audioInputDeviceId: stringValue(value.audioInputDeviceId, defaults.audioInputDeviceId),
     retainAudio: booleanValue(value.retainAudio, defaults.retainAudio),
+    livePreview: booleanValue(value.livePreview, defaults.livePreview),
     insertMode: 'paste',
     overlayOffsetBottom: boundedInteger(
       value.overlayOffsetBottom,

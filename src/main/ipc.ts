@@ -60,6 +60,7 @@ export function registerIpc(ctx: IpcContext): void {
   ipcMain.handle(IPC.DICTATION_AUDIO, (_e, buf: ArrayBuffer, meta: AudioMeta) =>
     ctx.controller.handleAudio(buf, meta)
   )
+  ipcMain.handle(IPC.DICTATION_PREVIEW, (_e, buf: ArrayBuffer) => ctx.controller.handlePreview(buf))
 
   // ── History ─────────────────────────────────────────────────────────────────
   ipcMain.handle(IPC.HISTORY_LIST, (_e, opts: HistoryQueryOpts) => ctx.history.list(opts))

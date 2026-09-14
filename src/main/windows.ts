@@ -12,8 +12,10 @@ function loadRenderer(win: BrowserWindow, name: RendererName): void {
   else void win.loadFile(join(__dirname, `../renderer/${name}/index.html`))
 }
 
-export const OVERLAY_WIDTH = 330
-export const OVERLAY_HEIGHT = 72
+// Room above the pill for the two-line live transcript bubble; the window is transparent and
+// click-through, so the extra area is invisible when the bubble is hidden.
+export const OVERLAY_WIDTH = 460
+export const OVERLAY_HEIGHT = 124
 
 /** The compact center-bottom bar. Transparent, click-through, and never focusable. */
 export function createOverlay(offsetBottom: number): BrowserWindow {

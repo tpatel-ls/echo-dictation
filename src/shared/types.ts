@@ -59,6 +59,8 @@ export interface Settings {
   /** Per-user preferred microphone device id. Empty follows the macOS system default. */
   audioInputDeviceId: string
   retainAudio: boolean
+  /** Show the running transcript in the overlay while dictating (deterministic models only). */
+  livePreview: boolean
   insertMode: 'paste'
   overlayOffsetBottom: number
   /** Base URL of the self-hosted sync service (tailnet). Empty disables sync. */
@@ -83,6 +85,7 @@ export const DEFAULT_SETTINGS: Settings = {
   micMode: 'warm',
   audioInputDeviceId: '',
   retainAudio: true,
+  livePreview: true,
   insertMode: 'paste',
   overlayOffsetBottom: 28,
   syncBaseUrl: ''
@@ -181,6 +184,7 @@ export interface DiagResult {
 export const IPC = {
   DICTATION_STATE: 'dictation:state',
   DICTATION_AUDIO: 'dictation:audio',
+  DICTATION_PREVIEW: 'dictation:preview',
   OVERLAY_READY: 'overlay:ready',
   HISTORY_LIST: 'history:list',
   HISTORY_SEARCH: 'history:search',
@@ -265,6 +269,8 @@ export interface EchoApi {
   onDictationState(cb: (e: DictationStateEvent) => void): () => void
   onSettingsChanged(cb: (s: Settings) => void): () => void
   sendAudio(buf: ArrayBuffer, meta: AudioMeta): Promise<InsertResult>
+  /** Best-effort decode of the audio captured so far; null when unavailable. */
+  previewAudio(buf: ArrayBuffer): Promise<string | null>
   overlayReady(): void
   history: {
     list(opts: HistoryQueryOpts): Promise<Transcript[]>

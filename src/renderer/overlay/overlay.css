@@ -32,7 +32,45 @@ body {
 }
 
 .ov-pill-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   opacity: 1;
+}
+
+/* Live transcript bubble: the newest words, shown above the pill while speaking. */
+.ov-transcript {
+  box-sizing: border-box;
+  max-width: 440px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: rgba(13, 15, 19, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 6px 17px rgba(0, 0, 0, 0.38);
+  font-size: 12.5px;
+  line-height: 17px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.92);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  animation: ovRise 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ov-transcript.ov-transcript-final {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+@keyframes ovRise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .ov-capsule {

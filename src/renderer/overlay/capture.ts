@@ -90,6 +90,11 @@ export class MicCapture {
     this.sink.connect(ctx.destination)
   }
 
+  /** The frames captured so far, without stopping — feeds the live transcript preview. */
+  snapshot(): { frames: Float32Array[]; sampleRate: number } {
+    return { frames: this.frames.slice(), sampleRate: this.sampleRate }
+  }
+
   async stop(): Promise<{ frames: Float32Array[]; sampleRate: number }> {
     const frames = this.frames
     this.frames = []

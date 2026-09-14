@@ -114,6 +114,12 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
                 ]}
               />
             </Field>
+            <Field
+              label="Live preview"
+              hint="Show words in the bar while you speak. Runs with fast deterministic models such as Parakeet; Whisper models skip it so the final result stays fast."
+            >
+              <Toggle checked={s.livePreview} onChange={(v) => void patch({ livePreview: v })} />
+            </Field>
           </Section>
 
           <Section title="Transcription (Whisper)">

@@ -12,6 +12,12 @@ describe('normalizeSettings', () => {
     })
   })
 
+  it('enables the live preview by default and keeps an explicit opt-out', () => {
+    expect(DEFAULT_SETTINGS.livePreview).toBe(true)
+    expect(normalizeSettings({ livePreview: false }).livePreview).toBe(false)
+    expect(normalizeSettings({ livePreview: 'no' }).livePreview).toBe(true)
+  })
+
   it('keeps supported values and ignores unknown persisted keys', () => {
     const result = normalizeSettings({
       ...DEFAULT_SETTINGS,

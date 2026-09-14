@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   LowConfidenceRecognitionError,
+  isDeterministicModel,
   recognizeAccurately,
   type AccuracyRequest,
   type RecognitionAudio,
@@ -82,6 +83,18 @@ describe('recognizeAccurately', () => {
     expect(adjudicator).not.toHaveBeenCalled()
   })
 
+  it('fast mode never fans out, even for long audio', async () => {
+    const primary = vi.fn<RecognitionDeps['primary']>(async () => 'Please send the update.')
+
+    await recognizeAccurately(
+      { ...wav, durationMs: 30_000 },
+      request({ settings: { ...settings, accuracyMode: 'fast' } }),
+      deps({ primary })
+    )
+
+    expect(primary).toHaveBeenCalledOnce()
+  })
+
   it('balanced mode keeps a short clean dictation on the one-decode fast path', async () => {
     const primary = vi.fn<RecognitionDeps['primary']>(async () => 'Please send the update.')
 
@@ -89,6 +102,28 @@ describe('recognizeAccurately', () => {
 
     expect(outcome.winner.text).toBe('Please send the update.')
     expect(primary).toHaveBeenCalledOnce()
+  })
+
+  it('balanced mode trusts one decode from a deterministic model even for long, non-clean audio', async () => {
+    const primary = vi.fn<RecognitionDeps['primary']>(async () => 'um so the the plan is')
+    const adjudicator = vi.fn(async () => null)
+
+    const outcome = await recognizeAccurately(
+      { ...wav, durationMs: 30_000 },
+      request({ settings: { ...settings, whisperModel: 'parakeet-tdt-0.6b-v2' } }),
+      deps({ primary, adjudicator })
+    )
+
+    expect(primary).toHaveBeenCalledOnce()
+    expect(outcome.winner).toMatchObject({ source: 'remote-primary', text: 'um so the the plan is' })
+    expect(adjudicator).not.toHaveBeenCalled()
+  })
+
+  it('recognizes deterministic non-autoregressive model names', () => {
+    expect(isDeterministicModel('parakeet-tdt-0.6b-v2')).toBe(true)
+    expect(isDeterministicModel('nvidia/parakeet-tdt-0.6b-v3')).toBe(true)
+    expect(isDeterministicModel('whisper-1')).toBe(false)
+    expect(isDeterministicModel('large-v3-turbo')).toBe(false)
   })
 
   it('balanced mode uses three-decode consensus for long dictation without calling an LLM', async () => {

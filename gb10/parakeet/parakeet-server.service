@@ -1,0 +1,17 @@
+[Unit]
+Description=Parakeet TDT speech recognizer for Echo (NeMo, CUDA) — loopback only, behind the auth shim
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/asr
+Environment=PARAKEET_MODEL=nvidia/parakeet-tdt-0.6b-v2
+Environment=PARAKEET_PRECISION=bf16
+Environment=HF_HUB_OFFLINE=1
+ExecStart=%h/asr/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 8002 --log-level warning
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
