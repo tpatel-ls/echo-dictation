@@ -4,8 +4,20 @@ export function shouldExitHiddenStartup(openedHidden: boolean, launchAtLogin: bo
   return openedHidden && !launchAtLogin
 }
 
-export function usesMachineWideStartup(platform: string, packaged: boolean): boolean {
-  return packaged && platform === 'win32'
+/**
+ * Only a copy installed under Program Files came from the machine-wide installer, which owns the
+ * all-user HKLM entry. A per-user copy (e.g. %LOCALAPPDATA%\Programs) has no such entry and must
+ * register its own login item, or it never starts at sign-in.
+ */
+export function usesMachineWideStartup(
+  platform: string,
+  packaged: boolean,
+  exePath = '',
+  programFilesDirs: string[] = []
+): boolean {
+  if (!packaged || platform !== 'win32') return false
+  const exe = exePath.toLowerCase()
+  return programFilesDirs.some((dir) => Boolean(dir) && exe.startsWith(`${dir.toLowerCase().replace(/[\\/]+$/, '')}\\`))
 }
 
 export function shouldOpenSecondInstance(argv: string[]): boolean {

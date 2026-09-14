@@ -208,7 +208,8 @@ function applyLoginItem(enabled: boolean): void {
     app.setLoginItemSettings({ openAtLogin: false })
     return
   }
-  if (usesMachineWideStartup(process.platform, app.isPackaged)) {
+  const programFilesDirs = [process.env.ProgramFiles ?? '', process.env['ProgramFiles(x86)'] ?? '']
+  if (usesMachineWideStartup(process.platform, app.isPackaged, process.execPath, programFilesDirs)) {
     // The NSIS installer owns the all-user HKLM entry. Remove a stale HKCU entry so Windows
     // does not launch a second hidden instance and accidentally reveal the dashboard at sign-in.
     app.setLoginItemSettings({ openAtLogin: false })
