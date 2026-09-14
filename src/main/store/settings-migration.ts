@@ -68,6 +68,7 @@ export function normalizeSettings(
     claudeModel: stringValue(value.claudeModel, defaults.claudeModel),
     accuracyModel: stringValue(value.accuracyModel, defaults.accuracyModel),
     fallbackModel: stringValue(value.fallbackModel, defaults.fallbackModel),
+    adjudicatorModel: stringValue(value.adjudicatorModel, defaults.adjudicatorModel),
     commandModeEnabled: booleanValue(value.commandModeEnabled, defaults.commandModeEnabled),
     launchAtLogin: booleanValue(value.launchAtLogin, defaults.launchAtLogin),
     micMode: MIC_MODES.has(value.micMode as MicMode) ? value.micMode as MicMode : defaults.micMode,

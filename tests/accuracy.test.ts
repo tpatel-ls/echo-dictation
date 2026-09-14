@@ -198,6 +198,24 @@ describe('recognizeAccurately', () => {
       expect(outcome.winner).toMatchObject({ source: 'adjudicated', text: 'Mic testing.' })
     })
 
+    it('treats contractions as the same words when voting', async () => {
+      const primary = byModel({
+        'whisper-1': 'Mic testing, how is it going?',
+        'parakeet-tdt-0.6b-v2': "Mic testing, how's it going?",
+        'canary-qwen-2.5b': 'mike testing how is it going'
+      })
+      const adjudicator = vi.fn(async () => null)
+
+      const outcome = await recognizeAccurately(
+        { ...wav, durationMs: 2_000 },
+        request({ settings: crossCheck }),
+        deps({ primary, adjudicator })
+      )
+
+      expect(adjudicator).not.toHaveBeenCalled()
+      expect(outcome.winner.text).toMatch(/^Mic testing, how('s| is) it going\?$/)
+    })
+
     it('fast mode ignores cross-check models', async () => {
       const primary = byModel({ 'whisper-1': 'Please send the update.' })
 

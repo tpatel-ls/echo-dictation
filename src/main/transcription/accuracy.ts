@@ -28,7 +28,7 @@ export interface AccuracyRequest {
     Settings,
     'accuracyMode' | 'whisperBaseUrl' | 'whisperModel' | 'claudeBaseUrl' | 'claudeModel' | 'accuracyModel'
   > &
-    Partial<Pick<Settings, 'crossCheckModels'>>
+    Partial<Pick<Settings, 'crossCheckModels' | 'adjudicatorModel'>>
   whisperApiKey: string
   claudeApiKey: string
   appContext: string
@@ -191,9 +191,12 @@ async function finalizeCrossCheck(
   const clean = candidates.filter((_, index) => grades[index] === 'clean')
   // Canary often returns unpunctuated lowercase text, which grades as suspicious formatting but is
   // still a valid vote on the words; the best-punctuated member of the agreeing group is pasted.
+  // Different models spell the same words differently ("how's" / "how is"); vote on the words.
   const consensus = chooseExactConsensus(
     candidates.filter((_, index) => grades[index] !== 'reject'),
-    options
+    options,
+    2,
+    normalizeForSupport
   )
   if (consensus) return { winner: consensus, candidates }
 
@@ -389,11 +392,12 @@ function editDistance(a: string, b: string): number {
 function chooseExactConsensus(
   candidates: TranscriptCandidate[],
   options: { language: 'en'; glossary: string[] },
-  minimumVotes = 2
+  minimumVotes = 2,
+  keyOf: (text: string) => string = normalize
 ): TranscriptCandidate | null {
   const groups = new Map<string, TranscriptCandidate[]>()
   for (const candidate of candidates) {
-    const key = normalize(candidate.text)
+    const key = keyOf(candidate.text)
     if (!key) continue
     const group = groups.get(key) ?? []
     group.push(candidate)

@@ -112,6 +112,36 @@ describe('adjudicate', () => {
     await expect(adjudicate(candidates, 'Visual Studio Code', settings, 'KEY', deps(fetchMock))).resolves.toBeNull()
   })
 
+  it('asks the dedicated adjudicator model first', async () => {
+    const models: string[] = []
+    const fetchMock = vi.fn(async (_url: unknown, init: any) => {
+      models.push(JSON.parse(init.body).model)
+      return new Response(
+        JSON.stringify({ output: [{ type: 'message', content: [{ type: 'output_text', text: 'A' }] }] }),
+        { status: 200 }
+      )
+    })
+
+    const out = await adjudicate(
+      [
+        { source: 'remote-primary', text: 'Please send the update.', elapsedMs: 1 },
+        { source: 'remote-recovery', text: 'Please send the updates.', elapsedMs: 1 }
+      ],
+      'Slack',
+      {
+        claudeBaseUrl: 'https://mac.ts.net',
+        claudeModel: 'claude-sonnet-5',
+        accuracyModel: 'claude-sonnet-5',
+        adjudicatorModel: 'claude-haiku-4-5-20251001'
+      },
+      'KEY',
+      { fetch: fetchMock as unknown as typeof fetch }
+    )
+
+    expect(out).toBe('Please send the update.')
+    expect(models).toEqual(['claude-haiku-4-5-20251001'])
+  })
+
   it('falls back to the configured Claude model when the primary adjudicator is cooling down', async () => {
     const models: string[] = []
     const fetchMock = vi.fn(async (_url: unknown, init: any) => {
