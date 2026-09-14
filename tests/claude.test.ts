@@ -7,7 +7,8 @@ import {
   protectBreaks,
   restoreBreaks,
   CleanupError,
-  AUTO_CLEANUP_TIMEOUT_MS
+  AUTO_CLEANUP_TIMEOUT_MS,
+  FALLBACK_CLEANUP_TIMEOUT_MS
 } from '../src/main/transcription/claude'
 
 describe('protectBreaks / restoreBreaks', () => {
@@ -143,6 +144,21 @@ describe('cleanup', () => {
     const out = await cleanup('um hello world', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch })
     expect(out).toBe('Hello, world.')
     expect(models).toEqual(['gpt-5.4-mini', 'claude-sonnet-4-6'])
+  })
+
+  it('tries the GPT fallback model last, with a longer budget than the first attempt', async () => {
+    const attempts: string[] = []
+    const fetchMock = vi.fn(async (_url: unknown, init: any) => {
+      const body = JSON.parse(init.body)
+      attempts.push(body.model)
+      return body.model === 'gpt-6-astra' ? responsesText('Hello, world.') : new Response('overloaded', { status: 529 })
+    })
+    const out = await cleanup('um hello world', { ...s, fallbackModel: 'gpt-6-astra' }, 'KEY', {
+      fetch: fetchMock as unknown as typeof fetch
+    })
+    expect(out).toBe('Hello, world.')
+    expect(attempts).toEqual(['gpt-5.4-mini', 'claude-sonnet-4-6', 'gpt-6-astra'])
+    expect(FALLBACK_CLEANUP_TIMEOUT_MS).toBeGreaterThan(AUTO_CLEANUP_TIMEOUT_MS)
   })
 
   it('does not retry another model after an auth failure', async () => {

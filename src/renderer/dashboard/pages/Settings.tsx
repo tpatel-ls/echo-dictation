@@ -184,6 +184,12 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
             <Field label="Model">
               <TextInput width="w-52" value={s.claudeModel} onChange={(v) => void patch({ claudeModel: v })} />
             </Field>
+            <Field
+              label="Fallback model"
+              hint="Tried last when the proxy cannot serve the cleanup or Claude model, e.g. the newest GPT."
+            >
+              <TextInput width="w-52" value={s.fallbackModel} onChange={(v) => void patch({ fallbackModel: v })} />
+            </Field>
             <Field label="API key" hint={masked?.claudeApiKey ? `Current: ${masked.claudeApiKey}` : 'Not set'}>
               <TextInput type="password" value={claudeKey} placeholder="Enter to change" onChange={setClaudeKey} />
             </Field>
