@@ -262,10 +262,41 @@ export async function cleanup(
   // Speaker-placed breaks travel as sentinel markers (models merge raw newlines) and are
   // restored on the way back.
   const protectedText = protectBreaks(text)
-  const out = restoreBreaks(
-    await postResponses(system, cleanupUserContent(protectedText), protectedText, settings, apiKey, deps)
-  )
+  const out = restoreBreaks(await postCleanup(system, protectedText, settings, apiKey, deps))
   return looksLikeAssistantReply(text, out) ? text : out
+}
+
+/**
+ * Try the fast cleanup model, then the Claude model once if the proxy cannot serve the first (for
+ * example "unknown provider" 502s). Auth failures and timeouts are not retried: the key is shared,
+ * and a timeout has already spent the cleanup budget.
+ */
+async function postCleanup(
+  system: string,
+  protectedText: string,
+  settings: Pick<Settings, 'claudeBaseUrl' | 'claudeModel' | 'accuracyModel'>,
+  apiKey: string,
+  deps: ClaudeDeps
+): Promise<string> {
+  const models = [...new Set([settings.accuracyModel, settings.claudeModel].map((model) => model.trim()).filter(Boolean))]
+  let lastError: unknown = new CleanupError('No cleanup model configured')
+  for (const model of models) {
+    try {
+      return await postResponses(
+        system,
+        cleanupUserContent(protectedText),
+        protectedText,
+        { claudeBaseUrl: settings.claudeBaseUrl, accuracyModel: model },
+        apiKey,
+        deps
+      )
+    } catch (e) {
+      lastError = e
+      const status = e instanceof CleanupError ? e.status : undefined
+      if (status === 401 || status === 403 || /timed out/i.test((e as Error).message)) throw e
+    }
+  }
+  throw lastError
 }
 
 /**

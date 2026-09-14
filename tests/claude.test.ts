@@ -129,6 +129,30 @@ describe('cleanup', () => {
     expect(out).toBe('Hello, world.')
   })
 
+  it('falls back to the Claude model when the proxy cannot serve the fast model', async () => {
+    const models: string[] = []
+    const fetchMock = vi.fn(async (_url: unknown, init: any) => {
+      const body = JSON.parse(init.body)
+      models.push(body.model)
+      return body.model === 'gpt-5.4-mini'
+        ? new Response(JSON.stringify({ error: { message: 'unknown provider for model gpt-5.4-mini' } }), {
+            status: 502
+          })
+        : responsesText('Hello, world.')
+    })
+    const out = await cleanup('um hello world', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch })
+    expect(out).toBe('Hello, world.')
+    expect(models).toEqual(['gpt-5.4-mini', 'claude-sonnet-4-6'])
+  })
+
+  it('does not retry another model after an auth failure', async () => {
+    const fetchMock = vi.fn(async () => new Response('bad key', { status: 401 }))
+    await expect(
+      cleanup('um hello world', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch })
+    ).rejects.toThrow(/401/)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('falls back to input when the model returns no text', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ output: [] }), { status: 200 }))
     const out = await cleanup('keep me', s, 'KEY', { fetch: fetchMock as unknown as typeof fetch })
