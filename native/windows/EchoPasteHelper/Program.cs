@@ -14,6 +14,9 @@ internal static class Program
     {
         var inputSize = Marshal.SizeOf<Input>();
         var expectedInputSize = IntPtr.Size == 8 ? 40 : 28;
+        // Checked before --check: Echo launches `--server --check`, so an older helper without server
+        // mode only reports its check and exits instead of sending a stray Ctrl+V.
+        if (args.Contains("--server")) return Serve(inputSize, expectedInputSize);
         if (args.Contains("--check") || args.Contains("--prompt"))
         {
             Console.WriteLine(JsonSerializer.Serialize(new
@@ -26,7 +29,52 @@ internal static class Program
             return inputSize == expectedInputSize ? 0 : 3;
         }
 
-        var key = args.Contains("--copy") ? VkC : VkV;
+        var result = SendChord(args.Contains("--copy") ? VkC : VkV, inputSize);
+        if (result.Ok) return 0;
+        Console.WriteLine(JsonSerializer.Serialize(ErrorPayload(null, result, inputSize, expectedInputSize)));
+        return 2;
+    }
+
+    // Persistent mode: one JSON command per stdin line ({"id":"1","action":"paste"}), one JSON reply per
+    // stdout line. Starting a self-contained .NET exe costs about half a second per paste; a warm
+    // process sends the chord in milliseconds. Exits when Echo closes stdin.
+    private static int Serve(int inputSize, int expectedInputSize)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(new { type = "ready" }));
+        string? line;
+        while ((line = Console.ReadLine()) is not null)
+        {
+            string? id = null;
+            string? action = null;
+            try
+            {
+                using var document = JsonDocument.Parse(line);
+                if (document.RootElement.TryGetProperty("id", out var idElement)) id = idElement.GetString();
+                if (document.RootElement.TryGetProperty("action", out var actionElement)) action = actionElement.GetString();
+            }
+            catch (JsonException)
+            {
+                // Reported below as an unknown action.
+            }
+
+            if (action is not ("paste" or "copy"))
+            {
+                Console.WriteLine(JsonSerializer.Serialize(new { type = "error", id, message = $"Unknown action {action ?? "(none)"}" }));
+                continue;
+            }
+
+            var result = SendChord(action == "copy" ? VkC : VkV, inputSize);
+            Console.WriteLine(result.Ok
+                ? JsonSerializer.Serialize(new { type = "ok", id })
+                : JsonSerializer.Serialize(ErrorPayload(id, result, inputSize, expectedInputSize)));
+        }
+        return 0;
+    }
+
+    private readonly record struct ChordResult(bool Ok, uint Sent, int Expected, int WindowsError);
+
+    private static ChordResult SendChord(ushort key, int inputSize)
+    {
         var inputs = new[]
         {
             Keyboard(VkControl, 0),
@@ -40,28 +88,28 @@ internal static class Program
         for (var attempt = 1; attempt <= MaxAttempts; attempt++)
         {
             sent = SendInput((uint)inputs.Length, inputs, inputSize);
-            if (sent == (uint)inputs.Length) return 0;
+            if (sent == (uint)inputs.Length) return new ChordResult(true, sent, inputs.Length, 0);
 
             error = Marshal.GetLastWin32Error();
             ReleaseKeys(key, inputSize);
             if (attempt < MaxAttempts) Thread.Sleep(20 * attempt);
         }
-
-        var message =
-            $"SendInput failed after {MaxAttempts} attempts " +
-            $"(sent {sent}/{inputs.Length}; Windows error {error}; inputSize {inputSize}, expected {expectedInputSize})";
-        Console.WriteLine(JsonSerializer.Serialize(new
-        {
-            type = "error",
-            message,
-            sent,
-            expected = inputs.Length,
-            windowsError = error,
-            inputSize,
-            expectedInputSize
-        }));
-        return 2;
+        return new ChordResult(false, sent, inputs.Length, error);
     }
+
+    private static object ErrorPayload(string? id, ChordResult result, int inputSize, int expectedInputSize) => new
+    {
+        type = "error",
+        id,
+        message =
+            $"SendInput failed after {MaxAttempts} attempts " +
+            $"(sent {result.Sent}/{result.Expected}; Windows error {result.WindowsError}; inputSize {inputSize}, expected {expectedInputSize})",
+        sent = result.Sent,
+        expected = result.Expected,
+        windowsError = result.WindowsError,
+        inputSize,
+        expectedInputSize
+    };
 
     private static void ReleaseKeys(ushort key, int inputSize)
     {

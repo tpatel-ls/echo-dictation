@@ -7,6 +7,7 @@ import { SyncClient, type SyncBinding } from './sync/client'
 import { FileSyncState } from './sync/state'
 import { SyncRunner } from './sync/runner'
 import { createOverlay, createDashboard } from './windows'
+import { warmPasteHelper } from './insert/paste-deps'
 import { DictationController } from './dictation'
 import { HotkeyListener } from './hotkey/listener'
 import { registerIpc } from './ipc'
@@ -135,6 +136,7 @@ async function main(): Promise<void> {
     resourcesPath: app.isPackaged ? process.resourcesPath : undefined
   })
   const controller = new DictationController(overlay, settings, history, dictionary, snippets, nativeSpeech)
+  warmPasteHelper()
 
   const opts = (): { minHoldMs: number; cancelOnOtherKey: boolean } => {
     const s = settings.getSettings()
