@@ -27,6 +27,9 @@ const api: EchoApi = {
   sendAudio(buf: ArrayBuffer, meta: AudioMeta) {
     return ipcRenderer.invoke(IPC.DICTATION_AUDIO, buf, meta)
   },
+  previewAudio(buf: ArrayBuffer) {
+    return ipcRenderer.invoke(IPC.DICTATION_PREVIEW, buf)
+  },
   overlayReady() {
     ipcRenderer.send(IPC.OVERLAY_READY)
   },

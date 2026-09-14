@@ -4,10 +4,12 @@ import {
   chooseTranscript,
   type TranscriptCandidate
 } from '@shared/transcript-quality'
+import { isDeterministicModel } from '@shared/live-preview'
 import { adjudicate } from './adjudicator'
 import { transcribe } from './whisper'
 
 export type { AccuracyMode }
+export { isDeterministicModel }
 
 export interface SecondaryRecognizer {
   transcribe(wavPath: string, locale: 'en-US'): Promise<TranscriptCandidate | null>
@@ -101,6 +103,13 @@ export async function recognizeAccurately(
     return finalize(candidates, request, deps, errors)
   }
 
+  // One decode is the whole answer: Fast opts out of recovery, and a deterministic recognizer returns
+  // identical text for every re-decode, so extra samples would only cost GPU time.
+  if (mode === 'fast' || isDeterministicModel(request.settings.whisperModel)) {
+    candidates.push(await decodePrimary(wav, request, primary, deps))
+    return finalize(candidates, request, deps, errors)
+  }
+
   // Long recordings are certain to need the balanced accuracy ensemble. Starting all three
   // independent decodes at release removes an entire serial GB10 round trip.
   if ((wav.durationMs ?? 0) >= PARALLEL_ENSEMBLE_MIN_AUDIO_MS) {
@@ -116,10 +125,7 @@ export async function recognizeAccurately(
   const primaryCandidate = await decodePrimary(wav, request, primary, deps)
   candidates.push(primaryCandidate)
   const primaryGrade = assessTranscript(primaryCandidate.text, qualityOptions(request)).grade
-  if (
-    mode === 'fast' ||
-    (primaryGrade === 'clean' && transcriptWordCount(primaryCandidate.text) <= BALANCED_FAST_PATH_WORDS)
-  ) {
+  if (primaryGrade === 'clean' && transcriptWordCount(primaryCandidate.text) <= BALANCED_FAST_PATH_WORDS) {
     return finalize(candidates, request, deps, errors)
   }
 

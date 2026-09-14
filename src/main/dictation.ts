@@ -26,10 +26,12 @@ import { WhisperPrewarm } from './transcription/prewarm'
 import { repairTranscriptConsistency } from '@shared/transcript-repair'
 import { polishTranscriptStructure } from '@shared/transcript-polish'
 import {
+  isDeterministicModel,
   isLowConfidenceRecognitionError,
   recognizeAccurately,
   type SecondaryRecognizer
 } from './transcription/accuracy'
+import { transcribe } from './transcription/whisper'
 import { cleanup, command } from './transcription/claude'
 import { pasteText } from './insert/paste'
 import { realPasteDeps, realSelectionDeps } from './insert/paste-deps'
@@ -41,6 +43,7 @@ import { wordCount, needsAiCleanup } from '@shared/format'
 
 const LINGER_MS = 1500
 const WATCHDOG_MS = 20_000
+const PREVIEW_TIMEOUT_MS = 3_000
 
 /**
  * Owns the live dictation cycle: hotkey down → show pill + snapshot focus, hotkey up →
@@ -57,6 +60,9 @@ export class DictationController {
   private linger: ReturnType<typeof setTimeout> | null = null
   /** Keeps a TLS socket to the Whisper server warm while the user speaks (see prewarm.ts). */
   private prewarm = new WhisperPrewarm()
+  /** True only while the hotkey is held; a preview that lands after release is discarded. */
+  private listening = false
+  private listenEpoch = 0
 
   constructor(
     private overlay: BrowserWindow,
@@ -70,6 +76,8 @@ export class DictationController {
   async onStart(): Promise<void> {
     if (this.busy) return
     this.busy = true
+    this.listening = true
+    this.listenEpoch++
     this.clearLinger()
     // Tell the overlay to start the mic immediately (lowest latency), show the pill,
     // then capture the foreground window in the background — it's only needed later,
@@ -101,17 +109,46 @@ export class DictationController {
 
   onStop(): void {
     if (!this.busy) return
+    this.listening = false
     this.send({ phase: 'transcribing' })
     this.armWatchdog()
   }
 
   onCancel(): void {
+    this.listening = false
     this.prewarm.stop()
     this.busy = false
     this.pendingFocus = null
     this.selectionProbe = null
     this.clearWatchdog()
     this.send({ phase: 'idle' })
+  }
+
+  /**
+   * Live preview: decode the audio captured so far while the hotkey is still held. Best-effort — a
+   * disabled setting, a non-deterministic model (previews would queue behind the final decode on a
+   * Whisper server), any failure, or a response that lands after release all yield null.
+   */
+  async handlePreview(buf: ArrayBuffer): Promise<string | null> {
+    const s = this.settings.getSettings()
+    if (!this.listening || !s.livePreview || !isDeterministicModel(s.whisperModel)) return null
+    const epoch = this.listenEpoch
+    let dict: DictionaryEntry[] = []
+    try {
+      dict = this.dictionary.list()
+    } catch {
+      /* previews work fine without the dictionary */
+    }
+    try {
+      const text = await transcribe(buf, s, this.settings.getSecrets().whisperApiKey, undefined, {
+        retries: 0,
+        timeoutMs: PREVIEW_TIMEOUT_MS
+      })
+      if (!this.listening || epoch !== this.listenEpoch) return null
+      return prepareTranscriptText(text, dict)
+    } catch {
+      return null
+    }
   }
 
   async handleAudio(buf: ArrayBuffer, meta: AudioMeta): Promise<InsertResult> {

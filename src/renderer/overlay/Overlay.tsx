@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import type { DictationPhase, DictationStateEvent } from '@shared/types'
+import type { DictationPhase, DictationStateEvent, Settings } from '@shared/types'
 import { encodeWav } from '@shared/wav'
+import {
+  isDeterministicModel,
+  PREVIEW_INTERVAL_MS,
+  previewFrames,
+  previewTail
+} from '@shared/live-preview'
 import { Check } from 'lucide-react'
 import { MicCapture } from './capture'
 import { Waveform } from './Waveform'
@@ -8,8 +14,12 @@ import { Waveform } from './Waveform'
 export function Overlay(): JSX.Element {
   const [phase, setPhase] = useState<DictationPhase>('idle')
   const [message, setMessage] = useState('')
+  const [previewText, setPreviewText] = useState('')
   const levelRef = useRef(0)
   const capture = useRef<MicCapture | null>(null)
+  const previewEnabled = useRef(false)
+  /** Bumped on every phase change so a preview loop from an earlier dictation stops itself. */
+  const previewRun = useRef(0)
 
   useEffect(() => {
     const cap = new MicCapture()
@@ -18,16 +28,21 @@ export function Overlay(): JSX.Element {
     })
     capture.current = cap
     window.api.overlayReady()
+    const applyPreview = (s: Settings): void => {
+      previewEnabled.current = s.livePreview && isDeterministicModel(s.whisperModel)
+    }
     window.api.settings
       .get()
       .then((s) => {
         cap.setPreferredDevice(s.audioInputDeviceId)
+        applyPreview(s)
         if (s.micMode === 'warm') void cap.setWarm(true)
       })
       .catch(() => {})
     const offState = window.api.onDictationState(onState)
     const offSettings = window.api.onSettingsChanged((s) => {
       cap.setPreferredDevice(s.audioInputDeviceId)
+      applyPreview(s)
       void cap.setWarm(s.micMode === 'warm')
     })
     return () => {
@@ -38,13 +53,32 @@ export function Overlay(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  /** Ship the audio so far for a decode, one request at a time, until the hotkey is released. */
+  async function runPreview(run: number): Promise<void> {
+    if (!previewEnabled.current) return
+    while (previewRun.current === run) {
+      await new Promise((resolve) => setTimeout(resolve, PREVIEW_INTERVAL_MS))
+      const cap = capture.current
+      if (!cap || previewRun.current !== run) return
+      const { frames, sampleRate } = cap.snapshot()
+      const recent = previewFrames(frames, sampleRate)
+      if (!recent) continue
+      const text = await window.api.previewAudio(encodeWav(recent, sampleRate)).catch(() => null)
+      if (previewRun.current !== run) return
+      if (text) setPreviewText(previewTail(text))
+    }
+  }
+
   async function onState(e: DictationStateEvent): Promise<void> {
+    const run = ++previewRun.current
+    if (e.phase !== 'transcribing') setPreviewText('')
     switch (e.phase) {
       case 'listening':
         setMessage('')
         setPhase('listening')
         try {
           await capture.current?.start()
+          void runPreview(run)
         } catch (err) {
           const name = (err as Error)?.name
           setPhase('error')
@@ -94,9 +128,16 @@ export function Overlay(): JSX.Element {
     }
   }
 
+  const showPreview = Boolean(previewText) && (phase === 'listening' || phase === 'transcribing')
+
   return (
     <div className="ov-root">
       <div className="ov-pill-wrap">
+        {showPreview && (
+          <div className={`ov-transcript${phase === 'transcribing' ? ' ov-transcript-final' : ''}`}>
+            {previewText}
+          </div>
+        )}
         <div className={`ov-capsule ov-${phase}`}>
           {phase === 'idle' && (
             <span className="ov-idle-bars" aria-label="Echo is ready">
@@ -113,9 +154,7 @@ export function Overlay(): JSX.Element {
             </>
           )}
 
-          {phase === 'transcribing' && (
-            <Waveform levelRef={levelRef} mode="calm" width={54} height={12} />
-          )}
+          {phase === 'transcribing' && <Waveform levelRef={levelRef} mode="calm" width={54} height={12} />}
 
           {phase === 'inserted' && (
             <>
