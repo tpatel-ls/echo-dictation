@@ -13,7 +13,7 @@ import {
   type Transcript,
   type TranscriptStatus
 } from '@shared/types'
-import { applyDictionary, buildBiasPrompt } from '@shared/dictionary'
+import { applyDictionary, buildWhisperPrompt } from '@shared/dictionary'
 import { registerForTitle, styleDirective } from '@shared/app-style'
 import { expandSnippet, type Snippet } from '@shared/snippets'
 import { applyVoiceCommands } from '@shared/voice-commands'
@@ -220,7 +220,7 @@ export class DictationController {
         claudeApiKey: sec.claudeApiKey,
         appContext,
         glossary,
-        prompt: buildBiasPrompt(dict),
+        prompt: buildWhisperPrompt(dict),
         dictionary: dict
       }, {
         secondary: this.secondaryRecognizer,
@@ -364,7 +364,7 @@ export class DictationController {
         claudeApiKey: sec.claudeApiKey,
         appContext: existing.app_context,
         glossary,
-        prompt: buildBiasPrompt(dict),
+        prompt: buildWhisperPrompt(dict),
         dictionary: dict
       },
       { secondary: this.secondaryRecognizer }

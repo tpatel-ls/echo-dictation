@@ -6,6 +6,7 @@ import {
 } from '@shared/transcript-quality'
 import { applyDictionary } from '@shared/dictionary'
 import { isDeterministicModel } from '@shared/live-preview'
+import { borrowPunctuation } from '@shared/punctuation-transfer'
 import { normalizeSpokenForms } from '@shared/spoken-forms'
 import type { DictionaryEntry } from '@shared/types'
 import { adjudicate } from './adjudicator'
@@ -199,6 +200,8 @@ async function finalizeCrossCheck(
     return { winner: { source: 'remote-primary', text: '', elapsedMs: 0 }, candidates }
   }
 
+  borrowMainPunctuation(candidates)
+
   const options = qualityOptions(request)
   const grades = candidates.map((candidate) => assessTranscript(candidate.text, options).grade)
   const clean = candidates.filter((_, index) => grades[index] === 'clean')
@@ -324,6 +327,31 @@ async function finalize(
   if (winner) return { winner, candidates }
   if (!candidates.length && errors.length) throw errors[0]
   throw new LowConfidenceRecognitionError()
+}
+
+/**
+ * The main model keeps the dictionary-biased words but often returns a run-on sentence. When a
+ * cross-check heard nearly the same words with clearly better sentence breaks, give the main
+ * candidate that punctuation in place, before voting and grading.
+ */
+function borrowMainPunctuation(candidates: TranscriptCandidate[]): void {
+  const main = candidates.find((candidate) => candidate.source === 'remote-primary')
+  if (!main) return
+  const mainWords = normalizeForSupport(main.text)
+  const donor = candidates
+    .filter(
+      (candidate) =>
+        candidate !== main &&
+        candidate.source !== 'adjudicated' &&
+        sentenceMarks(candidate.text) > sentenceMarks(main.text) &&
+        supportSimilarity(mainWords, normalizeForSupport(candidate.text)) >= 0.8
+    )
+    .sort((a, b) => punctuationScore(b.text) - punctuationScore(a.text))[0]
+  if (donor) main.text = borrowPunctuation(main.text, donor.text)
+}
+
+function sentenceMarks(text: string): number {
+  return text.match(/[.!?…](?=\s|$|["')])/g)?.length ?? 0
 }
 
 function isSupportedAdjudication(

@@ -231,6 +231,26 @@ describe('recognizeAccurately', () => {
       expect(adjudicator).not.toHaveBeenCalled()
     })
 
+    it('borrows punctuation from a near-identical cross-check when the main model returns a run-on', async () => {
+      const primary = byModel({
+        'whisper-1':
+          'So I finished the build and merged it and then I fixed the tests and shipped the release to the team today',
+        'parakeet-tdt-0.6b-v2':
+          'So I finished the build and merged it. And then I fixed the tests and shipped the release to the teams today.'
+      })
+
+      const outcome = await recognizeAccurately(
+        { ...wav, durationMs: 9_000 },
+        request({ settings: crossCheck }),
+        deps({ primary })
+      )
+
+      expect(outcome.winner).toMatchObject({
+        source: 'remote-primary',
+        text: 'So I finished the build and merged it. And then I fixed the tests and shipped the release to the team today.'
+      })
+    })
+
     it('treats contractions as the same words when voting', async () => {
       const primary = byModel({
         'whisper-1': 'Mic testing, how is it going?',
