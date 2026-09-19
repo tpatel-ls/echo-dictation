@@ -28,6 +28,7 @@ export function Overlay(): JSX.Element {
     cap.onFrame((frame, sampleRate) => {
       if (previewEnabled.current) previewAudio.current.push(frame, sampleRate)
     })
+    cap.onEvent((event) => window.api.logMic(event))
     capture.current = cap
     window.api.overlayReady()
     const applyPreview = (s: Settings): void => {
@@ -50,7 +51,7 @@ export function Overlay(): JSX.Element {
     return () => {
       offState()
       offSettings()
-      void cap.setWarm(false)
+      cap.dispose()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -97,8 +98,8 @@ export function Overlay(): JSX.Element {
         const cap = capture.current
         if (cap) {
           const { frames, sampleRate } = await cap.stop()
+          // Even an empty take goes to main, which reports the dead mic instead of waiting for its watchdog.
           const total = frames.reduce((n, f) => n + f.length, 0)
-          if (total === 0) return
           const durationMs = Math.round((total / sampleRate) * 1000)
           const wav = encodeWav(frames, sampleRate)
           try {

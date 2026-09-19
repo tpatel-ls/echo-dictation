@@ -101,6 +101,35 @@ export function floatToWav(samples: Float32Array, rate: number): ArrayBuffer {
   return buffer
 }
 
+/**
+ * True when a WAV carries no sound at all: every sample is exactly zero, or there are none. A live
+ * mic never does that, even in a quiet room; a dead, muted, or OS-blocked input stream does, and
+ * Whisper turns that silence into "Thank you." Audio that doesn't parse as a WAV is never flagged.
+ */
+export function isSilentWav(wav: ArrayBuffer): boolean {
+  const view = new DataView(wav)
+  if (view.byteLength < 12 || readString(view, 0, 4) !== 'RIFF' || readString(view, 8, 4) !== 'WAVE') {
+    return false
+  }
+  let offset = 12
+  while (offset + 8 <= view.byteLength) {
+    const size = view.getUint32(offset + 4, true)
+    if (readString(view, offset, 4) === 'data') {
+      const end = Math.min(offset + 8 + size, view.byteLength)
+      for (let i = offset + 8; i < end; i++) if (view.getUint8(i) !== 0) return false
+      return true
+    }
+    offset += 8 + size + (size % 2)
+  }
+  return false
+}
+
 function writeString(view: DataView, offset: number, str: string): void {
   for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i))
+}
+
+function readString(view: DataView, offset: number, length: number): string {
+  let str = ''
+  for (let i = 0; i < length; i++) str += String.fromCharCode(view.getUint8(offset + i))
+  return str
 }

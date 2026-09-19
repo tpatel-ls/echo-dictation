@@ -199,6 +199,7 @@ export const IPC = {
   DICTATION_AUDIO: 'dictation:audio',
   DICTATION_PREVIEW: 'dictation:preview',
   OVERLAY_READY: 'overlay:ready',
+  OVERLAY_MIC_LOG: 'overlay:micLog',
   HISTORY_LIST: 'history:list',
   HISTORY_SEARCH: 'history:search',
   HISTORY_DELETE: 'history:delete',
@@ -285,6 +286,8 @@ export interface EchoApi {
   /** Best-effort decode of the audio captured so far; null when unavailable. */
   previewAudio(buf: ArrayBuffer): Promise<string | null>
   overlayReady(): void
+  /** Record a mic lifecycle event (opened, lost, reopened) in mic.log. */
+  logMic(event: string): void
   history: {
     list(opts: HistoryQueryOpts): Promise<Transcript[]>
     search(q: string, opts: HistoryQueryOpts): Promise<Transcript[]>

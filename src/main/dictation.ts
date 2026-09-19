@@ -42,6 +42,7 @@ import { looksLikeTerminal } from './insert/terminal'
 import { snapshotForegroundWindow, type WindowSnapshot } from './insert/window-focus'
 import { positionOverlay } from './windows'
 import { wordCount, needsAiCleanup } from '@shared/format'
+import { isSilentWav } from '@shared/wav'
 
 const LINGER_MS = 1500
 const WATCHDOG_MS = 20_000
@@ -179,6 +180,17 @@ export class DictationController {
 
     let tempAudioPath: string | null = null
     try {
+      // A dead, muted, or OS-blocked input stream records pure digital silence, which Whisper hears as
+      // "Thank you." Say so instead of pasting that; the overlay reopens the mic for the next take.
+      if (isSilentWav(buf)) {
+        const reason = 'Mic sent no audio — check input'
+        this.history.insert(
+          row({ status: 'failed', rawText: reason, meta, appContext, model: s.whisperModel, latency: Date.now() - t0 })
+        )
+        this.send({ phase: 'error', message: reason })
+        this.startLinger()
+        return { ok: false, error: 'silent' }
+      }
       tempAudioPath = writeTemporaryAudio(buf)
       const glossary = dict.map((e) => e.word)
       const speculativeCleanup: {
