@@ -1,5 +1,6 @@
 import { app, ipcMain, clipboard, dialog } from 'electron'
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { parseDictionaryImport, serializeDictionary } from '@shared/dict-export'
 import { serializeTranscriptCsv, serializeTranscriptJson } from '@shared/transcript-export'
 import {
@@ -25,6 +26,7 @@ import { realPasteDeps } from './insert/paste-deps'
 import { pasteText } from './insert/paste'
 import { runDiagnostic } from './diagnostics'
 import { createDiagnosticReport } from './diagnostic-report'
+import { appendRotatingLog } from './diagnostic-log'
 import { learnFromEdit } from './learn'
 import { writeFileAtomic } from './store/atomic-file'
 import { createBuildInfo } from '@shared/build-info'
@@ -54,6 +56,12 @@ export function registerIpc(ctx: IpcContext): void {
   })
   ipcMain.on(IPC.OVERLAY_READY, () => {
     /* overlay handshake — reserved for future pre-warming */
+  })
+  // What the mic did between dictations (opened, lost, reopened), so a silent mic can be traced later.
+  ipcMain.on(IPC.OVERLAY_MIC_LOG, (_e, event: unknown) => {
+    if (typeof event !== 'string') return
+    const line = `${new Date().toISOString()} ${event.slice(0, 300)}\n`
+    appendRotatingLog(join(app.getPath('userData'), 'mic.log'), line)
   })
 
   // ── Hot path: overlay sends the recorded audio, we transcribe + insert ──────

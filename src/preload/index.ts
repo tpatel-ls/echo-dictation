@@ -33,6 +33,9 @@ const api: EchoApi = {
   overlayReady() {
     ipcRenderer.send(IPC.OVERLAY_READY)
   },
+  logMic(event: string) {
+    ipcRenderer.send(IPC.OVERLAY_MIC_LOG, event)
+  },
   history: {
     list: (opts: HistoryQueryOpts) => ipcRenderer.invoke(IPC.HISTORY_LIST, opts),
     search: (q: string, opts: HistoryQueryOpts) => ipcRenderer.invoke(IPC.HISTORY_SEARCH, q, opts),

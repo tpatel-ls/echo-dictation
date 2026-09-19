@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { encodeWav, floatToWav, resampleLinear } from '@shared/wav'
+import { encodeWav, floatToWav, isSilentWav, resampleLinear } from '@shared/wav'
 
 function readStr(view: DataView, off: number, len: number): string {
   let s = ''
@@ -76,5 +76,42 @@ describe('encodeWav', () => {
     const buf = encodeWav([a, b], 16000)
     const view = new DataView(buf)
     expect(view.getUint32(40, true)).toBe(3200 * 2)
+  })
+})
+
+describe('isSilentWav', () => {
+  it('flags a take from a dead input stream, which is all digital zeros', () => {
+    expect(isSilentWav(encodeWav([new Float32Array(4800)], 48000))).toBe(true)
+  })
+
+  it('flags a take that captured no frames at all', () => {
+    expect(isSilentWav(encodeWav([], 48000))).toBe(true)
+  })
+
+  it('passes a quiet room, whose noise floor still moves the samples', () => {
+    // A -68 dBFS hum, around the floor of a USB mic in a quiet room.
+    const hum = Float32Array.from({ length: 4800 }, (_, index) => 0.0004 * Math.sin((2 * Math.PI * 200 * index) / 48000))
+    expect(isSilentWav(encodeWav([hum], 48000))).toBe(false)
+  })
+
+  it('passes a take with a single non-zero sample', () => {
+    const samples = new Float32Array(1600)
+    samples[900] = 0.01
+    expect(isSilentWav(floatToWav(samples, 16000))).toBe(false)
+  })
+
+  it('finds the data chunk behind other chunks', () => {
+    const wav = new Uint8Array(floatToWav(new Float32Array([0, 0.5]), 16000))
+    const list = new Uint8Array([...'LIST'].map((c) => c.charCodeAt(0)).concat([4, 0, 0, 0, 1, 2, 3, 4]))
+    const withList = new Uint8Array(wav.length + list.length)
+    withList.set(wav.subarray(0, 36))
+    withList.set(list, 36)
+    withList.set(wav.subarray(36), 36 + list.length)
+    expect(isSilentWav(withList.buffer)).toBe(false)
+  })
+
+  it('never blocks audio it cannot parse', () => {
+    expect(isSilentWav(new ArrayBuffer(0))).toBe(false)
+    expect(isSilentWav(new Uint8Array(64).buffer)).toBe(false)
   })
 })
