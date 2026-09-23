@@ -1,4 +1,4 @@
-import type { Settings } from '@shared/types'
+import type { Secrets, Settings } from '@shared/types'
 
 /** Shape of the optional bootstrap file `secrets.local.json` (gitignored; bundled
  * into packaged builds). Keys seed encrypted secrets; URLs seed empty endpoints. */
@@ -9,6 +9,8 @@ export interface SeedFile {
   claudeBaseUrl?: string
   syncBaseUrl?: string
   syncToken?: string
+  typesafeApiKey?: string
+  calendarIcsUrl?: string
 }
 
 export interface SeedOptions {
@@ -23,6 +25,18 @@ export function parseSeed(text: string): SeedFile {
     return parsed && typeof parsed === 'object' ? (parsed as SeedFile) : {}
   } catch {
     return {}
+  }
+}
+
+/** The secrets a seed file carries; keys it lacks (or holds as non-strings) stay empty. */
+export function seedSecrets(seed: SeedFile): Secrets {
+  const key = (value: unknown): string => (typeof value === 'string' ? value : '')
+  return {
+    whisperApiKey: key(seed.whisperApiKey),
+    claudeApiKey: key(seed.claudeApiKey),
+    syncToken: key(seed.syncToken),
+    typesafeApiKey: key(seed.typesafeApiKey),
+    calendarIcsUrl: key(seed.calendarIcsUrl)
   }
 }
 

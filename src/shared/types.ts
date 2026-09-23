@@ -1,5 +1,6 @@
 import type { StoredSnippet } from './snippets'
 import type { BuildInfo } from './build-info'
+import { DEFAULT_MEETING_SETTINGS, type MeetingSettings, type MeetingsApi } from './meeting-types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared types — the single source of truth referenced by main, preload, renderers.
@@ -42,7 +43,7 @@ export type TriggerKey =
  * trigger keys exist on this machine). */
 export type OSPlatform = 'darwin' | 'win32' | 'linux'
 
-export interface Settings {
+export interface Settings extends MeetingSettings {
   triggerKey: TriggerKey
   minHoldMs: number
   cancelOnOtherKey: boolean
@@ -101,7 +102,12 @@ export const DEFAULT_SETTINGS: Settings = {
   livePreview: true,
   insertMode: 'paste',
   overlayOffsetBottom: 28,
-  syncBaseUrl: ''
+  syncBaseUrl: '',
+  ...DEFAULT_MEETING_SETTINGS,
+  meetingApps: { ...DEFAULT_MEETING_SETTINGS.meetingApps },
+  // Meeting capture needs the Windows helper, so recording is off unless the platform defaults
+  // (SettingsStore.loadSettings) turn it on for Windows.
+  meetingMode: 'off'
 }
 
 export interface Secrets {
@@ -109,12 +115,18 @@ export interface Secrets {
   claudeApiKey: string
   /** Bearer token shared with the sync service. Empty disables sync. */
   syncToken: string
+  /** TypeSafe API key for JEV note verification. Empty skips verification. */
+  typesafeApiKey: string
+  /** Private calendar address (Google "secret address in iCal format", Outlook published ICS). */
+  calendarIcsUrl: string
 }
 
 export const EMPTY_SECRETS: Secrets = {
   whisperApiKey: '',
   claudeApiKey: '',
-  syncToken: ''
+  syncToken: '',
+  typesafeApiKey: '',
+  calendarIcsUrl: ''
 }
 
 // ── Dictation state (main → overlay) ─────────────────────────────────────────
@@ -200,6 +212,8 @@ export const IPC = {
   DICTATION_PREVIEW: 'dictation:preview',
   OVERLAY_READY: 'overlay:ready',
   OVERLAY_MIC_LOG: 'overlay:micLog',
+  /** Overlay → main: the pointer is over the capsule (take clicks) or has left (click through again). */
+  OVERLAY_INTERACTIVE: 'overlay:interactive',
   HISTORY_LIST: 'history:list',
   HISTORY_SEARCH: 'history:search',
   HISTORY_DELETE: 'history:delete',
@@ -257,6 +271,9 @@ export interface MaskedSecrets {
   whisperApiKey: string // masked, e.g. "sk-whi…1a2b"
   claudeApiKey: string
   syncToken: string
+  typesafeApiKey: string
+  /** Host only, e.g. "calendar.google.com/…". */
+  calendarIcsUrl: string
 }
 
 export interface DictionaryImportResult {
@@ -288,6 +305,8 @@ export interface EchoApi {
   overlayReady(): void
   /** Record a mic lifecycle event (opened, lost, reopened) in mic.log. */
   logMic(event: string): void
+  /** Overlay only: take clicks while the pointer is over the capsule, click through otherwise. */
+  setOverlayInteractive(interactive: boolean): void
   history: {
     list(opts: HistoryQueryOpts): Promise<Transcript[]>
     search(q: string, opts: HistoryQueryOpts): Promise<Transcript[]>
@@ -332,4 +351,5 @@ export interface EchoApi {
   system: {
     buildInfo(): Promise<BuildInfo>
   }
+  meetings: MeetingsApi
 }

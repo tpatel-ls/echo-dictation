@@ -1,16 +1,22 @@
 export function Toggle({
   checked,
-  onChange
+  onChange,
+  disabled = false,
+  label
 }: {
   checked: boolean
   onChange: (v: boolean) => void
+  disabled?: boolean
+  label?: string
 }): JSX.Element {
   return (
     <button
       role="switch"
       aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`group w-10 h-6 rounded-full p-0.5 transition-colors duration-200 shrink-0 cursor-pointer ${
+      className={`group w-10 h-6 rounded-full p-0.5 transition-colors duration-200 shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
         checked ? 'bg-accent hover:bg-accent2' : 'bg-[#d6d9e0] hover:bg-[#c8ccd5]'
       }`}
     >

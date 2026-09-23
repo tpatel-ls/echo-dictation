@@ -5,6 +5,7 @@ import { PREVIEW_INTERVAL_MS, PreviewAudio, supportsLivePreview } from '@shared/
 import { Check } from 'lucide-react'
 import { MicCapture } from './capture'
 import { Waveform } from './Waveform'
+import { useMeetingCapsule } from './MeetingCapsule'
 
 /** Enough words to fill the two visible lines; older words scroll out above. */
 const CARD_MAX_WORDS = 48
@@ -19,6 +20,8 @@ export function Overlay(): JSX.Element {
   /** Bumped on every phase change so a preview loop from an earlier dictation stops itself. */
   const previewRun = useRef(0)
   const previewAudio = useRef(new PreviewAudio())
+  // Between dictations the capsule shows the meeting state; a dictation always takes priority.
+  const capsule = useMeetingCapsule(phase === 'idle')
 
   useEffect(() => {
     const cap = new MicCapture()
@@ -136,7 +139,13 @@ export function Overlay(): JSX.Element {
     <div className="ov-root">
       <div className="ov-stack">
         {showCard && <TranscriptCard text={previewText} finalizing={phase === 'transcribing'} />}
-        <div className={`ov-pill ov-${phase}`} role="status" aria-live="polite">
+        <div
+          className={`ov-pill ${phase === 'idle' ? capsule.className : `ov-${phase}`}`}
+          role="status"
+          aria-live="polite"
+          {...(phase === 'idle' ? capsule.attrs : {})}
+        >
+          {phase === 'idle' && capsule.content}
           {phase === 'listening' && <Waveform levelRef={levelRef} mode="live" width={78} height={18} />}
           {phase === 'transcribing' && (
             <>

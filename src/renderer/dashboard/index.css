@@ -48,3 +48,19 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Slow "breathing" pulse for the recording dot; the reduced-motion rule above stops it. */
+@keyframes echo-breathe {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
+.echo-breathe {
+  animation: echo-breathe 1.8s ease-in-out infinite;
+}

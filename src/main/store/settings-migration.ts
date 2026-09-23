@@ -3,9 +3,12 @@ import {
   type AccuracyMode,
   type CleanupMode,
   type MicMode,
+  type OSPlatform,
   type Settings,
   type TriggerKey
 } from '@shared/types'
+import { MEETING_APP_IDS, type MeetingAppToggles, type MeetingMode } from '@shared/meeting-types'
+import { defaultTriggerKey } from '@shared/trigger'
 import { normalizeEndpointUrl } from './endpoint-url'
 
 const TRIGGER_KEYS = new Set<TriggerKey>([
@@ -15,6 +18,20 @@ const TRIGGER_KEYS = new Set<TriggerKey>([
 const CLEANUP_MODES = new Set<CleanupMode>(['off', 'auto', 'on-demand'])
 const ACCURACY_MODES = new Set<AccuracyMode>(['fast', 'balanced', 'maximum'])
 const MIC_MODES = new Set<MicMode>(['on-demand', 'warm'])
+const MEETING_MODES = new Set<MeetingMode>(['auto', 'off'])
+
+/**
+ * Fresh-install defaults for a platform. The trigger key depends on the keyboard (macOS has no
+ * Right Ctrl), and meetings record automatically only where the Windows meeting helper exists.
+ */
+export function defaultSettingsFor(platform: OSPlatform): Settings {
+  return {
+    ...DEFAULT_SETTINGS,
+    meetingApps: { ...DEFAULT_SETTINGS.meetingApps },
+    triggerKey: defaultTriggerKey(platform),
+    meetingMode: platform === 'win32' ? 'auto' : 'off'
+  }
+}
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -45,6 +62,14 @@ function cleanupMode(value: unknown, fallback: CleanupMode): CleanupMode {
   if (value === true) return 'auto'
   if (value === false) return 'off'
   return CLEANUP_MODES.has(value as CleanupMode) ? value as CleanupMode : fallback
+}
+
+/** One boolean per known app; apps missing from the saved document keep their default. */
+function meetingApps(value: unknown, fallback: MeetingAppToggles): MeetingAppToggles {
+  const saved = record(value)
+  const apps = {} as MeetingAppToggles
+  for (const id of MEETING_APP_IDS) apps[id] = booleanValue(saved[id], fallback[id] ?? true)
+  return apps
 }
 
 export function normalizeSettings(
@@ -82,6 +107,26 @@ export function normalizeSettings(
       0,
       300
     ),
-    syncBaseUrl: normalizeEndpointUrl(value.syncBaseUrl, defaults.syncBaseUrl)
+    syncBaseUrl: normalizeEndpointUrl(value.syncBaseUrl, defaults.syncBaseUrl),
+    meetingMode: MEETING_MODES.has(value.meetingMode as MeetingMode)
+      ? value.meetingMode as MeetingMode
+      : defaults.meetingMode,
+    meetingApps: meetingApps(value.meetingApps, defaults.meetingApps),
+    meetingUserName: stringValue(value.meetingUserName, defaults.meetingUserName),
+    meetingOutputDir: stringValue(value.meetingOutputDir, defaults.meetingOutputDir),
+    meetingRetainAudioDays: boundedInteger(
+      value.meetingRetainAudioDays,
+      defaults.meetingRetainAudioDays,
+      0,
+      3650
+    ),
+    meetingLiveModel: stringValue(value.meetingLiveModel, defaults.meetingLiveModel),
+    meetingFinalModel: stringValue(value.meetingFinalModel, defaults.meetingFinalModel),
+    meetingCheckModel: stringValue(value.meetingCheckModel, defaults.meetingCheckModel),
+    meetingVocabModel: stringValue(value.meetingVocabModel, defaults.meetingVocabModel).trim(),
+    meetingNotes: booleanValue(value.meetingNotes, defaults.meetingNotes),
+    meetingVerifyNotes: booleanValue(value.meetingVerifyNotes, defaults.meetingVerifyNotes),
+    meetingNotifications: booleanValue(value.meetingNotifications, defaults.meetingNotifications),
+    meetingMyEmail: stringValue(value.meetingMyEmail, defaults.meetingMyEmail).trim()
   }
 }

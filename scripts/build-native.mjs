@@ -45,7 +45,7 @@ else {
 }
 
 function buildDarwin() {
-  for (const name of ["EchoKeyHelper.exe", "EchoPasteHelper.exe", "EchoSpeechHelper.exe"]) {
+  for (const name of ["EchoKeyHelper.exe", "EchoPasteHelper.exe", "EchoSpeechHelper.exe", "EchoMeetingHelper.exe"]) {
     rmSync(join(outDir, name), { force: true });
   }
   const identity = findLocalIdentity() ? localIdentity : "-";
@@ -82,11 +82,12 @@ function buildDarwin() {
 }
 
 function buildWindows() {
-  for (const name of ["EchoKeyHelper", "EchoPasteHelper", "EchoSpeechHelper", "EchoSpeechHelper.app"]) {
+  for (const name of ["EchoKeyHelper", "EchoPasteHelper", "EchoSpeechHelper", "EchoSpeechHelper.app", "EchoMeetingHelper"]) {
     rmSync(join(outDir, name), { recursive: true, force: true });
   }
   const runtime = process.env.ECHO_WINDOWS_RID || "win-x64";
-  for (const name of ["EchoKeyHelper", "EchoPasteHelper", "EchoSpeechHelper"]) {
+  // EchoMeetingHelper targets net10.0 (NAudio 3 needs .NET 9+); the others stay on net8.0.
+  for (const name of ["EchoKeyHelper", "EchoPasteHelper", "EchoSpeechHelper", "EchoMeetingHelper"]) {
     const project = join(root, "native", "windows", name, `${name}.csproj`);
     const tempDir = mkdtempSync(join(tmpdir(), "echo-windows-"));
     try {

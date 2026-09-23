@@ -11,6 +11,15 @@ describe('helperPath', () => {
     )
   })
 
+  it('resolves the Windows meeting helper beside the other helpers', () => {
+    expect(helperPath('EchoMeetingHelper', 'win32', 'C:\\Echo\\resources')).toBe(
+      'C:\\Echo\\resources\\native\\EchoMeetingHelper.exe'
+    )
+    expect(helperPath('EchoMeetingHelper', 'win32', undefined, 'C:\\repo')).toBe(
+      'C:\\repo\\out\\native\\EchoMeetingHelper.exe'
+    )
+  })
+
   it('uses the signed speech app bundle on macOS and plain Mach-O helpers otherwise', () => {
     expect(helperPath('EchoSpeechHelper', 'darwin', '/Echo/Resources')).toBe(
       '/Echo/Resources/native/EchoSpeechHelper.app/Contents/MacOS/EchoSpeechHelper'

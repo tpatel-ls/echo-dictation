@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- System.Windows.Automation (UI Automation) ships with the WPF desktop framework. -->
+    <UseWPF>true</UseWPF>
+    <!-- Built-in COM interop (UI Automation, the hand-rolled Core Audio interfaces) breaks when trimmed. -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <!-- WPF ships native libraries (UI Automation P/Invokes one at start-up); extract them from the single file. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio.Wasapi" Version="3.1.0" />
+  </ItemGroup>
+</Project>

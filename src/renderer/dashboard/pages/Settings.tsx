@@ -1,10 +1,12 @@
 import { useEffect, useId, useState, type ReactNode } from 'react'
-import type { MaskedSecrets, Settings as SettingsType } from '@shared/types'
+import type { MaskedSecrets, Secrets, Settings as SettingsType } from '@shared/types'
+import { MEETING_APP_IDS, MEETING_APP_LABELS } from '@shared/meeting-types'
 import { triggerLabel, triggerOptions } from '@shared/trigger'
 import { api } from '../lib/api'
 import { Field, TextInput, Select } from '../components/Field'
 import { Toggle } from '../components/Toggle'
 import { validateEndpointUrl } from '@shared/endpoints'
+import { ChevronRight } from 'lucide-react'
 
 export function Settings({ notify }: { notify: (m: string) => void }): JSX.Element {
   const [s, setS] = useState<SettingsType | null>(null)
@@ -12,6 +14,10 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
   const [whisperKey, setWhisperKey] = useState('')
   const [claudeKey, setClaudeKey] = useState('')
   const [syncToken, setSyncToken] = useState('')
+  const [typesafeKey, setTypesafeKey] = useState('')
+  const [calendarUrl, setCalendarUrl] = useState('')
+  const [testingCalendar, setTestingCalendar] = useState(false)
+  const [advanced, setAdvanced] = useState(false)
   const [audioInputs, setAudioInputs] = useState<Array<{ deviceId: string; label: string }>>([])
 
   useEffect(() => {
@@ -45,15 +51,19 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
   }
 
   const saveKeys = async (): Promise<void> => {
-    const body: Partial<{ whisperApiKey: string; claudeApiKey: string; syncToken: string }> = {}
+    const body: Partial<Secrets> = {}
     if (whisperKey) body.whisperApiKey = whisperKey
     if (claudeKey) body.claudeApiKey = claudeKey
     if (syncToken) body.syncToken = syncToken
+    if (typesafeKey) body.typesafeApiKey = typesafeKey
+    if (calendarUrl) body.calendarIcsUrl = calendarUrl.trim()
     if (Object.keys(body).length === 0) return
     await api.settings.setSecrets(body)
     setWhisperKey('')
     setClaudeKey('')
     setSyncToken('')
+    setTypesafeKey('')
+    setCalendarUrl('')
     setMasked(await api.settings.getSecretsMasked())
     notify('Saved (encrypted)')
   }
@@ -218,6 +228,162 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
             </Field>
           </Section>
 
+          <Section title="Meetings">
+            {api.platform !== 'win32' ? (
+              <p className="py-3.5 text-sm text-muted">Meeting transcription is available on Windows</p>
+            ) : (
+              <>
+                <Field
+                  label="Automatically transcribe meetings"
+                  hint="Records only while a meeting app below holds the mic in a call, and shows a pill at the top of the screen while it does."
+                >
+                  <Toggle
+                    checked={s.meetingMode === 'auto'}
+                    onChange={(v) => void patch({ meetingMode: v ? 'auto' : 'off' })}
+                  />
+                </Field>
+                {MEETING_APP_IDS.map((id) => (
+                  <Field key={id} label={MEETING_APP_LABELS[id]}>
+                    <Toggle
+                      label={MEETING_APP_LABELS[id]}
+                      checked={s.meetingApps[id]}
+                      disabled={s.meetingMode !== 'auto'}
+                      onChange={(v) => void patch({ meetingApps: { ...s.meetingApps, [id]: v } })}
+                    />
+                  </Field>
+                ))}
+                <Field label="Your name in transcripts" hint="How your own voice is labelled.">
+                  <DraftInput
+                    width="w-64"
+                    value={s.meetingUserName}
+                    placeholder="Uses your Windows account name"
+                    onSave={(v) => patch({ meetingUserName: v.trim() })}
+                  />
+                </Field>
+                <Field label="Notes folder" hint="Each meeting's notes are also saved here as a Markdown file.">
+                  <DraftInput
+                    width="w-64"
+                    value={s.meetingOutputDir}
+                    placeholder="Documents\Echo Meetings"
+                    onSave={(v) => patch({ meetingOutputDir: v.trim() })}
+                  />
+                </Field>
+                <Field
+                  label="Keep meeting audio"
+                  hint="Days to keep the recording after notes are ready, so you can reprocess. 0 deletes it right away."
+                >
+                  <div className="flex items-center gap-2">
+                    <TextInput
+                      type="number"
+                      width="w-20"
+                      min={0}
+                      max={3650}
+                      step={1}
+                      value={String(s.meetingRetainAudioDays)}
+                      onChange={(v) => void patch({ meetingRetainAudioDays: clampInt(v, 0, 3650) })}
+                    />
+                    <span className="text-xs text-muted">days</span>
+                  </div>
+                </Field>
+                <Field
+                  label="AI notes"
+                  hint="Draft a summary, decisions, and action items with the AI cleanup proxy. Transcript excerpts are sent to it."
+                >
+                  <Toggle checked={s.meetingNotes} onChange={(v) => void patch({ meetingNotes: v })} />
+                </Field>
+                <Field
+                  label="Verify notes with TypeSafe JEV"
+                  hint={
+                    masked?.typesafeApiKey
+                      ? 'Checks each note against the transcript. Transcript excerpts are sent to TypeSafe.'
+                      : 'Add a TypeSafe API key below to check each note against the transcript.'
+                  }
+                >
+                  <Toggle
+                    checked={s.meetingVerifyNotes && Boolean(masked?.typesafeApiKey)}
+                    disabled={!masked?.typesafeApiKey || !s.meetingNotes}
+                    onChange={(v) => void patch({ meetingVerifyNotes: v })}
+                  />
+                </Field>
+                <Field
+                  label="Also show Windows notifications"
+                  hint="Meeting states always show in Echo's bottom pill. Turn this on to also get a Windows notification when a meeting is detected, starts, ends, or its notes are ready."
+                >
+                  <Toggle checked={s.meetingNotifications} onChange={(v) => void patch({ meetingNotifications: v })} />
+                </Field>
+                <Field
+                  label="TypeSafe API key"
+                  hint={masked?.typesafeApiKey ? `Current: ${masked.typesafeApiKey}` : 'Not set'}
+                >
+                  <TextInput type="password" value={typesafeKey} placeholder="Enter to change" onChange={setTypesafeKey} />
+                </Field>
+                <div className="border-b border-border/50">
+                  <button
+                    onClick={() => setAdvanced((v) => !v)}
+                    aria-expanded={advanced}
+                    className="flex items-center gap-1.5 py-3 text-sm text-muted hover:text-text transition"
+                  >
+                    <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${advanced ? 'rotate-90' : ''}`} />
+                    Advanced
+                  </button>
+                  {advanced && (
+                    <div className="pl-5">
+                      <Field label="Live model" hint="Fast model for the transcript you see during the call.">
+                        <DraftInput width="w-52" value={s.meetingLiveModel} onSave={(v) => patch({ meetingLiveModel: v.trim() })} />
+                      </Field>
+                      <Field label="Final model" hint="Most accurate model, run on the whole recording after the call.">
+                        <DraftInput width="w-52" value={s.meetingFinalModel} onSave={(v) => patch({ meetingFinalModel: v.trim() })} />
+                      </Field>
+                      <Field label="Cross-check model" hint="Second opinion on the final pass that catches invented words.">
+                        <DraftInput width="w-52" value={s.meetingCheckModel} onSave={(v) => patch({ meetingCheckModel: v.trim() })} />
+                      </Field>
+                      <Field label="Vocabulary model" hint="Spells names and terms from your dictionary and your meetings' people. Leave empty to turn it off.">
+                        <DraftInput width="w-52" value={s.meetingVocabModel} onSave={(v) => patch({ meetingVocabModel: v.trim() })} />
+                      </Field>
+                    </div>
+                  )}
+                </div>
+                <p className="py-3 text-xs text-muted">Recording laws vary; let participants know Echo is transcribing.</p>
+              </>
+            )}
+          </Section>
+
+          {api.platform === 'win32' && (
+            <Section title="Calendar">
+              <p className="py-3 text-xs text-muted">
+                Echo reads your calendar to name the people in a meeting. Paste your calendar&apos;s private iCal address; no
+                sign-in is needed, and it stays on this PC.
+              </p>
+              <Field
+                label="Calendar address (iCal)"
+                hint={masked?.calendarIcsUrl ? `Current: ${masked.calendarIcsUrl}` : 'Google: Settings › your calendar › Secret address in iCal format'}
+              >
+                <TextInput type="password" value={calendarUrl} placeholder="https://…/basic.ics" onChange={setCalendarUrl} />
+              </Field>
+              <Field label="My calendar email" hint="Leaves you out of a meeting's attendees. Optional when your name is set above.">
+                <DraftInput width="w-52" value={s.meetingMyEmail} onSave={(v) => patch({ meetingMyEmail: v.trim() })} />
+              </Field>
+              <Field label="Test the calendar" hint="Reads it now and counts today's events.">
+                <button
+                  disabled={testingCalendar || !masked?.calendarIcsUrl}
+                  onClick={() => {
+                    setTestingCalendar(true)
+                    api.meetings
+                      .testCalendar()
+                      .then(
+                        (n) => notify(`Calendar read: ${n} event${n === 1 ? '' : 's'} today`),
+                        (e) => notify(`Couldn't read the calendar: ${String((e as Error).message ?? e).replace(/^Error invoking remote method '[^']*': (Error: )?/, '')}`)
+                      )
+                      .finally(() => setTestingCalendar(false))
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-border text-xs text-text hover:bg-surface2 transition disabled:opacity-50"
+                >
+                  {testingCalendar ? 'Reading…' : 'Test'}
+                </button>
+              </Field>
+            </Section>
+          )}
+
           <Section title="Behavior">
             <Field label="Launch at login">
               <Toggle checked={s.launchAtLogin} onChange={(v) => void patch({ launchAtLogin: v })} />
@@ -274,7 +440,7 @@ export function Settings({ notify }: { notify: (m: string) => void }): JSX.Eleme
             </Field>
           </Section>
 
-          {(whisperKey || claudeKey || syncToken) && (
+          {(whisperKey || claudeKey || syncToken || typesafeKey || calendarUrl) && (
             <div className="py-4">
               <button
                 onClick={() => void saveKeys()}
@@ -326,6 +492,36 @@ function EndpointField({
         }}
       />
     </Field>
+  )
+}
+
+/** A text setting saved on blur or Enter, so typing a path or name does not persist every keystroke. */
+function DraftInput({
+  value,
+  placeholder,
+  width,
+  onSave
+}: {
+  value: string
+  placeholder?: string
+  width?: string
+  onSave: (value: string) => Promise<void>
+}): JSX.Element {
+  const [draft, setDraft] = useState(value)
+  useEffect(() => setDraft(value), [value])
+  return (
+    <TextInput
+      width={width}
+      value={draft}
+      placeholder={placeholder}
+      onChange={setDraft}
+      onBlur={() => {
+        if (draft !== value) void onSave(draft)
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.currentTarget.blur()
+      }}
+    />
   )
 }
 
