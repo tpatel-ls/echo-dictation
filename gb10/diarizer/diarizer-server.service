@@ -1,0 +1,18 @@
+[Unit]
+Description=Speaker diarization for Echo meetings (pyannote community-1, CUDA), loopback only, behind the auth shim
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/diar
+Environment=DIAR_MODEL=%h/diar/models/speaker-diarization-community-1
+Environment=DIAR_BATCH=32
+Environment=HF_HUB_OFFLINE=1
+Environment=PYANNOTE_METRICS_ENABLED=0
+ExecStart=%h/diar/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 8004 --log-level warning
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

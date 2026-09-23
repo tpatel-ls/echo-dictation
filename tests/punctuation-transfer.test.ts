@@ -24,4 +24,32 @@ describe('borrowPunctuation', () => {
   it('leaves the target alone when the donor has nothing to offer', () => {
     expect(borrowPunctuation('Please send the update.', '')).toBe('Please send the update.')
   })
+
+  describe('with substitutions', () => {
+    it('also punctuates a word the donor heard differently, one for one', () => {
+      expect(
+        borrowPunctuation(
+          'the only board we check is BROXA we switch next month',
+          'The only board we check is brocksa. We switch next month.',
+          { substitutions: true }
+        )
+      ).toBe('The only board we check is BROXA. We switch next month.')
+    })
+
+    it('capitalizes a substituted word without taking the donor spelling', () => {
+      expect(borrowPunctuation('it is fine zeltra is next', 'It is fine. Zebra is next.', { substitutions: true })).toBe(
+        'It is fine. Zeltra is next.'
+      )
+    })
+
+    it('does not pair gaps of different lengths', () => {
+      expect(borrowPunctuation('we send it to hiring at NWG and', 'We send it to hiring at Northwind group. And', { substitutions: true })).toBe(
+        'We send it to hiring at NWG And' // no period on NWG: two donor words for one
+      )
+    })
+
+    it('is off by default', () => {
+      expect(borrowPunctuation('it is BROXA we switch', 'It is brocksa. We switch.')).toBe('It is BROXA We switch.')
+    })
+  })
 })

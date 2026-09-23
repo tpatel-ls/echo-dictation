@@ -130,6 +130,252 @@ body {
   color: #ffcf6b;
 }
 
+/* ── Meeting states (between dictations) ──────────────────────────────────── */
+/* The idle capsule grows into a meeting state and expands on hover to show its controls. The
+   glass follows DESIGN.md; size changes ease out and never bounce. */
+
+.ov-mt {
+  --ov-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  width: auto;
+  max-width: 452px;
+  height: 28px;
+  gap: 7px;
+  padding: 0 11px;
+  justify-content: flex-start;
+  opacity: 1;
+  background: linear-gradient(180deg, rgba(28, 30, 40, 0.9), rgba(13, 14, 20, 0.94));
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1.4px 0 rgba(255, 255, 255, 0.14),
+    0 14px 30px -12px rgba(0, 0, 0, 0.55),
+    0 2px 6px rgba(0, 0, 0, 0.3);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    height 0.24s var(--ov-ease),
+    padding 0.24s var(--ov-ease),
+    border-color 0.2s ease,
+    opacity 0.2s ease;
+  animation: ovMtIn 0.24s var(--ov-ease);
+}
+
+.ov-mt-open {
+  height: 34px;
+  padding: 0 5px 0 12px;
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.ov-mt-compact {
+  height: 14px;
+  padding: 0 9px;
+}
+
+.ov-mt-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+}
+
+.ov-mt-dot-amber {
+  background: #f5b041;
+  box-shadow: 0 0 0 3px rgba(245, 176, 65, 0.18);
+}
+
+.ov-mt-dot-red {
+  background: #ff5a5a;
+  box-shadow: 0 0 0 3px rgba(255, 90, 90, 0.18);
+  animation: ovBreathe 1.8s ease-in-out infinite;
+}
+
+.ov-mt-compact .ov-mt-dot {
+  width: 6px;
+  height: 6px;
+  box-shadow: none;
+}
+
+.ov-mt-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ov-mt-title {
+  max-width: 130px;
+  color: rgba(255, 255, 255, 0.62);
+  font-weight: 400;
+}
+
+.ov-mt-time {
+  flex: none;
+  font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.ov-mt-micoff {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: #f5b041;
+}
+
+.ov-mt-check {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  color: #6ee7b7;
+}
+
+.ov-mt-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 2px;
+  animation: ovMtReveal 0.2s var(--ov-ease);
+}
+
+.ov-mt-btn,
+.ov-mt-icon,
+.ov-mt-notice-btn {
+  font: inherit;
+  cursor: pointer;
+}
+
+.ov-mt-btn {
+  flex: none;
+  height: 24px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 11.5px;
+  transition: background-color 0.12s ease;
+}
+
+.ov-mt-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.ov-mt-btn-rec {
+  background: #dc2626;
+  color: #fff;
+}
+
+.ov-mt-btn-rec:hover {
+  background: #ef4444;
+}
+
+.ov-mt-btn-on {
+  background: rgba(245, 176, 65, 0.22);
+  color: #fcd34d;
+}
+
+.ov-mt-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.ov-mt-icon:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.ov-mt-icon svg,
+.ov-mt-open-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.ov-mt-confirm {
+  color: #fca5a5;
+  padding: 0 3px;
+}
+
+.ov-mt-error {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #fca5a5;
+}
+
+.ov-mt-notice {
+  padding: 0;
+}
+
+.ov-mt-notice-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 100%;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.ov-mt-open-icon {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.ov-mt-notice-warn .ov-mt-text {
+  color: #ffcf6b;
+}
+
+.ov-mt button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ov-mt button:focus-visible {
+  outline: 2px solid #a5b4fc;
+  outline-offset: 1px;
+}
+
+@keyframes ovMtIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ovMtReveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ovBreathe {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+}
+
 /* ── Live transcript card ─────────────────────────────────────────────────── */
 
 .ov-card {
@@ -224,7 +470,14 @@ body {
   .ov-sheen,
   .ov-check,
   .ov-card,
-  .ov-word {
+  .ov-word,
+  .ov-mt,
+  .ov-mt-dot-red,
+  .ov-mt-actions {
     animation: none;
+  }
+  .ov-mt,
+  .ov-mt-btn {
+    transition-duration: 0.01ms;
   }
 }

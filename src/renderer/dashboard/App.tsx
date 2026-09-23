@@ -1,7 +1,9 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { Toast } from './components/Toast'
 import { History } from './pages/History'
+import { Meetings, type MeetingFocus } from './pages/Meetings'
+import { api } from './lib/api'
 import { Dictionary } from './pages/Dictionary'
 import { Snippets } from './pages/Snippets'
 import { Stats } from './pages/Stats'
@@ -33,11 +35,22 @@ export function App(): JSX.Element {
     timer.current = setTimeout(() => setToast(null), action ? 6000 : 2200)
   }, [])
 
+  // Main (tray, notification, pill) asks for the Meetings page and optionally one meeting.
+  const [meetingFocus, setMeetingFocus] = useState<MeetingFocus | null>(null)
+  useEffect(() => {
+    return api.meetings.onEvent((e) => {
+      if (e.type !== 'navigate') return
+      setPage('meetings')
+      setMeetingFocus((cur) => ({ meetingId: e.meetingId, nonce: (cur?.nonce ?? 0) + 1 }))
+    })
+  }, [])
+
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar page={page} onNavigate={setPage} />
       <main className="flex-1 min-w-0 bg-bg">
         {page === 'history' && <History notify={notify} />}
+        {page === 'meetings' && <Meetings notify={notify} focus={meetingFocus} />}
         {page === 'dictionary' && <Dictionary notify={notify} />}
         {page === 'snippets' && <Snippets notify={notify} />}
         {page === 'stats' && <Stats />}

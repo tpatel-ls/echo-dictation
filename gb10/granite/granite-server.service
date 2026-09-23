@@ -1,0 +1,17 @@
+[Unit]
+Description=Granite Speech 4.1 2B speech recognizer for Echo meetings (transformers, CUDA), loopback only, behind the auth shim
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/granite
+Environment=GRANITE_MODEL=ibm-granite/granite-speech-4.1-2b
+Environment=HF_HUB_OFFLINE=1
+Environment=TRANSFORMERS_OFFLINE=1
+ExecStart=%h/granite/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 8005 --log-level warning
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

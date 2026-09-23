@@ -3,7 +3,7 @@
 // nearly the same words with reliable sentence breaks. Words are never taken from the donor: only the
 // punctuation after matching words, and the capital letter on words the target left lowercase.
 
-interface Token {
+export interface Token {
   lead: string
   core: string
   trail: string
@@ -12,22 +12,54 @@ interface Token {
 
 const MARKS = /[.,?!;:]+$/u
 
-export function borrowPunctuation(target: string, donor: string): string {
+/**
+ * `substitutions`: also pair words between two matches when both sides have the same number of
+ * them ("BROXA" where the donor heard "brocksa."), taking the donor's marks and a leading capital but
+ * never its spelling. The target's own words are the ones a keyword list or dictionary corrected,
+ * so they are exactly where the donor disagrees.
+ */
+export function borrowPunctuation(target: string, donor: string, options: { substitutions?: boolean } = {}): string {
   const targetTokens = tokenize(target)
   const donorTokens = tokenize(donor)
   if (!targetTokens.length || !donorTokens.length) return target
 
-  for (const [i, j] of alignTokens(targetTokens, donorTokens)) {
+  const pairs = alignTokens(targetTokens, donorTokens)
+  for (const [i, j] of pairs) {
     const t = targetTokens[i]!
     const d = donorTokens[j]!
     const donorMarks = d.trail.match(MARKS)?.[0] ?? ''
     t.trail = t.trail.replace(MARKS, '') + donorMarks
     if (t.core === t.core.toLowerCase() && d.core !== d.core.toLowerCase()) t.core = d.core
   }
+  if (options.substitutions) {
+    for (const [i, j] of substitutionPairs(pairs, targetTokens.length, donorTokens.length)) {
+      const t = targetTokens[i]!
+      const d = donorTokens[j]!
+      const donorMarks = d.trail.match(MARKS)?.[0] ?? ''
+      if (donorMarks) t.trail = t.trail.replace(MARKS, '') + donorMarks
+      const first = d.core.charAt(0)
+      if (first !== first.toLowerCase() && t.core.charAt(0) === t.core.charAt(0).toLowerCase()) {
+        t.core = t.core.charAt(0).toUpperCase() + t.core.slice(1)
+      }
+    }
+  }
   return targetTokens.map((token) => token.lead + token.core + token.trail).join(' ')
 }
 
-function tokenize(text: string): Token[] {
+/** Unmatched runs of equal length on both sides between (and around) matches, paired in order. */
+function substitutionPairs(pairs: Array<[number, number]>, rows: number, cols: number): Array<[number, number]> {
+  const out: Array<[number, number]> = []
+  const bounds: Array<[number, number]> = [[-1, -1], ...pairs, [rows, cols]]
+  for (let k = 1; k < bounds.length; k++) {
+    const [i0, j0] = bounds[k - 1]!
+    const [i1, j1] = bounds[k]!
+    if (i1 - i0 !== j1 - j0) continue
+    for (let n = 1; n < i1 - i0; n++) out.push([i0 + n, j0 + n])
+  }
+  return out
+}
+
+export function tokenize(text: string): Token[] {
   return text
     .split(/\s+/)
     .filter(Boolean)
@@ -41,7 +73,7 @@ function tokenize(text: string): Token[] {
 }
 
 /** Longest-common-subsequence pairs of token indexes whose words match. */
-function alignTokens(a: Token[], b: Token[]): Array<[number, number]> {
+export function alignTokens(a: Token[], b: Token[]): Array<[number, number]> {
   const rows = a.length
   const cols = b.length
   const table = Array.from({ length: rows + 1 }, () => new Uint16Array(cols + 1))

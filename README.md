@@ -147,6 +147,76 @@ SYNC_TOKEN='a-long-random-token' npm run sync-server
 
 Deployment details are in [the sync server guide](src/server/README.md).
 
+## Meeting notes (Windows)
+
+Echo can transcribe the meetings you join and write notes afterwards. Turn it on or off in
+**Settings › Meetings** (on by default on Windows; macOS shows it as unavailable).
+
+- **When it records.** Only while a supported app holds your microphone *and* shows a meeting:
+  Google Meet (Chrome, Edge, Brave, Arc, Firefox), Microsoft Teams, Slack huddles, Zoom and Webex.
+  Each app can be switched off. A lobby does not start a recording until the other side is heard
+  for more than a moment (a join chime does not count) or 90 s have passed. A browser using the mic
+  for anything else (voice notes, ChatGPT) is not a meeting. Recording stops about 4 s after the
+  meeting tab or window closes (15 s when Echo cannot tell), and anything captured after the call's
+  last live moment is cut from the audio and the transcript. If the meeting app releases the mic
+  while you are muted, recording continues only while the meeting is still on screen and the other
+  side was heard in the last minute. Slack shows no huddle window, so a Slack huddle without your
+  mic continues only while the other side is heard, and ends 15 s after they were last heard.
+- **Always visible.** Echo's small bottom capsule (the one dictation uses) shows the meeting state:
+  an amber dot for "Meeting detected" (hover for **Record now** / **Don't record**), a red dot and
+  timer while recording (hover for **Pause my mic**, **Stop**, **Discard**, **Open**), "Saved ·
+  writing notes" when it ends, and a clickable "Notes ready" afterwards. Holding the dictation key
+  always takes priority. The tray says so too. Windows notifications are off by default (Settings ›
+  Meetings › "Also show Windows notifications"). Windows shows no microphone indicator for this kind
+  of capture, so Echo's own indicators are the only cue. Tell the other participants you are
+  recording; the laws differ by place.
+- **Your mic while muted.** Nothing you say while muted should end up in a transcript. Echo pauses
+  your mic channel (it records silence, and nothing reaches the disk) whenever the meeting app
+  releases the microphone. You can also pause it yourself from the capsule, the tray, or the Meetings
+  page ("Your mic: paused"). Some apps (Teams, Zoom, and usually Meet) keep the mic open while
+  muted, and Echo cannot see their mute button, so use the pause there. The second before each
+  pause is left out of the transcript as well.
+- **Where things go.** Audio stays on this PC in Echo's data folder (`meetings\<id>\`) and is sent
+  only to your own speech server. It is deleted 30 days after the meeting by default (0 deletes it
+  as soon as the notes are ready). Notes are written by your AI proxy and, only when a TypeSafe key is
+  set, each item is checked against the transcript by TypeSafe. The Markdown copy (notes and
+  transcript) goes to `Documents\Echo Meetings` unless you choose another folder, named
+  `YYYY-MM-DD HHmm <App> - <title>.md`.
+- **Live and final transcripts.** A fast live transcript appears on the Meetings page during the
+  call. After the call, a slower pass separates the speakers, decodes each turn with the most
+  accurate model, names the speakers, and drafts notes that cite transcript lines. If the speaker
+  separation service is unavailable, the transcript has one speaker per channel (you and
+  "the others"). The final pass also sends a keyword list (your name, the attendees, remembered
+  voices, then your dictionary words) with the audio. Canary-Qwen ignores it; Granite Speech on
+  the GB10, the **vocabulary model**, uses it. Echo takes a word from Granite only where it
+  replaces one word of Canary's text with a listed term that sounds like it ("Cloud" becomes
+  Claude), never a word Granite added, so a listed name cannot appear where nobody said it (see
+  `docs/gb10-asr-upgrade.md`). Clear **Vocabulary model** under Meetings › Advanced to turn it off.
+- **Speaker names.** Echo never guesses a name. You are labelled with the name in Settings (or your
+  Windows account name). Others are named by a voice you asked Echo to remember, by your calendar
+  when the event has exactly one other attendee and one other person spoke ("from calendar"), or by
+  the meeting window title when exactly one other person spoke (for example a Slack DM huddle).
+  Everyone else is "Speaker N", with a suggestion when the conversation shows their name ("Hey
+  Darin…") and, with a calendar, only when that name is an attendee. Names that speech recognition
+  misspells ("Deren" for Darin, "Daren Kudira" for Darin Kadiro) are corrected in the text when the
+  right name is known: yours, a calendar attendee's, or anyone whose voice Echo remembers. Click a
+  speaker to name them; with **Remember this voice** (it needs about 10 s of their speech) future
+  meetings recognise them. Remembered voices stay on this PC and can be forgotten at any time under
+  **Remembered voices**.
+- **Calendar (optional).** Echo can read your calendar's private iCal address to learn who is in
+  a meeting. No sign-in, and nothing is sent anywhere but a download of that address (at most every
+  10 minutes, and when a meeting starts).
+  - Google Calendar: on calendar.google.com open **Settings**, pick your calendar under
+    **Settings for my calendars**, open **Integrate calendar**, and copy **Secret address in iCal
+    format**.
+  - Outlook: **Settings › Calendar › Shared calendars › Publish a calendar**, publish with "Can
+    view all details", and copy the ICS link.
+
+  Paste it in Echo under **Settings › Calendar** and click **Save keys & token**. It is stored
+  encrypted and shown masked. **Test** reports how many events you have today. Add **My calendar
+  email** so you are not counted as an attendee. Treat the address like a password: anyone with it
+  can read your calendar. If it leaks, reset it in Google Calendar.
+
 ## Useful scripts
 
 | Command | Result |
@@ -186,6 +256,9 @@ Deployment details are in [the sync server guide](src/server/README.md).
   by the Android keystore.
 - Audio goes only to the configured speech endpoint. Cleanup/adjudication text goes only to the
   configured AI endpoint. Audio retention is user-configurable on desktop and off-phone.
+- Meeting audio, transcripts and remembered voices stay in the local database and data folder and
+  are never synced. Meeting logs (`meetings.log`) hold ids, durations and error kinds only, never
+  window titles, names or speech.
 - No credential is committed to this repository.
 
 ## Verification

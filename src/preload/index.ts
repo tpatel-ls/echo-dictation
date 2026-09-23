@@ -11,6 +11,7 @@ import {
   type Secrets,
   type Settings
 } from '@shared/types'
+import { MEETINGS_IPC, type MeetingEvent } from '@shared/meeting-types'
 
 const api: EchoApi = {
   platform: process.platform as OSPlatform,
@@ -35,6 +36,9 @@ const api: EchoApi = {
   },
   logMic(event: string) {
     ipcRenderer.send(IPC.OVERLAY_MIC_LOG, event)
+  },
+  setOverlayInteractive(interactive: boolean) {
+    ipcRenderer.send(IPC.OVERLAY_INTERACTIVE, interactive)
   },
   history: {
     list: (opts: HistoryQueryOpts) => ipcRenderer.invoke(IPC.HISTORY_LIST, opts),
@@ -79,6 +83,32 @@ const api: EchoApi = {
   },
   system: {
     buildInfo: () => ipcRenderer.invoke(IPC.SYSTEM_BUILD_INFO)
+  },
+  meetings: {
+    list: () => ipcRenderer.invoke(MEETINGS_IPC.LIST),
+    get: (id) => ipcRenderer.invoke(MEETINGS_IPC.GET, id),
+    live: () => ipcRenderer.invoke(MEETINGS_IPC.LIVE),
+    stop: () => ipcRenderer.invoke(MEETINGS_IPC.STOP),
+    discard: () => ipcRenderer.invoke(MEETINGS_IPC.DISCARD),
+    startNow: () => ipcRenderer.invoke(MEETINGS_IPC.START_NOW),
+    testCalendar: () => ipcRenderer.invoke(MEETINGS_IPC.TEST_CALENDAR),
+    setMicPaused: (paused) => ipcRenderer.invoke(MEETINGS_IPC.SET_MIC_PAUSED, paused),
+    remove: (id) => ipcRenderer.invoke(MEETINGS_IPC.REMOVE, id),
+    renameSpeaker: (id, speakerKey, name, remember) =>
+      ipcRenderer.invoke(MEETINGS_IPC.RENAME_SPEAKER, id, speakerKey, name, remember),
+    reprocess: (id) => ipcRenderer.invoke(MEETINGS_IPC.REPROCESS, id),
+    exportFile: (id, format) => ipcRenderer.invoke(MEETINGS_IPC.EXPORT, id, format),
+    openFolder: (id) => ipcRenderer.invoke(MEETINGS_IPC.OPEN_FOLDER, id),
+    people: () => ipcRenderer.invoke(MEETINGS_IPC.PEOPLE),
+    forgetPerson: (personId) => ipcRenderer.invoke(MEETINGS_IPC.FORGET_PERSON, personId),
+    show: (id) => ipcRenderer.invoke(MEETINGS_IPC.SHOW, id),
+    onEvent(cb) {
+      const listener = (_e: IpcRendererEvent, data: MeetingEvent): void => cb(data)
+      ipcRenderer.on(MEETINGS_IPC.EVENT, listener)
+      return () => {
+        ipcRenderer.removeListener(MEETINGS_IPC.EVENT, listener)
+      }
+    }
   }
 }
 

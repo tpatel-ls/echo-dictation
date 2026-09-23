@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { applySeedEndpoints, parseSeed } from '../src/main/store/seed'
-import { DEFAULT_SETTINGS, type Settings } from '@shared/types'
+import { applySeedEndpoints, parseSeed, seedSecrets } from '../src/main/store/seed'
+import { DEFAULT_SETTINGS, EMPTY_SECRETS, type Settings } from '@shared/types'
 
 function settings(overrides: Partial<Settings> = {}): Settings {
   return { ...DEFAULT_SETTINGS, ...overrides } // defaults ship with empty endpoint URLs
@@ -19,6 +19,37 @@ describe('parseSeed', () => {
 
   it('returns empty seed for invalid JSON', () => {
     expect(parseSeed('not json')).toEqual({})
+  })
+})
+
+describe('seedSecrets', () => {
+  it('seeds every key from the seed file, including the TypeSafe key', () => {
+    expect(seedSecrets({
+      whisperApiKey: 'w',
+      claudeApiKey: 'c',
+      syncToken: 's',
+      typesafeApiKey: 't',
+      calendarIcsUrl: 'https://calendar.example/private/basic.ics',
+      whisperBaseUrl: 'https://w/v1'
+    })).toEqual({
+      whisperApiKey: 'w',
+      claudeApiKey: 'c',
+      syncToken: 's',
+      typesafeApiKey: 't',
+      calendarIcsUrl: 'https://calendar.example/private/basic.ics'
+    })
+  })
+
+  it('leaves keys the seed does not carry empty', () => {
+    expect(seedSecrets({ typesafeApiKey: 't' })).toEqual({ ...EMPTY_SECRETS, typesafeApiKey: 't' })
+    expect(seedSecrets({})).toEqual(EMPTY_SECRETS)
+  })
+
+  it('ignores non-string seed values', () => {
+    expect(seedSecrets(parseSeed('{"typesafeApiKey":42,"claudeApiKey":"c"}'))).toEqual({
+      ...EMPTY_SECRETS,
+      claudeApiKey: 'c'
+    })
   })
 })
 

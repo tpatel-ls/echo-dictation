@@ -6,6 +6,8 @@ import type { Database } from 'sql.js'
 import { HistoryStore } from './history'
 import { DictionaryStore } from './dictionary'
 import { SnippetsStore } from './snippets'
+import { MeetingsStore } from './meetings'
+import { VoiceprintStore } from './voiceprints'
 
 /** Where the sql.js `.wasm` lives at runtime (unpacked resource in prod, node_modules in dev). */
 function wasmDir(): string {
@@ -19,6 +21,10 @@ export interface HistoryHandle {
   store: HistoryStore
   dictionary: DictionaryStore
   snippets: SnippetsStore
+  /** Recorded meetings and their transcripts (local only, never synced). */
+  meetings: MeetingsStore
+  /** Remembered voices (biometric; local only, never synced). */
+  voiceprints: VoiceprintStore
   /** Immediate, synchronous persist — used on quit. */
   flush: () => void
   /** Debounced persist — used to save records `applyRemote` writes outside the store hook. */
@@ -85,6 +91,10 @@ export async function openHistory(opts: OpenHistoryOptions = {}): Promise<Histor
   const store = new HistoryStore(db, onStoreChange)
   const dictionary = new DictionaryStore(db, onStoreChange)
   const snippets = new SnippetsStore(db, onStoreChange)
+  // Meetings and voiceprints are not synced, so their writes only persist (a live transcript
+  // appends every few seconds and must not keep nudging the sync runner).
+  const meetings = new MeetingsStore(db, schedule)
+  const voiceprints = new VoiceprintStore(db, schedule)
   const flush = (): void => {
     if (timer) {
       clearTimeout(timer)
@@ -92,5 +102,5 @@ export async function openHistory(opts: OpenHistoryOptions = {}): Promise<Histor
     }
     persist()
   }
-  return { db, store, dictionary, snippets, flush, persist: schedule }
+  return { db, store, dictionary, snippets, meetings, voiceprints, flush, persist: schedule }
 }

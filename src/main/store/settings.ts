@@ -2,19 +2,17 @@ import { app } from 'electron'
 import { join } from 'node:path'
 import { existsSync, readFileSync, mkdirSync } from 'node:fs'
 import {
-  DEFAULT_SETTINGS,
   EMPTY_SECRETS,
   type MaskedSecrets,
   type OSPlatform,
   type Secrets,
   type Settings
 } from '@shared/types'
-import { defaultTriggerKey } from '@shared/trigger'
 import { writeFileAtomic } from './atomic-file'
 import { readJsonRecoveryResult } from './json-recovery'
-import { normalizeSecrets, persistSecretsFile } from './secret-file'
-import { applySeedEndpoints, parseSeed, type SeedFile } from './seed'
-import { normalizeSettings } from './settings-migration'
+import { maskSecrets, normalizeSecrets, persistSecretsFile } from './secret-file'
+import { applySeedEndpoints, parseSeed, seedSecrets, type SeedFile } from './seed'
+import { defaultSettingsFor, normalizeSettings } from './settings-migration'
 
 /**
  * Plain settings live as JSON in userData. API keys are stored separately in a local
@@ -66,20 +64,13 @@ export class SettingsStore {
   }
 
   getMaskedSecrets(): MaskedSecrets {
-    return {
-      whisperApiKey: mask(this.secrets.whisperApiKey),
-      claudeApiKey: mask(this.secrets.claudeApiKey),
-      syncToken: mask(this.secrets.syncToken)
-    }
+    return maskSecrets(this.secrets)
   }
 
   private loadSettings(): { settings: Settings; replaceable: boolean } {
-    // Fresh install: the default trigger key depends on the keyboard. macOS has no
-    // Right Ctrl, so a Windows default of RightControl would be undictatable there.
-    const defaults = {
-      ...DEFAULT_SETTINGS,
-      triggerKey: defaultTriggerKey(process.platform as OSPlatform)
-    }
+    // Fresh install: the default trigger key depends on the keyboard (macOS has no Right
+    // Ctrl), and meetings record automatically only on Windows, where the helper exists.
+    const defaults = defaultSettingsFor(process.platform as OSPlatform)
     const loaded = readJsonRecoveryResult(this.settingsPath)
     return { settings: normalizeSettings(loaded.value, defaults), replaceable: loaded.replaceable }
   }
@@ -100,7 +91,7 @@ export class SettingsStore {
     } catch {
       /* fall through to seed */
     }
-    if (seed.whisperApiKey || seed.claudeApiKey || seed.syncToken) {
+    if (seed.whisperApiKey || seed.claudeApiKey || seed.syncToken || seed.typesafeApiKey || seed.calendarIcsUrl) {
       const merged = seedSecrets(seed)
       this.persistSecrets(merged)
       return merged
@@ -133,18 +124,4 @@ export class SettingsStore {
   private persistSettings(): void {
     writeFileAtomic(this.settingsPath, JSON.stringify(this.settings, null, 2))
   }
-}
-
-function seedSecrets(seed: SeedFile): Secrets {
-  return {
-    whisperApiKey: seed.whisperApiKey ?? '',
-    claudeApiKey: seed.claudeApiKey ?? '',
-    syncToken: seed.syncToken ?? ''
-  }
-}
-
-function mask(key: string): string {
-  if (!key) return ''
-  if (key.length <= 10) return '••••'
-  return `${key.slice(0, 6)}…${key.slice(-4)}`
 }

@@ -1,6 +1,6 @@
 import { posix, win32 } from 'node:path'
 
-export type NativeHelperName = 'EchoKeyHelper' | 'EchoPasteHelper' | 'EchoSpeechHelper'
+export type NativeHelperName = 'EchoKeyHelper' | 'EchoPasteHelper' | 'EchoSpeechHelper' | 'EchoMeetingHelper'
 
 export function helperPath(
   name: NativeHelperName,
