@@ -77,6 +77,8 @@ const FORMAT_MARKS = /[​-‏‪-‮⁦-⁩]/g
 // Chromium appends the tab's highest-priority alert to its accessible name. Only the English
 // strings are matched; a localised browser falls back to window titles.
 const ALERT_SUFFIX = / [-–—] (Microphone recording|Camera and microphone recording|Camera recording|Audio playing)$/
+// Chrome appends this after capture/audio alerts in the accessible tab name.
+const MEMORY_SUFFIX = / [-–—] (?:High memory usage|Memory usage) [-–—] [\d.,]+\s*(?:KB|MB|GB|TB)$/i
 
 // Firefox separates with an em dash ('<page> — Mozilla Firefox').
 const BROWSER_NAME = /^(?:Google Chrome|Chromium|Microsoft ?Edge|Brave|Mozilla Firefox|Firefox|Arc|Vivaldi|Opera)$/
@@ -91,17 +93,19 @@ function clean(text: string): string {
 }
 
 /** The tab or window name without alert and browser suffixes; which alert it carried. */
-function stripSuffixes(text: string): { name: string; recording: boolean; audible: boolean } {
-  let name = clean(text)
+function stripSuffixes(text: string): { name: string; recording: boolean; camera: boolean; audible: boolean } {
+  let name = clean(text).replace(MEMORY_SUFFIX, '')
   let recording = false
+  let camera = false
   let audible = false
   for (let m = ALERT_SUFFIX.exec(name); m; m = ALERT_SUFFIX.exec(name)) {
     if (m[1] === 'Audio playing') audible = true
     else if (m[1] !== 'Camera recording') recording = true
+    if (m[1].startsWith('Camera')) camera = true
     name = name.slice(0, m.index)
   }
   name = name.replace(BROWSER_SUFFIX, '').replace(MORE_PAGES, '').trim()
-  return { name, recording, audible }
+  return { name, recording, camera, audible }
 }
 
 /** The meeting code or title of a Meet tab/window, or null (loading page, landing page, other). */
@@ -333,7 +337,10 @@ export function continuationEvidence(c: MeetingCandidate, probe: ProbeResult | n
     if (slack) return { evidence, remoteAudio: loud, audioOnly: true }
     const meetingAudible = meetingTabs.some((t) => stripSuffixes(t.name).audible)
     const otherAudible = tabs.some((t) => !meetingTabs.includes(t) && stripSuffixes(t.name).audible)
-    const capturing = meetingTabs.some((t) => stripSuffixes(t.name).recording || / - Camera recording$/.test(t.name))
+    const capturing = meetingTabs.some((t) => {
+      const alert = stripSuffixes(t.name)
+      return alert.recording || alert.camera
+    })
     // A bare title survives leaving Meet. It is not evidence of a live call, and a browser-wide
     // meter can belong to a tab missing from this bounded scan. Require the meeting's own audio
     // alert unless it still captures, or tab accessibility is unavailable entirely.

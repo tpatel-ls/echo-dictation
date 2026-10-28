@@ -196,6 +196,28 @@ describe('title parsing', () => {
 describe('detectMeetings: browsers', () => {
   const chromeMic = mic('chrome.exe', 100)
 
+  it.each(['Microphone recording', 'Camera and microphone recording'])(
+    'recognizes %s before Chromium memory metadata', (alert) => {
+      const p = probe({
+        tabs: [tab('chrome.exe', 100, `Meet - Weekly review - ${alert} - Memory usage - 674 MB`)],
+        render: [render('chrome.exe', 100, 140, { peak: 0.2 })]
+      })
+      expect(detectMeetings([chromeMic], p, ALL_ON)).toEqual([
+        expect.objectContaining({ app: 'google-meet', title: 'Weekly review', remoteAudio: true })
+      ])
+    }
+  )
+
+  it('does not turn memory metadata or another recording tab into meeting evidence', () => {
+    const p = probe({
+      windows: [win('chrome.exe', 100, 'Meet - Weekly review - Google Chrome')],
+      tabs: [tab('chrome.exe', 100, 'Meet - Weekly review - Memory usage - 674 MB'),
+        tab('chrome.exe', 100, 'Voice note - Microphone recording - Memory usage - 120 MB')],
+      render: [render('chrome.exe', 100, 140, { peak: 0.2 })]
+    })
+    expect(detectMeetings([chromeMic], p, ALL_ON)).toEqual([])
+  })
+
   it('detects a Meet tab that is recording, even in the background', () => {
     const p = probe({
       windows: [win('chrome.exe', 100, 'Inbox - Gmail - Google Chrome')],
@@ -452,6 +474,17 @@ describe('continuationEvidence (recording, the app holds no mic session)', () =>
   }
   const meet = recorded('google-meet', 'chrome.exe', 100, true)
   const loud = { peak: 0.05 }
+
+  it('reads camera and audio alerts before Chromium memory metadata while muted', () => {
+    const camera = probe({
+      tabs: [tab('chrome.exe', 100, 'Meet - Weekly review - Camera recording - Memory usage - 1.2 GB')],
+      render: [render('chrome.exe', 100, 140, loud)]
+    })
+    expect(continuationEvidence(meet, camera)).toEqual({ evidence: true, remoteAudio: true })
+    const audio = probe({ tabs: [tab('chrome.exe', 100,
+      'Meet - Weekly review - Audio playing - Memory usage - 674 MB')] })
+    expect(continuationEvidence(meet, audio)).toEqual({ evidence: true, remoteAudio: true, audioOnly: true })
+  })
 
   it('Meet: the tab (any suffix) is evidence; its "Audio playing" suffix is remote audio', () => {
     expect(continuationEvidence(meet, probe({ tabs: [tab('chrome.exe', 100, 'Meet - abc-defg-hij - Audio playing')] }))).toEqual({
