@@ -32,6 +32,14 @@ it('does not treat a lingering Meet title and stale browser mic session as a liv
   expect(detectMeetings([mic('chrome.exe', 100)], p, ALL_ON)).toEqual([])
 })
 
+it('rejects a Slack mic left open after its call playback session ends', () => {
+  const p = probe({
+    windows: [win('slack.exe', 400, 'Alex (DM) - Workspace - Slack')],
+    render: [render('slack.exe', 400, 401, { active: false })]
+  })
+  expect(detectMeetings([mic('slack.exe', 400)], p, ALL_ON)).toEqual([])
+})
+
 function mic(exe: string, appPid: number, extra: Partial<MicSession> = {}): MicSession {
   return {
     pid: appPid + 1,

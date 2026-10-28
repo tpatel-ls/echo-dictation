@@ -51,7 +51,7 @@ class SnippetsTest {
     @Test
     fun `search matches cue and expansion case insensitively in stable order`() {
         assertEquals(listOf(snips[0]), filterSnippets(snips, "ADDRESS"))
-        assertEquals(listOf(snips[1]), filterSnippets(snips, "TANAY/30min"))
+        assertEquals(listOf(snips[1]), filterSnippets(snips, "EXAMPLE.COM/SCHEDULE"))
         assertEquals(snips, filterSnippets(snips, "  "))
     }
 }

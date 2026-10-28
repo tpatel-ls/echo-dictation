@@ -259,6 +259,9 @@ export function detectMeetings(
     const exes = kind === 'browser' ? [exe] : NATIVE_EXES[kind as keyof typeof NATIVE_EXES]
     const render = probe ? renderOf(probe.render, appPid, exes) : []
     const active = render.filter((r) => r.active)
+    // Slack may leave a capture session alive after hanging up. An observed but inactive
+    // playback session is stronger evidence than that stale microphone handle.
+    if (kind === 'slack' && render.length > 0 && active.length === 0) continue
     const otherPids = uniqueSorted(
       active.length > 0 ? active.map((r) => r.pid) : render.length > 0 ? render.map((r) => r.pid) : [appPid]
     )
