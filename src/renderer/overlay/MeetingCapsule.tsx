@@ -115,16 +115,24 @@ export function useMeetingCapsule(enabled: boolean): CapsuleParts {
   const app = live?.app ? SHORT_APP[live.app] ?? MEETING_APP_LABELS[live.app] : 'Meeting'
   const fullApp = live?.app ? MEETING_APP_LABELS[live.app] : 'Meeting'
 
+  if (view.kind === 'unavailable') return {
+    className: 'ov-mt ov-mt-detected',
+    attrs: { 'aria-label': view.message },
+    content: <><span className="ov-mt-dot ov-mt-dot-amber" /><span className="ov-mt-text" title={view.message}>Meeting detection unavailable · retrying</span></>
+  }
+
   if (view.kind === 'detected') {
     return {
       className: `ov-mt ov-mt-detected${view.compact ? ' ov-mt-compact' : ''}${hovered ? ' ov-mt-open' : ''}`,
-      attrs: { ...hover, 'aria-label': `Meeting detected: ${fullApp}. Starts when the call begins.` },
+      attrs: { ...hover, 'aria-label': live?.requiresConfirmation
+        ? `Possible ${fullApp} call. Not recording. Choose Record now to start.`
+        : `Meeting detected: ${fullApp}. Starts when the call begins.` },
       content: (
       <>
         <span className="ov-mt-dot ov-mt-dot-amber" />
         {!view.compact && (
-          <span className="ov-mt-text" title="Recording starts when the call begins">
-            Meeting detected · {app}
+          <span className="ov-mt-text" title={live?.requiresConfirmation ? 'Call could not be confirmed. Hover and choose Record now.' : 'Recording starts when the call begins'}>
+            {live?.requiresConfirmation ? 'Not recording · confirm call' : `Meeting detected · ${app}`}
           </span>
         )}
         {hovered && (

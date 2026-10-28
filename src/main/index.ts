@@ -320,6 +320,7 @@ async function main(): Promise<void> {
     onSettingsChanged,
     meeting: {
       live: () => meetingController.live(),
+      startNow: () => void meetingController.startNow(),
       stop: () => void meetingController.stop(),
       setMicPaused: (paused) => void meetingController.setMicPaused(paused),
       discard: () => {

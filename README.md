@@ -11,7 +11,7 @@ corrections, snippets, and optional Windows meeting transcription.
 Give your agent [the setup guide](docs/HANDOFF.md). It covers prerequisites, models, permissions,
 verification and packaging for Windows and Mac.
 
-Install Node.js 22 LTS and Python 3.12. Windows source builds also need .NET 8 SDK;
+Install Node.js 22 LTS and Python 3.12. Windows source builds also need .NET 10 SDK;
 Mac builds need Xcode command-line tools. Fork and clone the repository, then:
 
 ```sh
@@ -65,6 +65,14 @@ Echo detects supported Meet, Teams, Slack huddle, Zoom and Webex calls using mic
 sessions and app/window evidence. The capsule and tray show recording state and provide
 **Stop**, **Discard**, and **Pause my mic**. Test detection with your particular app/headset;
 mute and hang-up behavior varies across apps. Tell participants when recording.
+
+Echo rescans supported app/window and tab metadata every five seconds while idle, so muted
+joins and missed microphone events can still be discovered. Google Meet playback alerts and
+native meeting windows can confirm a muted join; your microphone starts paused in that case.
+Browser labels can include extra metadata. Unclear call evidence shows **Not recording — confirm
+call**, with **Record now** in the capsule, Meetings page and tray. A detector outage stays visible
+while Echo retries. Recording-start failures get two delayed retries before requiring Record now.
+Detection does not read page contents. A tab title alone never starts an automatic recording.
 
 The final transcript uses retained audio. Missing speaker separation falls back to channel
 labels. Failed or empty transcription keeps the recording and earlier transcript for retry,

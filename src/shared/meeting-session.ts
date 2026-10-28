@@ -226,8 +226,9 @@ export class MeetingSession {
       const ready = this.oldestPending(
         (p) =>
           p.absentSince === null &&
+          !p.candidate.requiresConfirmation &&
           ((p.heardRemote && now - p.firstSeen >= this.config.confirmAfterMs) ||
-            (p.candidate.app !== 'slack' && now - p.firstSeen >= this.config.aloneConfirmAfterMs))
+            (!p.candidate.requiresRemoteAudio && p.candidate.app !== 'slack' && now - p.firstSeen >= this.config.aloneConfirmAfterMs))
       )
       if (ready) {
         this.pending.delete(ready.candidate.key)
@@ -257,6 +258,11 @@ export class MeetingSession {
     }
     this.pending.clear()
     return []
+  }
+
+  /** An interrupted helper is recoverable; it must not suppress the still-live call. */
+  interrupt(): MeetingSessionAction[] {
+    return this.recording ? [this.stop('ended', false)] : []
   }
 
   setConfig(now: number, config: Partial<MeetingSessionConfig>): MeetingSessionAction[] {

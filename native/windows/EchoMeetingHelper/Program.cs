@@ -135,6 +135,16 @@ bool Handle(string line)
                 break;
             }
             string? micEndpointId = micElement.ValueKind == JsonValueKind.String ? micElement.GetString() : null;
+            bool micPaused = false;
+            if (request.TryGetProperty("micPaused", out var initiallyPaused))
+            {
+                if (initiallyPaused.ValueKind != JsonValueKind.True && initiallyPaused.ValueKind != JsonValueKind.False)
+                {
+                    Output.Error(id, "bad-request", "micPaused must be a boolean");
+                    break;
+                }
+                micPaused = initiallyPaused.GetBoolean();
+            }
             recordQueue.Add(() =>
             {
                 if (recording is not null)
@@ -144,7 +154,7 @@ bool Handle(string line)
                 }
                 try
                 {
-                    recording = Recording.Start(id, dir, otherPids, micEndpointId, echoPid);
+                    recording = Recording.Start(id, dir, otherPids, micEndpointId, echoPid, micPaused);
                     Output.Write(new
                     {
                         type = "record-started",

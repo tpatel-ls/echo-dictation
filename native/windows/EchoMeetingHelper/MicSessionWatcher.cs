@@ -7,13 +7,13 @@ namespace EchoMeetingHelper;
 /// Watches ACTIVE capture sessions on every active capture endpoint and emits the full
 /// `mic-sessions` snapshot whenever it changes. Event-driven: session created / state changed,
 /// endpoint added / removed / default changed, and the CapabilityAccessManager microphone registry
-/// subtree only schedule a debounced re-scan. A 60 s safety re-scan covers missed notifications.
+/// subtree only schedule a debounced re-scan. A 3 s safety re-scan covers missed start notifications.
 /// Everything runs on MTA threads (session notifications are not delivered otherwise).
 /// </summary>
 sealed class MicSessionWatcher
 {
     const int DebounceMs = 120;
-    const int SafetyRescanMs = 60_000;
+    const int SafetyRescanMs = 3000;
     const int ActiveRescanMs = 2000;
     const string MicConsentKey = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone";
 

@@ -16,7 +16,8 @@ machines, accounts, keys or network is required.
 - Windows 10/11 **x64**, or macOS with Xcode command-line tools (`xcode-select --install`).
   Automatic meeting capture needs Windows 10 build 20348+ or Windows 11.
 - Node.js **22 LTS**, npm 10+, Git, and **64-bit Python 3.12** on PATH.
-- Windows source builds require **.NET 8 SDK** (`dotnet --list-sdks`). Installed builds do not.
+- Windows source builds require **.NET 10 SDK** (`dotnet --list-sdks`) for the meeting helper.
+  Installed builds include their native runtime.
 - About 2 GB free disk for tools, dependencies and the default model. Setup downloads public
   packages and model weights. After downloading, local transcription needs no Internet.
 - Linux can run the speech server/tests; desktop hotkey and paste helpers support Windows/macOS.
@@ -85,6 +86,12 @@ restart. On Windows allow desktop microphone access and use a text editor at the
 For Windows meetings, join a short test call, speak on both sides, leave, and verify recording
 ends and a transcript appears. Detection uses OS/app evidence; verify the actual calling app
 and headset. Stop is always available in the capsule and tray.
+
+Also test joining while muted, moving the call to a background tab, and leaving the tab open
+after hanging up. Muted joins need the meeting's own playback signal or a native meeting window
+with audible playback; the mic channel begins paused. If the capsule says **Not recording —
+confirm call**, use **Record now** in the capsule, Meetings page or tray. A persistent detection
+error means automatic capture is unavailable; Echo retries and displays the error until recovery.
 
 The local server labels the channels **you / others**. Separating individual remote speakers,
 remembering voices and writing AI notes need optional additional services. Empty/failed

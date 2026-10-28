@@ -56,10 +56,12 @@ sealed class Recording
         flusher = new Thread(FlushLoop) { IsBackground = true, Name = "record-flush" };
     }
 
-    public static Recording Start(string id, string dir, IReadOnlyList<uint> otherPids, string? micEndpointId, uint echoPid)
+    public static Recording Start(string id, string dir, IReadOnlyList<uint> otherPids, string? micEndpointId, uint echoPid, bool micPaused = false)
     {
         Directory.CreateDirectory(dir);
         var recording = new Recording(id, dir, echoPid);
+        // Apply mute before any capture/flush thread starts: no muted speech reaches disk.
+        if (micPaused) recording.mic.SetMuted(true, 0);
         recording.flusher.Start();
         recording.OpenOthers(otherPids);
         if (recording.loopbacks.Count == 0) recording.StartSystemLoopback();

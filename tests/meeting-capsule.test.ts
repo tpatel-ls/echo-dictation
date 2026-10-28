@@ -18,6 +18,13 @@ const live = (patch: Partial<LiveMeetingState>): LiveMeetingState => ({ ...IDLE,
 const notice = (shownAt: number | null): CapsuleNotice => ({ kind: 'notes-ready', meetingId: 7, shownAt })
 
 describe('capsuleView', () => {
+  it('keeps an unconfirmed call visible and surfaces detector outages', () => {
+    const input = { detectedSince: 0, hovered: false, notice: null, now: 120_000 }
+    expect(capsuleView({ ...input, live: live({ phase: 'detected', requiresConfirmation: true }) }))
+      .toEqual({ kind: 'detected', compact: false })
+    expect(capsuleView({ ...input, live: live({ detectionError: 'Detection unavailable' }) }))
+      .toEqual({ kind: 'unavailable', message: 'Detection unavailable' })
+  })
   it('is the plain idle capsule with nothing going on', () => {
     expect(capsuleView({ live: IDLE, detectedSince: null, hovered: false, notice: null, now: 0 })).toEqual({ kind: 'idle' })
   })

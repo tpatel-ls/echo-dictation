@@ -43,7 +43,8 @@ function requestFields(req: HelperRequest): HelperRequest {
     case 'probe':
       return { type: 'probe', id: req.id, exes: req.exes }
     case 'record-start':
-      return { type: 'record-start', id: req.id, dir: req.dir, otherPids: req.otherPids, micEndpointId: req.micEndpointId }
+      return { type: 'record-start', id: req.id, dir: req.dir, otherPids: req.otherPids, micEndpointId: req.micEndpointId,
+        ...(req.micPaused !== undefined ? { micPaused: req.micPaused } : {}) }
     case 'record-retarget':
       return { type: 'record-retarget', id: req.id, otherPids: req.otherPids }
     case 'record-stop':

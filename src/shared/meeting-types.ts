@@ -68,6 +68,8 @@ export interface RecordStartRequest {
   otherPids: number[]
   /** Capture endpoint for the "mic" channel; null uses the default communications microphone. */
   micEndpointId: string | null
+  /** Begin with digital silence on the mic channel when the call was joined muted. */
+  micPaused?: boolean
 }
 
 export interface RecordStarted {
@@ -189,6 +191,10 @@ export interface MeetingCandidate {
   remoteAudio: boolean
   /** Participant names visible in window titles, e.g. 'Meeting with Blake Whitmore'. */
   nameHints: string[]
+  /** Weak browser evidence is offered to the user, never used to auto-start. */
+  requiresConfirmation?: boolean
+  /** Playback-only joins cannot use the alone-in-call timeout. */
+  requiresRemoteAudio?: boolean
 }
 
 export type MeetingStopReason = 'ended' | 'user' | 'discard' | 'max-duration' | 'disabled'
@@ -393,6 +399,9 @@ export interface LiveMeetingState {
   others: number
   /** The mic channel records silence: paused by the user, or while the meeting app released the mic. */
   micPaused: boolean
+  requiresConfirmation?: boolean
+  /** Detection could not run; surfaced persistently rather than silently looking idle. */
+  detectionError?: string
 }
 
 /** A short message the overlay capsule shows after the fact (the meeting itself is over). */

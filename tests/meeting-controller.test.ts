@@ -186,6 +186,46 @@ async function startMeet(h: ReturnType<typeof setup>): Promise<number> {
 }
 
 describe('MeetingController', () => {
+  it('finds a muted join on a periodic rescan, starts with the mic paused, then follows unmute', async () => {
+    const h = setup()
+    h.helper.probeResult = meetProbe({ tab: 'Meet - abc-defg-hij - Audio playing' })
+    h.controller.start()
+    await vi.advanceTimersByTimeAsync(8500)
+    expect(h.helper.startRequests).toHaveLength(1)
+    expect(h.helper.startRequests[0]).toMatchObject({ micEndpointId: null, micPaused: true })
+    expect(h.controller.live().micPaused).toBe(true)
+    h.helper.probeResult = meetProbe()
+    h.helper.sessions([CHROME])
+    await vi.advanceTimersByTimeAsync(10)
+    expect(h.helper.micPauses.at(-1)).toEqual({ id: 'uuid-1', paused: false })
+  })
+
+  it('shows ambiguous call evidence without auto-recording, with a working manual start', async () => {
+    const h = setup()
+    h.helper.probeResult = meetProbe({ tab: 'Meet - abc-defg-hij - Unknown browser status' })
+    h.controller.start()
+    h.helper.sessions([CHROME])
+    await vi.advanceTimersByTimeAsync(95_000)
+    expect(h.helper.startRequests).toHaveLength(0)
+    expect(h.controller.live()).toMatchObject({ phase: 'detected', requiresConfirmation: true })
+    expect(h.notes.some(n => n.body.includes('Record now'))).toBe(true)
+    await h.controller.startNow()
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(h.controller.recording).toBe(true)
+  })
+
+  it('reports an unavailable detector and resumes scanning after its helper recovers', async () => {
+    const h = setup()
+    h.helper.available = false
+    h.controller.start()
+    await vi.advanceTimersByTimeAsync(16_000)
+    expect(h.controller.live().detectionError).toBeTruthy()
+    h.helper.available = true
+    h.helper.probeResult = meetProbe({ tab: 'Meet - abc-defg-hij - Audio playing' })
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(h.controller.recording).toBe(true)
+    expect(h.controller.live().detectionError).toBeUndefined()
+  })
   it('ends a phantom recording immediately when its native helper has crashed', async () => {
     const h = setup()
     const id = await startMeet(h)
@@ -195,6 +235,11 @@ describe('MeetingController', () => {
     expect(h.controller.recording).toBe(false)
     expect(h.meetings.get(id)!.status).toBe('processing')
     expect(h.finalized).toContain(id)
+    h.helper.available = true
+    h.helper.sessions([CHROME])
+    await vi.advanceTimersByTimeAsync(4000)
+    expect(h.helper.startRequests).toHaveLength(2)
+    expect(h.controller.recording).toBe(true)
   })
   it('starts the helper only on Windows with meetings on', () => {
     const off = setup({ meetingMode: 'off' })
@@ -208,12 +253,13 @@ describe('MeetingController', () => {
     expect(on.helper.started).toBe(1)
   })
 
-  it('never probes while no meeting app holds the mic', async () => {
+  it('rescans for muted meetings while no meeting app holds the mic', async () => {
     const h = setup()
+    h.helper.probeResult = { windows: [], tabs: [], render: [] }
     h.controller.start()
     h.helper.sessions([{ ...CHROME, exe: 'obs64.exe', appPid: 9 }])
     await vi.advanceTimersByTimeAsync(10_000)
-    expect(h.helper.probes).toEqual([])
+    expect(h.helper.probes.length).toBeGreaterThan(0)
     expect(h.meetings.list()).toEqual([])
   })
 
@@ -412,10 +458,10 @@ describe('MeetingController', () => {
     expect(h.controller.live().recording).toBe(false)
     await vi.advanceTimersByTimeAsync(4000)
     expect(h.controller.live().phase).toBe('idle')
-    // Back to idle: with no meeting app on the mic, probing stops.
+      // Back to idle: periodic rescans still discover the next muted join.
     const probes = h.helper.probes.length
     await vi.advanceTimersByTimeAsync(30_000)
-    expect(h.helper.probes.length).toBe(probes)
+      expect(h.helper.probes.length).toBeGreaterThan(probes)
   })
 
   it('a call stopped while muted stays stopped after a long mute and the unmute', async () => {
@@ -457,19 +503,33 @@ describe('MeetingController', () => {
     expect(h.finalized).toEqual([id])
   })
 
-  it('marks the meeting failed when the recording cannot start, without retrying in a loop', async () => {
+  it('bounds failed start retries and leaves an explicit manual retry available', async () => {
     const h = setup()
     h.helper.startError = new Error('Meeting helper is not running')
     h.controller.start()
     h.helper.sessions([CHROME])
-    await vi.advanceTimersByTimeAsync(30_000)
+    await vi.advanceTimersByTimeAsync(5 * 60_000)
     const rows = h.meetings.list()
-    expect(rows).toHaveLength(1)
+    expect(rows).toHaveLength(3)
     expect(rows[0]).toMatchObject({ status: 'failed', audio_dir: null })
     expect(rows[0].error).toContain('Meeting helper is not running')
-    expect(h.notes.map((n) => n.title)).toEqual(["Echo couldn't record Google Meet"])
-    expect(h.pill).toEqual(['show', 'hide']) // detected, then gone once the call is suppressed
-    expect(h.controller.live().phase).toBe('idle')
+    expect(h.controller.live()).toMatchObject({ phase: 'detected', requiresConfirmation: true })
+    h.helper.startError = null
+    await h.controller.startNow()
+    expect(h.controller.recording).toBe(true)
+  })
+
+  it('automatically recovers a transient recording-start failure after a delay', async () => {
+    const h = setup()
+    h.helper.startError = new Error('Temporary device failure')
+    h.controller.start()
+    h.helper.sessions([CHROME])
+    await vi.advanceTimersByTimeAsync(4000)
+    expect(h.meetings.list()).toHaveLength(1)
+    h.helper.startError = null
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(h.controller.recording).toBe(true)
+    expect(h.meetings.list()).toHaveLength(2)
   })
 
   it('turning meetings off stops the recording as disabled and stops the helper', async () => {

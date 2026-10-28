@@ -76,7 +76,7 @@ const FORMAT_MARKS = /[​-‏‪-‮⁦-⁩]/g
 
 // Chromium appends the tab's highest-priority alert to its accessible name. Only the English
 // strings are matched; a localised browser falls back to window titles.
-const ALERT_SUFFIX = / [-–—] (Microphone recording|Camera and microphone recording|Camera recording|Audio playing)$/
+const ALERT_TOKEN = / [-–—] (Microphone recording|Camera and microphone recording|Camera recording|Audio playing)(?= [-–—] |$)/g
 // Chrome appends this after capture/audio alerts in the accessible tab name.
 const MEMORY_SUFFIX = / [-–—] (?:High memory usage|Memory usage) [-–—] [\d.,]+\s*(?:KB|MB|GB|TB)$/i
 
@@ -98,12 +98,15 @@ function stripSuffixes(text: string): { name: string; recording: boolean; camera
   let recording = false
   let camera = false
   let audible = false
-  for (let m = ALERT_SUFFIX.exec(name); m; m = ALERT_SUFFIX.exec(name)) {
+  // Alerts are distinct browser label tokens, not necessarily the last suffix. Preserve
+  // them when Chromium appends new metadata that this version of Echo does not know yet.
+  const alerts = [...name.matchAll(ALERT_TOKEN)]
+  for (const m of alerts) {
     if (m[1] === 'Audio playing') audible = true
     else if (m[1] !== 'Camera recording') recording = true
     if (m[1].startsWith('Camera')) camera = true
-    name = name.slice(0, m.index)
   }
+  if (alerts.length) name = name.slice(0, alerts[0].index)
   name = name.replace(BROWSER_SUFFIX, '').replace(MORE_PAGES, '').trim()
   return { name, recording, camera, audible }
 }
@@ -290,6 +293,67 @@ export function detectMeetings(
     }
   }
   return [...candidates.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+}
+
+/** Low-frequency discovery also runs without a microphone event, for muted joins. */
+export function idleProbeExesFor(apps: MeetingAppToggles): string[] {
+  return [...new Set([
+    ...(BROWSER_APPS.some(app => apps[app]) ? BROWSER_EXES : []),
+    ...Object.entries(NATIVE_EXES).flatMap(([app, exes]) => apps[app as MeetingAppId] ? exes : [])
+  ])]
+}
+
+/** A meeting's own playback alert can identify a muted join; a bare tab never can. */
+export function detectPlaybackMeetings(probe: ProbeResult | null, apps: MeetingAppToggles): MeetingCandidate[] {
+  if (!probe) return []
+  const found = new Map<string, MeetingCandidate>()
+  for (const tab of probe.tabs) {
+    const title = parseMeetTitle(tab.name)
+    if (!apps['google-meet'] || !title) continue
+    const alert = stripSuffixes(tab.name)
+    const render = probe.render.filter(r => r.appPid === tab.appPid && r.active)
+    const otherAudible = probe.tabs.some(t => t.appPid === tab.appPid && t !== tab && stripSuffixes(t.name).audible)
+    const remoteAudio = render.length > 0 && (alert.audible || (alert.camera && !otherAudible && render.some(r => r.peak >= REMOTE_AUDIO_PEAK)))
+    if (!remoteAudio) continue
+    const key = `google-meet:${tab.appPid}`
+    found.set(key, { key, app: 'google-meet', viaBrowser: true, title, appPid: tab.appPid,
+      exe: tab.exe, micEndpointId: null, otherPids: uniqueSorted(render.map(r => r.pid)),
+      remoteAudio, nameHints: [], requiresRemoteAudio: true })
+  }
+  for (const render of probe.render) {
+    if (!render.active || render.peak < REMOTE_AUDIO_PEAK) continue
+    const app = meetingAppFor({ exe: render.exe, packageFamily: null })
+    if (!app || app === 'browser' || app === 'slack' || !apps[app]) continue
+    const evidence = nativeEvidence(app, render.appPid, render.exe, probe)
+    // Teams' main window is always present; only an actual meeting window counts.
+    if (!evidence || (app === 'teams' && !evidence.title)) continue
+    const key = `${app}:${render.appPid}`
+    found.set(key, { key, app, viaBrowser: false, title: evidence.title, appPid: render.appPid,
+      exe: render.exe, micEndpointId: null,
+      otherPids: uniqueSorted(probe.render.filter(r => r.appPid === render.appPid && r.active).map(r => r.pid)),
+      remoteAudio: true, nameHints: evidence.nameHints, requiresRemoteAudio: true })
+  }
+  return [...found.values()]
+}
+
+/** Visible fallback for unknown browser labels. These candidates always require Record now. */
+export function unconfirmedMeetings(sessions: MicSession[], probe: ProbeResult | null, apps: MeetingAppToggles): MeetingCandidate[] {
+  if (!probe || !apps['google-meet']) return []
+  const found = new Map<string, MeetingCandidate>()
+  for (const session of sessions) {
+    if (meetingAppFor(session) !== 'browser') continue
+    const tabs = probe.tabs.filter(t => t.appPid === session.appPid)
+    if (tabs.some(t => stripSuffixes(t.name).recording)) continue
+    const render = probe.render.filter(r => r.appPid === session.appPid && r.active)
+    if (!render.length) continue
+    const title = tabs.map(t => parseMeetTitle(t.name)).find(Boolean)
+    if (!title) continue
+    const key = `google-meet:${session.appPid}`
+    found.set(key, { key, app: 'google-meet', viaBrowser: true, title, appPid: session.appPid,
+      exe: session.exe, micEndpointId: session.endpointId, otherPids: uniqueSorted(render.map(r => r.pid)),
+      remoteAudio: false, nameHints: [], requiresConfirmation: true })
+  }
+  return [...found.values()]
 }
 
 // ── Continuation while recording ─────────────────────────────────────────────────

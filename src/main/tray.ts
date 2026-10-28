@@ -11,6 +11,7 @@ export interface TrayMeetingContext {
   stop: () => void
   discard: () => void
   setMicPaused: (paused: boolean) => void
+  startNow: () => void
 }
 
 export interface TrayContext {
@@ -42,8 +43,8 @@ export function createTray(ctx: TrayContext): TrayHandle {
       app
         ? `Echo — transcribing ${app}`
         : detected
-          ? `Echo — meeting detected (${detected}), starts when the call begins`
-          : `Echo — hold ${triggerLabel(s.triggerKey)} to dictate`
+          ? `Echo — ${detected}: ${live?.requiresConfirmation ? 'not recording; confirm call' : 'starts when the call begins'}`
+          : live?.detectionError ? 'Echo — meeting detection unavailable; retrying' : `Echo — hold ${triggerLabel(s.triggerKey)} to dictate`
     )
     const cleanupItems = (['off', 'on-demand', 'auto'] as CleanupMode[]).map((mode) => ({
       label: cleanupLabel(mode),
@@ -68,7 +69,11 @@ export function createTray(ctx: TrayContext): TrayHandle {
             { label: 'Discard meeting recording', click: () => ctx.meeting?.discard() },
             { type: 'separator' }
           ]
-        : []
+        : detected && ctx.meeting ? [
+            { label: `Record ${detected} now`, click: () => ctx.meeting?.startNow() },
+            { label: "Don't record this meeting", click: () => ctx.meeting?.stop() },
+            { type: 'separator' }
+          ] : []
     tray.setContextMenu(
       Menu.buildFromTemplate([
         ...meetingItems,

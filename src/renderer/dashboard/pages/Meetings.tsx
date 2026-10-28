@@ -133,7 +133,8 @@ export function Meetings({ notify, focus }: { notify: Notify; focus: MeetingFocu
       <header className="px-7 pt-6 pb-4 border-b border-border">
         <h1 className="text-lg font-semibold">Meetings</h1>
       </header>
-      {live.phase === 'detected' && <DetectedBanner live={live} notify={notify} />}
+      {live.detectionError && <div role="alert" className="px-7 py-3 border-b border-bad/20 bg-bad/5 text-sm text-bad">{live.detectionError}</div>}
+      {live.phase === 'detected' && !live.detectionError && <DetectedBanner live={live} notify={notify} />}
       {live.recording && (
         <LiveBanner live={live} segments={liveSegments} speakers={detail?.id === live.meetingId ? detail.speakers : []} notify={notify} />
       )}
@@ -256,7 +257,7 @@ function DetectedBanner({ live, notify }: { live: LiveMeetingState; notify: Noti
       <span className="w-2.5 h-2.5 rounded-full bg-warn shrink-0" />
       <div className="min-w-0 flex-1 flex items-baseline gap-2">
         <span className="text-sm font-medium text-text shrink-0">Meeting detected · {app}</span>
-        <span className="text-sm text-muted truncate">Starts when the call begins</span>
+        <span className="text-sm text-muted truncate">{live.requiresConfirmation ? 'Not recording — choose Record now if this call is active' : 'Starts when the call begins'}</span>
       </div>
       <button
         onClick={() => void act('Record now', () => api.meetings.startNow())}

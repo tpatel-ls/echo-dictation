@@ -21,6 +21,7 @@ export interface CapsuleNotice {
 
 export type CapsuleView =
   | { kind: 'idle' }
+  | { kind: 'unavailable'; message: string }
   | { kind: 'detected'; compact: boolean }
   | { kind: 'recording' }
   | { kind: 'ended'; outcome: 'saved' | 'discarded' }
@@ -35,9 +36,10 @@ export function capsuleView(input: {
 }): CapsuleView {
   const { live, detectedSince, hovered, notice, now } = input
   if (live.phase === 'recording') return { kind: 'recording' }
+  if (live.detectionError) return { kind: 'unavailable', message: live.detectionError }
   if (live.phase === 'detected') {
     const settled = detectedSince !== null && now - detectedSince >= DETECTED_SETTLE_MS
-    return { kind: 'detected', compact: settled && !hovered }
+    return { kind: 'detected', compact: settled && !hovered && !live.requiresConfirmation }
   }
   if (notice && (notice.shownAt === null || hovered || now - notice.shownAt < NOTICE_SHOWN_MS)) {
     return { kind: 'notice', notice: notice.kind, meetingId: notice.meetingId }

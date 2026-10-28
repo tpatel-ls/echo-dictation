@@ -26,6 +26,7 @@ static class Prober
     // piling up threads at the probe cadence.
     static readonly object ScanGate = new();
     static Task? stuckScan;
+    static int nextWindow;
 
     /// <summary>
     /// The first UI Automation call in a process costs ~500 ms (client start-up), which would blow
@@ -118,6 +119,10 @@ static class Prober
             .ToList();
         var tabs = new List<object>();
         if (targets.Count == 0) return tabs;
+        // Rotate the first window so a large foreground browser cannot permanently use
+        // the entire bounded scan budget and starve a call in a background window.
+        int first = (int)((uint)Interlocked.Increment(ref nextWindow) % (uint)targets.Count);
+        targets = targets.Skip(first).Concat(targets.Take(first)).ToList();
 
         lock (ScanGate)
         {

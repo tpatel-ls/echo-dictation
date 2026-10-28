@@ -144,6 +144,7 @@ describe('serializeHelperRequest', () => {
     { type: 'probe', id: 'p1', exes: ['chrome.exe', 'ms-teams.exe'] },
     { type: 'record-start', id: 'r1', dir: 'C:\\Users\\me\\AppData\\Roaming\\echo\\meetings\\u1', otherPids: [53592], micEndpointId: null },
     { type: 'record-start', id: 'r2', dir: 'D:\\m', otherPids: [], micEndpointId: '{0.0.1.00000000}.{abc}' },
+    { type: 'record-start', id: 'muted', dir: 'D:\\m', otherPids: [7], micEndpointId: null, micPaused: true },
     { type: 'record-retarget', id: 'r1', otherPids: [1, 2] },
     { type: 'record-stop', id: 'r1' },
     { type: 'record-mic-pause', id: 'r1', paused: true },

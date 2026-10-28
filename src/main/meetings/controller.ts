@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, rmSync, truncateSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative } from 'node:path'
-import { candidateExes, continuationEvidence, detectMeetings, probeExesFor } from '@shared/meeting-detect'
+import { candidateExes, continuationEvidence, detectMeetings, detectPlaybackMeetings, idleProbeExesFor, probeExesFor, unconfirmedMeetings } from '@shared/meeting-detect'
 import { MeetingSession, type MeetingSessionConfig } from '@shared/meeting-session'
 import { liveSpeakers, renameSpeaker } from '@shared/meeting-speakers'
 import {
@@ -42,6 +42,7 @@ import { scheduleRetention } from './retention'
 /** Probe cadence while a meeting app holds the mic, and while recording. */
 const PROBE_EVERY_MS = 1500
 const PROBE_EVERY_RECORDING_MS = 2000
+const PROBE_EVERY_IDLE_MS = 5000
 const LIVE_EVERY_MS = 2000
 /** `live` events carrying levels are throttled to at most 4 per second. */
 const LEVELS_EMIT_MS = 250
@@ -173,6 +174,12 @@ export class MeetingController {
     timer: ReturnType<typeof setTimeout>
   } | null = null
   private lastPresence = ''
+  private helperUnavailableSince: number | null = null
+  private lastHelperRetry = 0
+  private detectionError: string | undefined
+  private lastDiscoveryAt = 0
+  private probeFailures = 0
+  private startFailures = new Map<string, { attempts: number; retryAt: number; lastSeen: number }>()
 
   constructor(private readonly deps: MeetingControllerDeps) {
     this.now = deps.now ?? Date.now
@@ -217,9 +224,13 @@ export class MeetingController {
         this.deps.helper.onWarning((w) => this.deps.log(`recording warning: ${w.code}`))
       ]
       this.deps.helper.start()
+      this.lastDiscoveryAt = this.now()
       this.deps.log('meeting detection on')
+      this.schedule(PROBE_EVERY_IDLE_MS)
     } else if (!want && this.enabled) {
       this.enabled = false
+      this.detectionError = undefined
+      this.helperUnavailableSince = null
       this.clearLoop()
       this.sessions = []
       const session = this.session
@@ -252,7 +263,9 @@ export class MeetingController {
     }
     const idle = { ended: null, recording: false, meetingId: null, startedAt: null, mic: 0, others: 0, micPaused: false }
     if (this.detected) {
-      return { ...idle, phase: 'detected', app: this.detected.candidate.app, title: this.detected.candidate.title }
+      return { ...idle, phase: 'detected', app: this.detected.candidate.app, title: this.detected.candidate.title,
+        ...(this.detected.candidate.requiresConfirmation ? { requiresConfirmation: true } : {}),
+        ...(this.detectionError ? { detectionError: this.detectionError } : {}) }
     }
     const e = this.ended
     if (e) {
@@ -266,7 +279,8 @@ export class MeetingController {
         startedAt: e.startedAt
       }
     }
-    return { ...idle, phase: 'idle', app: null, title: null }
+    return { ...idle, phase: 'idle', app: null, title: null,
+      ...(this.detectionError ? { detectionError: this.detectionError } : {}) }
   }
 
   /** "Record now" on a detected meeting: start without waiting for the call to begin. */
@@ -442,28 +456,68 @@ export class MeetingController {
     this.ticking = true
     let exes: string[] = []
     try {
-      if (this.active && !this.deps.helper.available) {
-        this.deps.log('recording interrupted: native helper unavailable; saving captured audio')
-        await this.run(() => this.apply(this.session.stopByUser(this.now(), false)))
+      if (!this.deps.helper.available) {
+        this.helperUnavailableSince ??= this.now()
+        if (this.active) {
+          this.deps.log('recording interrupted: native helper unavailable; saving captured audio')
+          await this.run(() => this.apply(this.session.interrupt()))
+        }
+        if (this.now() - this.helperUnavailableSince >= 10_000) {
+          this.detectionError = 'Meeting detection is unavailable. Echo is retrying; no new meeting is being recorded.'
+        }
+        if (this.now() - this.lastHelperRetry >= 30_000) {
+          this.lastHelperRetry = this.now()
+          this.deps.helper.start()
+        }
+        this.emitLive()
+        return
       }
+      this.helperUnavailableSince = null
       const apps = this.deps.settings().meetingApps
       exes = probeExesFor(this.sessions, apps)
-      // Never probe (read window titles or tabs) unless an enabled meeting app holds the mic, or a
-      // call is being recorded or was just stopped by the user: an app that releases the mic on
-      // mute still needs its evidence checked, so the recording goes on and a stopped call stays
-      // stopped.
+      // Periodic metadata-only discovery covers muted joins and lost mic-start events.
+      // Active calls retain the narrow probe, including after mute releases the microphone.
       const watched = this.session.watched()
       const probeExes = [...new Set([...exes, ...watched.flatMap((c) => candidateExes(c))])]
+      if (!this.active && (probeExes.length === 0 || this.now() - this.lastDiscoveryAt >= PROBE_EVERY_IDLE_MS)) {
+        for (const exe of idleProbeExesFor(apps)) if (!probeExes.includes(exe)) probeExes.push(exe)
+        this.lastDiscoveryAt = this.now()
+      }
       let probe: ProbeResult | null = null
       if (probeExes.length > 0) {
         try {
           probe = await this.deps.helper.probe(probeExes)
+          this.probeFailures = 0
+          this.detectionError = undefined
         } catch (e) {
           this.deps.log(`probe failed (${describeError(e)})`)
+          if (++this.probeFailures >= 3) this.detectionError = 'Echo cannot check the meeting state right now. Detection is retrying.'
         }
-      }
+      } else this.detectionError = undefined
       if (!this.enabled) return
       const candidates = detectMeetings(this.sessions, probe, apps)
+      for (const c of detectPlaybackMeetings(probe, apps)) {
+        if (!candidates.some(existing => existing.key === c.key)) candidates.push(c)
+      }
+      // Unknown browser labels produce a visible manual fallback, never an auto-start.
+      // Only a manually confirmed recording may continue on that weaker evidence.
+      if (!this.active || this.active.candidate.requiresConfirmation) {
+        for (const c of unconfirmedMeetings(this.sessions, probe, apps)) {
+          if (!candidates.some(existing => existing.key === c.key)) candidates.push(c)
+        }
+      }
+      for (const [key, failure] of this.startFailures) {
+        if (!candidates.some(c => c.key === key) && this.now() - failure.lastSeen > 15_000) this.startFailures.delete(key)
+      }
+      for (const candidate of candidates) {
+        const failure = this.startFailures.get(candidate.key)
+        if (!failure) continue
+        failure.lastSeen = this.now()
+        if (failure.attempts >= 3 || this.now() < failure.retryAt) {
+          candidate.requiresConfirmation = true
+          candidate.remoteAudio = false
+        }
+      }
       const actions = this.session.observe(this.now(), candidates, (c) => continuationEvidence(c, probe))
       this.presentKeys = new Set(candidates.map((c) => c.key))
       await this.run(async () => {
@@ -483,7 +537,7 @@ export class MeetingController {
           // A pending candidate, an ending recording or a stopped call needs observations to
           // advance its timers.
           this.schedule(this.active ? PROBE_EVERY_RECORDING_MS : PROBE_EVERY_MS)
-        }
+        } else this.schedule(PROBE_EVERY_IDLE_MS)
       }
     }
   }
@@ -565,6 +619,8 @@ export class MeetingController {
   }
 
   private async startRecording(candidate: MeetingCandidate): Promise<void> {
+    const micHeld = this.sessions.some(s => s.appPid === candidate.appPid ||
+      (!candidate.viaBrowser && candidateExes(candidate).includes(s.exe.toLowerCase())))
     const uuid = this.uuid()
     const dir = join(this.deps.meetingsDir, uuid)
     mkdirSync(dir, { recursive: true })
@@ -586,19 +642,25 @@ export class MeetingController {
         id: uuid,
         dir,
         otherPids: candidate.otherPids,
-        micEndpointId: candidate.micEndpointId
+        micEndpointId: candidate.micEndpointId,
+        ...(!micHeld ? { micPaused: true } : {})
       })
     } catch (e) {
       this.deps.log(`recording failed to start: meeting ${row.id} (${describeError(e)})`)
       rmSync(dir, { recursive: true, force: true })
       const reason = `Couldn't start recording: ${(e as Error).message ?? 'unknown error'}`.slice(0, 200)
       this.deps.meetings.update(row.id, { status: 'failed', error: reason, ended_at: this.now(), audio_dir: null })
-      // Treat it like a user stop, so this call does not retry in a loop.
-      this.session.stopByUser(this.now(), false)
+      // Recover transient device/helper failures with bounded backoff. After three failed
+      // starts the visible Record now fallback remains, without creating failed rows forever.
+      const attempts = (this.startFailures.get(candidate.key)?.attempts ?? 0) + 1
+      this.startFailures.set(candidate.key, { attempts, retryAt: this.now() + 10_000 * attempts, lastSeen: this.now() })
+      this.session.interrupt()
       this.updated(row.id)
       this.deps.ui.notify({ kind: 'record-failed', title: `Echo couldn't record ${label}`, body: reason, meetingId: row.id })
       return
     }
+
+    this.startFailures.delete(candidate.key)
 
     if (this.shutDown) {
       // Echo is quitting: stop at once and leave the meeting for the next launch to finish.
@@ -640,11 +702,15 @@ export class MeetingController {
       mic: 0,
       others: 0,
       lastLevelsEmit: 0,
-      micHeld: true,
+      micHeld,
       userPaused: false,
-      autoPaused: false,
-      micPaused: false,
-      micPauses: []
+      autoPaused: !micHeld,
+      micPaused: !micHeld,
+      micPauses: micHeld ? [] : [{ from: 0, to: null }]
+    }
+    if (!micHeld) {
+      writeMicPauses(dir, this.active.micPauses)
+      live.setMicPaused(true, 0)
     }
     this.deps.log(`recording started: meeting ${row.id} (${candidate.app}, others ${started.othersMode})`)
     // Who attended, from the calendar (refreshed now); the final pass names speakers with it.
@@ -832,11 +898,13 @@ export class MeetingController {
       const timer = setTimeout(() => {
         const d = this.detected
         // Only a meeting still on screen and still waiting for the call to begin is announced.
-        if (!d || d.key !== key || this.active || d.heard || !this.presentKeys.has(key)) return
+        if (!d || d.key !== key || this.active || (d.heard && !d.candidate.requiresConfirmation) || !this.presentKeys.has(key)) return
         this.deps.ui.notify({
           kind: 'detected',
           title: `Meeting detected: ${MEETING_APP_LABELS[d.candidate.app]}`,
-          body: 'Echo starts transcribing when the call begins. Use the pill to record now or skip this meeting.',
+          body: d.candidate.requiresConfirmation
+            ? 'Echo cannot confirm this call automatically. Choose Record now in the pill if you are in this meeting.'
+            : 'Echo starts transcribing when the call begins. Use the pill to record now or skip this meeting.',
           meetingId: null
         })
       }, DETECTED_NOTIFY_MS)
@@ -851,7 +919,7 @@ export class MeetingController {
   /** Tell the dashboard, the overlay and the tray when the meeting state changes. */
   private emitLive(): void {
     const state = this.live()
-    const presence = [state.phase, state.ended, state.meetingId, state.app, state.title, state.micPaused].join('|')
+    const presence = [state.phase, state.ended, state.meetingId, state.app, state.title, state.micPaused, state.requiresConfirmation, state.detectionError].join('|')
     if (presence === this.lastPresence) return
     this.lastPresence = presence
     this.deps.ui.emit({ type: 'live', state })
