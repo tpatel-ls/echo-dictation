@@ -1,5 +1,8 @@
-import { BrowserWindow, screen, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, powerMonitor, screen, shell } from 'electron'
 import { join } from 'node:path'
+import { IPC } from '@shared/types'
+import { OverlayHealth } from './overlay-health'
+import { appendRotatingLog } from './diagnostic-log'
 
 const preload = join(__dirname, '../preload/index.js')
 const iconPath = join(__dirname, '../../build/icon.png')
@@ -44,20 +47,76 @@ export function createOverlay(offsetBottom: number): BrowserWindow {
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   win.setIgnoreMouseEvents(true, { forward: true })
   reloadOnCrash(win)
+  watchOverlay(win, offsetBottom)
   positionOverlay(win, offsetBottom)
-  loadRenderer(win, 'overlay')
-  win.webContents.once('did-finish-load', () => {
-    if (!win.isDestroyed()) win.showInactive()
+  win.webContents.on('did-finish-load', () => {
+    ensureOverlayVisible(win, offsetBottom)
   })
+  loadRenderer(win, 'overlay')
   return win
+}
+
+function watchOverlay(win: BrowserWindow, offsetBottom: number): void {
+  const health = new OverlayHealth(() => {
+    if (win.isDestroyed()) return
+    appendRotatingLog(join(app.getPath('userData'), 'overlay.log'), `${new Date().toISOString()} heartbeat missing; reloading overlay\n`)
+    win.setIgnoreMouseEvents(true, { forward: true })
+    // Also replaces an unresponsive renderer; a normal reload can wait on its hung thread.
+    win.webContents.forcefullyCrashRenderer()
+  }, Date.now())
+  const beat = (event: Electron.IpcMainEvent): void => {
+    if (event.sender === win.webContents) health.beat(Date.now())
+  }
+  const reposition = (): void => {
+    ensureOverlayVisible(win, offsetBottom)
+  }
+  const resume = (): void => {
+    health.beat(Date.now()) // do not mistake time asleep for an unresponsive renderer
+    reposition()
+  }
+  const timer = setInterval(() => {
+    // A healthy renderer can still be hidden or covered after Show Desktop, sleep,
+    // or another topmost window. Repair the native window without reloading audio.
+    ensureOverlayVisible(win, offsetBottom)
+    health.check(Date.now())
+  }, 5000)
+  timer.unref()
+  ipcMain.on(IPC.OVERLAY_READY, beat)
+  powerMonitor.on('resume', resume)
+  powerMonitor.on('unlock-screen', resume)
+  screen.on('display-added', reposition)
+  screen.on('display-removed', reposition)
+  screen.on('display-metrics-changed', reposition)
+  win.once('closed', () => {
+    clearInterval(timer)
+    ipcMain.removeListener(IPC.OVERLAY_READY, beat)
+    powerMonitor.removeListener('resume', resume)
+    powerMonitor.removeListener('unlock-screen', resume)
+    screen.removeListener('display-added', reposition)
+    screen.removeListener('display-removed', reposition)
+    screen.removeListener('display-metrics-changed', reposition)
+  })
+}
+
+/** Restore the indicator without taking keyboard focus from the user's work. */
+function ensureOverlayVisible(win: BrowserWindow, offsetBottom: number): void {
+  if (win.isDestroyed()) return
+  positionOverlay(win, offsetBottom)
+  if (win.isMinimized()) win.restore()
+  if (!win.isAlwaysOnTop()) win.setAlwaysOnTop(true, 'screen-saver')
+  if (!win.isVisible()) win.showInactive()
+  // Windows can place a different topmost window above us while isVisible stays true.
+  win.moveTop()
 }
 
 export function positionOverlay(win: BrowserWindow, offsetBottom: number): void {
   const { workArea } = screen.getPrimaryDisplay()
   const b = win.getBounds()
-  const x = Math.round(workArea.x + (workArea.width - b.width) / 2)
-  const y = Math.round(workArea.y + workArea.height - b.height - offsetBottom)
-  win.setPosition(x, y)
+  const maxOffset = Math.max(0, workArea.height - b.height)
+  const offset = Number.isFinite(offsetBottom) ? Math.min(maxOffset, Math.max(0, offsetBottom)) : 28
+  const x = Math.round(workArea.x + Math.max(0, (workArea.width - b.width) / 2))
+  const y = Math.round(workArea.y + Math.max(0, workArea.height - b.height - offset))
+  if (b.x !== x || b.y !== y) win.setPosition(x, y)
 }
 
 /** The dashboard / native app. Hidden until shown via tray or first run. */

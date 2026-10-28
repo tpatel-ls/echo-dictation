@@ -164,6 +164,12 @@ describe('diarize', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
+  it('retries a temporary rate limit', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(json({}, 429)).mockResolvedValueOnce(json(diarizationPayload()))
+    await expect(diarize(wav, {}, conn, deps(fetchMock))).resolves.toHaveProperty('duration', 42.5)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('never retries a 4xx', async () => {
     const fetchMock = vi.fn(async () =>
       json({ error: { message: 'Unauthorized', type: 'invalid_request_error', code: 401 } }, 401)
@@ -209,7 +215,7 @@ describe('transcribeSegments', () => {
       expect(file.type).toBe('audio/wav')
       expect(form.get('models')).toBe('canary-qwen-2.5b,parakeet-tdt-0.6b-v2')
       expect(JSON.parse(form.get('segments') as string)).toEqual(segments)
-      return json({ results: segments.map((s) => ({ id: s.id, texts: { 'canary-qwen-2.5b': s.id.toUpperCase() } })) })
+      return json({ results: segments.map((s) => ({ id: s.id, texts: Object.fromEntries(models.map(m => [m, s.id.toUpperCase()])) })) })
     })
     await transcribeSegments(wav, segments, models, conn, deps(fetchMock))
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -219,7 +225,7 @@ describe('transcribeSegments', () => {
     const prompts: unknown[] = []
     const fetchMock = vi.fn(async (_url: unknown, init: any) => {
       prompts.push((init.body as FormData).get('prompt'))
-      return json({ results: [] })
+      return json({ results: segments.map(s => ({ id: s.id, texts: Object.fromEntries(models.map(m => [m, ''])) })) })
     })
     await transcribeSegments(wav, segments, models, conn, deps(fetchMock), 'Zeltra, BROXA, hiring@NWG')
     await transcribeSegments(wav, segments, models, conn, deps(fetchMock), '')
@@ -227,22 +233,40 @@ describe('transcribeSegments', () => {
     expect(prompts).toEqual(['Zeltra, BROXA, hiring@NWG', null, null])
   })
 
-  it('returns results in request order, with empty texts for ids the server omitted', async () => {
-    const fetchMock = vi.fn(async () =>
-      json({
-        results: [
-          { id: 'c', texts: { 'canary-qwen-2.5b': 'Third.', 'parakeet-tdt-0.6b-v2': 'Third' } },
-          { id: 'a', texts: { 'parakeet-tdt-0.6b-v2': 'First' } },
-          { id: 'zzz', texts: { 'canary-qwen-2.5b': 'not asked for' } }
-        ]
-      })
-    )
+  it('retries only incomplete segments and preserves successful results', async () => {
+    const requested: string[][] = []
+    const fetchMock = vi.fn(async (_url: unknown, init: any) => {
+      const batch = JSON.parse(init.body.get('segments')) as Array<{ id: string }>
+      requested.push(batch.map(s => s.id))
+      if (requested.length === 1) return json({ results: [
+        { id: 'c', texts: { [models[0]]: 'Third.', [models[1]]: 'Third' } },
+        { id: 'a', texts: { [models[0]]: 'First.' } }
+      ] })
+      return json({ results: batch.map(s => ({ id: s.id, texts: { [models[1]]: 'Recovered', ...(s.id === 'b' ? { [models[0]]: '' } : {}) } })) })
+    })
     const out = await transcribeSegments(wav, segments, models, conn, deps(fetchMock))
-    expect(out).toEqual([
-      { id: 'a', texts: { 'parakeet-tdt-0.6b-v2': 'First' } },
-      { id: 'b', texts: {} },
-      { id: 'c', texts: { 'canary-qwen-2.5b': 'Third.', 'parakeet-tdt-0.6b-v2': 'Third' } }
-    ])
+    expect(requested).toEqual([['a', 'b', 'c'], ['a', 'b']])
+    expect(out.map(s => s.id)).toEqual(['a', 'b', 'c'])
+    expect(out[0].texts).toEqual({ [models[0]]: 'First.', [models[1]]: 'Recovered' })
+    expect(out[1].texts[models[0]]).toBe('') // explicit no-speech is a valid response
+    expect(out[2].texts[models[0]]).toBe('Third.')
+  })
+
+  it('fails instead of silently dropping segments or a missing check model', async () => {
+    const fetchMock = vi.fn(async () => json({ results: [{ id: 'a', texts: { [models[0]]: 'Partial' } }] }))
+    await expect(transcribeSegments(wav, segments, models, conn, deps(fetchMock))).rejects.toThrow(/incomplete/i)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps the timeout active while the response body is downloading', async () => {
+    const fetchMock = vi.fn(async (_url: unknown, init: any) => ({
+      ok: true,
+      text: () => new Promise<string>((_resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+      })
+    } as Response))
+    await expect(transcribeSegments(wav, segments, models, conn, deps(fetchMock, { timeoutMs: 20 }))).rejects.toThrow(/timed out/i)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('does not call the server for an empty segment list', async () => {
@@ -252,6 +276,7 @@ describe('transcribeSegments', () => {
   })
 
   it.each([
+    ['duplicate segment ids', { results: [{ id: 'a', texts: {} }, { id: 'a', texts: {} }] }],
     ['no results array', { text: 'hello' }],
     ['a result with no id', { results: [{ texts: {} }] }],
     ['a result with no texts', { results: [{ id: 'a' }] }],
@@ -278,7 +303,7 @@ describe('transcribeSegments', () => {
   it('retries a 500 then returns the result', async () => {
     let calls = 0
     const fetchMock = vi.fn(async () =>
-      ++calls === 1 ? new Response('boom', { status: 500 }) : json({ results: [{ id: 'a', texts: { m: 'hi' } }] })
+      ++calls === 1 ? new Response('boom', { status: 500 }) : json({ results: segments.map(s => ({ id: s.id, texts: { m: 'hi' } })) })
     )
     const out = await transcribeSegments(wav, segments, ['m'], conn, deps(fetchMock))
     expect(out[0]).toEqual({ id: 'a', texts: { m: 'hi' } })

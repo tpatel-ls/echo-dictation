@@ -127,6 +127,14 @@ export class DictationController {
     this.send({ phase: 'idle' })
   }
 
+  /** A lost renderer cannot deliver the end of a recording. Release that cycle for the next press. */
+  onOverlayLost(): void {
+    if (!this.listening && !this.watchdog) return // a submitted transcription can still finish
+    this.listenEpoch++
+    this.clearLinger()
+    this.onCancel()
+  }
+
   /**
    * Live preview: decode the audio captured so far while the hotkey is still held. Best-effort — a
    * disabled setting, a non-deterministic model (previews would queue behind the final decode on a

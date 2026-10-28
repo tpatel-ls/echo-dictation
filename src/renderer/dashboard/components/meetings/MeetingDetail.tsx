@@ -95,7 +95,7 @@ export function MeetingDetail({
   const copyTranscript = (): Promise<void> =>
     run('copy', async () => {
       try {
-        await navigator.clipboard.writeText(transcriptText(meeting.segments, meeting.speakers))
+        await api.system.copyText(transcriptText(meeting.segments, meeting.speakers))
         notify('Transcript copied')
       } catch (e) {
         notify(`Copy failed: ${errorText(e)}`)

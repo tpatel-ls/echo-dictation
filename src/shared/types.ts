@@ -246,6 +246,7 @@ export const IPC = {
   DIAG_RUN: 'diag:run',
   DIAG_COPY_REPORT: 'diag:copyReport',
   SYSTEM_BUILD_INFO: 'system:buildInfo',
+  SYSTEM_COPY_TEXT: 'system:copyText',
   OPEN_DASHBOARD: 'app:openDashboard'
 } as const
 
@@ -350,6 +351,7 @@ export interface EchoApi {
   }
   system: {
     buildInfo(): Promise<BuildInfo>
+    copyText(text: string): Promise<void>
   }
   meetings: MeetingsApi
 }

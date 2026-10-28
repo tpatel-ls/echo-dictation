@@ -23,6 +23,9 @@ import { MIC_PAUSE_MARGIN_SAMPLES, type MicPauseSpan } from './pcm-file'
 const BLEED_TOLERANCE_MS = 1500
 /** Others text older than this (behind the newest mic chunk) can no longer matter for bleed. */
 const OTHERS_MEMORY_MS = 120_000
+// Live captions may fall behind a slow server; the final pass still reads the complete files.
+const MAX_QUEUED_SAMPLES = 60 * MEETING_SAMPLE_RATE
+const MAX_READ_SAMPLES = 30 * MEETING_SAMPLE_RATE
 
 export interface PcmSource {
   read(maxSamples?: number): Int16Array
@@ -131,8 +134,7 @@ export class LiveTranscriber {
     if (this.cancelled) return
     this.cycle++
     for (const ch of [this.others, this.mic]) {
-      this.take(ch)
-      this.cut(ch, false)
+      while (this.take(ch) > 0) this.cut(ch, false)
       this.cut(ch, true)
       this.pump(ch)
     }
@@ -207,6 +209,7 @@ export class LiveTranscriber {
   cancel(): void {
     this.cancelled = true
     this.held = []
+    this.recentOthers = []
     for (const ch of [this.mic, this.others]) {
       ch.queue = []
       ch.pending = new Int16Array(0)
@@ -231,14 +234,16 @@ export class LiveTranscriber {
     return { channel, source, pending: new Int16Array(0), pendingStart: 0, queue: [], busy: null, inflight: null, doneThroughMs: 0 }
   }
 
-  private take(ch: ChannelState): void {
+  private take(ch: ChannelState): number {
     try {
-      const fresh = ch.source.read()
+      const fresh = ch.source.read(MAX_READ_SAMPLES)
       const ranges = this.ranges(ch)
       if (ranges.length > 0) silenceRanges(fresh, ranges, ch.pendingStart + ch.pending.length)
       ch.pending = concat(ch.pending, fresh)
+      return fresh.length
     } catch (e) {
       this.deps.log(`live ${ch.channel}: read failed (${describeError(e)})`)
+      return 0
     }
   }
 
@@ -265,6 +270,14 @@ export class LiveTranscriber {
       silent: isSilentChunk(samples),
       stale: false
     })
+    let queued = ch.queue.reduce((total, chunk) => total + chunk.samples.length, 0)
+    let dropped = 0
+    while (queued > MAX_QUEUED_SAMPLES && ch.queue.length > 1) {
+      const old = ch.queue.shift()!
+      queued -= old.samples.length
+      dropped += old.samples.length
+    }
+    if (dropped) this.deps.log(`live ${ch.channel}: backlog capped; skipped audio remains on disk for the final transcript`)
   }
 
   private overlaps(ch: ChannelState, chunk: Chunk): boolean {
@@ -325,6 +338,8 @@ export class LiveTranscriber {
     if (!cleaned) return
     if (ch.channel === 'others') {
       this.recentOthers.push({ startMs: chunk.startMs, endMs: chunk.endMs, text: cleaned })
+      // Prune even when the microphone is paused and never produces a held chunk.
+      this.recentOthers = this.recentOthers.filter((o) => o.endMs > chunk.endMs - OTHERS_MEMORY_MS)
       this.store('others', chunk.startMs, chunk.endMs, cleaned)
     } else {
       this.held.push({ chunk, startMs: chunk.startMs, endMs: chunk.endMs, text: cleaned, cycle: this.cycle })

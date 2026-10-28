@@ -389,15 +389,19 @@ describe('MeetingController', () => {
     expect(h.meetings.get(id)!.status).toBe('recording')
   })
 
-  it('ends a muted recording after 60 s of silence from the far end', async () => {
+  it('stops a lingering Meet within 15 s, releases capture and returns the capsule to idle', async () => {
     const h = setup()
     const id = await startMeet(h)
-    h.helper.probeResult = meetProbe({ tab: 'Meet - abc-defg-hij', peak: 0 }) // tab lingers, nothing plays
+    h.helper.probeResult = meetProbe({ tab: 'Meet - abc-defg-hij', peak: 0.05 }) // unrelated browser audio
     h.helper.sessions([])
-    await vi.advanceTimersByTimeAsync(55_000)
+    await vi.advanceTimersByTimeAsync(10_000)
     expect(h.meetings.get(id)!.status).toBe('recording')
-    await vi.advanceTimersByTimeAsync(25_000)
+    await vi.advanceTimersByTimeAsync(7000)
     expect(h.meetings.get(id)!.status).toBe('processing')
+    expect(h.helper.stopRequests).toEqual(['uuid-1'])
+    expect(h.controller.live().recording).toBe(false)
+    await vi.advanceTimersByTimeAsync(4000)
+    expect(h.controller.live().phase).toBe('idle')
     // Back to idle: with no meeting app on the mic, probing stops.
     const probes = h.helper.probes.length
     await vi.advanceTimersByTimeAsync(30_000)

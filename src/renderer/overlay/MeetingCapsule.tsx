@@ -106,7 +106,11 @@ export function useMeetingCapsule(enabled: boolean): CapsuleParts {
     }
   }
 
-  if (view.kind === 'idle') return { className: 'ov-idle', attrs: {}, content: null }
+  if (view.kind === 'idle') return {
+    className: 'ov-idle',
+    attrs: { 'aria-label': 'Echo is running' },
+    content: null
+  }
 
   const app = live?.app ? SHORT_APP[live.app] ?? MEETING_APP_LABELS[live.app] : 'Meeting'
   const fullApp = live?.app ? MEETING_APP_LABELS[live.app] : 'Meeting'

@@ -41,7 +41,7 @@ import type { MeetingPatch, MeetingsStore } from '../store/meetings'
 import type { VoiceprintStore } from '../store/voiceprints'
 import { draftNotes, type NotesConfig, type NotesMeta, type NotesUtterance } from './notes'
 import { suggestSpeakerNames, type SpeakerNameProposal } from './speaker-names'
-import { readMicPauses, readPcmFile, silenceMicPauses } from './pcm-file'
+import { readMicPauses, readPcmFile, readPcmRange, silenceMicPauses } from './pcm-file'
 import { diarize, SpeechRouteError, transcribeSegments, type SpeechConn } from './speech-client'
 import { typesafeClient, verifyNotes } from './typesafe'
 
@@ -236,6 +236,7 @@ export function pauseSegments(samples: Int16Array, speaker: string, idPrefix: st
 interface ChannelPlan {
   channel: MeetingChannel
   samples: Int16Array
+  sampleCount: number
   /** Segments whose `speaker` is already the final speaker key. */
   segments: AsrSegment[]
   /** Per speaker key: diarized speech seconds and embedding. */
@@ -265,11 +266,13 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
 
     // 1. Preparing audio
     if (!rec.audio_dir || !existsSync(rec.audio_dir)) throw new Error(AUDIO_DELETED_ERROR)
-    const mic = readPcmFile(join(rec.audio_dir, 'mic.pcm'))
+    const audioDir = rec.audio_dir
+    let mic = readPcmFile(join(rec.audio_dir, 'mic.pcm'))
     // The helper already wrote silence while the mic was paused; also silence the moment before
     // each pause (an app's mute is noticed late), and any span it could not pause in time.
-    silenceMicPauses(mic, readMicPauses(rec.audio_dir))
-    const others = readPcmFile(join(rec.audio_dir, 'others.pcm'))
+    const micPauses = readMicPauses(rec.audio_dir)
+    silenceMicPauses(mic, micPauses)
+    let others = readPcmFile(join(rec.audio_dir, 'others.pcm'))
     if (mic.length === 0 && others.length === 0) throw new Error(INTERRUPTED_ERROR)
     const totalS = Math.max(mic.length, others.length) / MEETING_SAMPLE_RATE
     if (rec.ended_at === null) rec = update({ ended_at: rec.started_at + Math.round(totalS * 1000) })
@@ -288,7 +291,14 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
     step('Separating speakers')
     const tryDiarize = async (samples: Int16Array, maxSpeakers: number, channel: MeetingChannel) => {
       try {
-        return await speech.diarize(int16ToWav(samples), { maxSpeakers }, conn)
+        const result = await speech.diarize(int16ToWav(samples), { maxSpeakers }, conn)
+        // This channel already passed the audible-speech check. An empty diarization must not
+        // turn it into a successful but empty transcript; fall back to pause-based clips.
+        if (result.segments.length === 0) {
+          deps.log(`final pass: empty diarization for audible ${channel}; using pause-based clips`)
+          return null
+        }
+        return result
       } catch (e) {
         if (!diarizerUnavailable(e)) throw e
         deps.log(`final pass: diarizer unavailable for ${channel} (${describeError(e)}); one speaker per channel`)
@@ -315,7 +325,7 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
     const plans: ChannelPlan[] = []
     let othersTurns: DiarizedTurn[] = []
     if (othersSpoke) {
-      const plan: ChannelPlan = { channel: 'others', samples: others, segments: [], voices: new Map(), diarization: othersDiar }
+      const plan: ChannelPlan = { channel: 'others', samples: others, sampleCount: others.length, segments: [], voices: new Map(), diarization: othersDiar }
       if (othersDiar) {
         const key = (label: string): string => `others:${label}`
         othersTurns = othersDiar.segments
@@ -328,7 +338,7 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
       plans.push(plan)
     }
     if (micSpoke) {
-      const plan: ChannelPlan = { channel: 'mic', samples: mic, segments: [], voices: new Map(), diarization: micDiar }
+      const plan: ChannelPlan = { channel: 'mic', samples: mic, sampleCount: mic.length, segments: [], voices: new Map(), diarization: micDiar }
       if (micDiar) {
         const self = selfSpeakerLabel(micDiar)
         const key = (label: string): string => (label === self ? SELF_SPEAKER_KEY : `mic:${label}`)
@@ -357,6 +367,11 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
       })
       if (plan.segments.length < before) deps.log(`final pass: skipped ${before - plan.segments.length} ${plan.channel} clip(s) with no speech`)
     }
+    // Whole-channel samples are needed only for speaker separation and clip planning. Subsequent
+    // requests read bounded batches from disk, including reapplying the microphone pause mask.
+    mic = new Int16Array(0)
+    others = new Int16Array(0)
+    for (const plan of plans) plan.samples = new Int16Array(0)
     const jobs = plans.flatMap((plan) => splitBatches(batchSegments(plan.segments)).map((batch) => ({ plan, batch })))
     let dict: DictionaryEntry[] = []
     try {
@@ -379,8 +394,10 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
     for (const [n, { plan, batch }] of jobs.entries()) {
       step(`Transcribing (${n + 1}/${jobs.length})`)
       const from = Math.floor(batch.start * MEETING_SAMPLE_RATE)
-      const to = Math.min(plan.samples.length, Math.ceil(batch.end * MEETING_SAMPLE_RATE))
-      const wav = int16ToWav(plan.samples.subarray(from, to))
+      const to = Math.min(plan.sampleCount, Math.ceil(batch.end * MEETING_SAMPLE_RATE))
+      const samples = readPcmRange(join(audioDir, `${plan.channel}.pcm`), from, to)
+      if (plan.channel === 'mic') silenceMicPauses(samples, micPauses, from)
+      const wav = int16ToWav(samples)
       const offset = from / MEETING_SAMPLE_RATE
       const rebased = batch.segments.map((s) => ({
         id: s.id,
@@ -419,6 +436,8 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
         })
       }
     }
+
+    jobs.length = 0
 
     if (swapped) deps.log(`final pass: ${swapped} word(s) spelt as the vocabulary model heard them`)
 

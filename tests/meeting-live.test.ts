@@ -76,6 +76,22 @@ function setup(dictionary: DictionaryEntry[] = []) {
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
 
 describe('LiveTranscriber', () => {
+  it('bounds the live backlog when transcription stalls; original audio stays with the source', async () => {
+    const { live, mic, calls, logs } = setup()
+    for (let i = 0; i < 20; i++) {
+      mic.push(speech(30))
+      live.tick()
+    }
+    expect(calls).toHaveLength(1)
+    for (let i = 0; i < calls.length; i++) {
+      calls[i].resolve('')
+      await settle()
+    }
+    await live.idle()
+    expect(calls.reduce((seconds, c) => seconds + c.seconds, 0)).toBeLessThanOrEqual(90)
+    expect(logs.some((line) => line.includes('backlog'))).toBe(true)
+  })
+
   it('waits for 12 s of audio, cuts at a pause, and continues from the cut', async () => {
     const { live, mic, calls, stored } = setup()
     mic.push(speech(6))

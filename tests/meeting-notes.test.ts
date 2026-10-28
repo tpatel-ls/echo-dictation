@@ -207,6 +207,18 @@ describe('draftNotes', () => {
     ).rejects.toThrow(/timed out/)
   })
 
+  it('times out a stalled response body after the headers arrived', async () => {
+    const stalled = vi.fn(async (_url: unknown, init: any) => ({
+      ok: true,
+      json: () => new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+      })
+    } as Response))
+    await expect(draftNotes(meta, utterances, { ...config, fallbackModel: undefined }, 'KEY', {
+      fetch: asFetch(stalled), timeoutMs: 10
+    })).rejects.toThrow(/timed out/)
+  })
+
   it('refuses an empty transcript without calling the proxy', async () => {
     const fetchMock = vi.fn()
     await expect(draftNotes(meta, [], config, 'KEY', { fetch: asFetch(fetchMock) })).rejects.toThrow(NotesError)

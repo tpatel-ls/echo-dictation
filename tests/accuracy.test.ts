@@ -269,6 +269,36 @@ describe('recognizeAccurately', () => {
       expect(outcome.winner.text).toMatch(/^Mic testing, how('s| is) it going\?$/)
     })
 
+    it('pastes the cross-check model when Whisper loops one phrase on a long dictation', async () => {
+      const said = 'It will live on the HRIS domain but connect to Vetta for candidates. Onboarding starts in Vetta.'
+      const primary = byModel({
+        'whisper-1': `It will live on the HRIS domain but connect to Vetta for candidates.${' We will also have a new application with Vetta.'.repeat(30)}`,
+        'parakeet-tdt-0.6b-v2': said
+      })
+
+      const outcome = await recognizeAccurately(
+        { ...wav, durationMs: 150_000 },
+        request({ settings: crossCheck }),
+        deps({ primary })
+      )
+
+      expect(outcome.winner).toMatchObject({ model: 'parakeet-tdt-0.6b-v2', text: said })
+    })
+
+    it('collapses a Whisper loop instead of pasting it when no other model answered', async () => {
+      const primary = byModel({
+        'whisper-1': `Onboarding starts in Vetta.${' We will also have a new application with Vetta.'.repeat(30)}`
+      })
+
+      const outcome = await recognizeAccurately(
+        { ...wav, durationMs: 150_000 },
+        request({ settings: crossCheck }),
+        deps({ primary })
+      )
+
+      expect(outcome.winner.text).toBe('Onboarding starts in Vetta. We will also have a new application with Vetta.')
+    })
+
     it('fast mode ignores cross-check models', async () => {
       const primary = byModel({ 'whisper-1': 'Please send the update.' })
 

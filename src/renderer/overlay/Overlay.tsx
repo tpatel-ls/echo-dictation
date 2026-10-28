@@ -34,6 +34,8 @@ export function Overlay(): JSX.Element {
     cap.onEvent((event) => window.api.logMic(event))
     capture.current = cap
     window.api.overlayReady()
+    // Stops on a React error/unmount, unlike a preload timer that could report a blank UI healthy.
+    const heartbeat = setInterval(() => window.api.overlayReady(), 5000)
     const applyPreview = (s: Settings): void => {
       previewEnabled.current = s.livePreview && supportsLivePreview(s.previewModel)
     }
@@ -52,6 +54,7 @@ export function Overlay(): JSX.Element {
       void cap.setWarm(s.micMode === 'warm')
     })
     return () => {
+      clearInterval(heartbeat)
       offState()
       offSettings()
       cap.dispose()

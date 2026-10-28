@@ -203,26 +203,27 @@ export async function postMessages(
         messages: [{ role: 'user', content: user }]
       })
     })
+
+    if (!res.ok) {
+      const body = await res.text()
+      throw new NotesError(`Claude proxy returned ${res.status}: ${body.slice(0, 200)}`, res.status)
+    }
+    const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> }
+    const out = (data.content ?? [])
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text ?? '')
+      .join('')
+      .trim()
+    if (!out) throw new NotesError('Claude returned no notes')
+    return out
   } catch (e) {
     if (controller.signal.aborted) throw new NotesError('Claude notes timed out')
-    throw new NotesError(`Network error reaching Claude proxy: ${(e as Error).message}`)
+    if (e instanceof NotesError) throw e
+    throw new NotesError('Network error or invalid response from Claude proxy')
   } finally {
     clearTimeout(timer)
   }
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new NotesError(`Claude proxy returned ${res.status}: ${body.slice(0, 200)}`, res.status)
-  }
-
-  const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> }
-  const out = (data.content ?? [])
-    .filter((b) => b.type === 'text')
-    .map((b) => b.text ?? '')
-    .join('')
-    .trim()
-  if (!out) throw new NotesError('Claude returned no notes')
-  return out
 }
 
 export function transcriptLine(u: NotesUtterance): string {

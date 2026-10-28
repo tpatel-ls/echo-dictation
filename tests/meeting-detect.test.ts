@@ -439,22 +439,30 @@ describe('continuationEvidence (recording, the app holds no mic session)', () =>
   it('Meet: the tab (any suffix) is evidence; its "Audio playing" suffix is remote audio', () => {
     expect(continuationEvidence(meet, probe({ tabs: [tab('chrome.exe', 100, 'Meet - abc-defg-hij - Audio playing')] }))).toEqual({
       evidence: true,
-      remoteAudio: true
+      remoteAudio: true,
+      audioOnly: true
     })
     expect(continuationEvidence(meet, probe({ tabs: [tab('chrome.exe', 100, 'Meet - abc-defg-hij')] }))).toEqual({
       evidence: true,
-      remoteAudio: false
+      remoteAudio: false,
+      audioOnly: true
     })
     expect(continuationEvidence(meet, probe({ tabs: [tab('chrome.exe', 100, 'Meet - abc-defg-hij - Camera recording')] }))?.evidence).toBe(true)
   })
 
-  it('Meet: the browser render meter counts only when no other tab is the one playing', () => {
+  it('Meet: a lingering tab cannot inherit unlabelled browser audio', () => {
     const meetTab = tab('chrome.exe', 100, 'Meet - abc-defg-hij')
     const rendering = [render('chrome.exe', 100, 300, loud)]
-    expect(continuationEvidence(meet, probe({ tabs: [meetTab], render: rendering }))?.remoteAudio).toBe(true)
+    expect(continuationEvidence(meet, probe({ tabs: [meetTab], render: rendering }))?.remoteAudio).toBe(false)
     // A YouTube tab playing in the same browser must not keep a lingering Meet tab recording.
     const youtube = tab('chrome.exe', 100, 'Lo-fi beats - YouTube - Audio playing')
     expect(continuationEvidence(meet, probe({ tabs: [meetTab, youtube], render: rendering }))?.remoteAudio).toBe(false)
+  })
+
+  it('does not continue the recorded Meet from a different meeting tab', () => {
+    const recordedMeet = { ...meet, title: 'abc-defg-hij' }
+    const p = probe({ tabs: [tab('chrome.exe', 100, 'Meet - xyz-abcd-efg - Audio playing')] })
+    expect(continuationEvidence(recordedMeet, p)).toMatchObject({ evidence: false, remoteAudio: false })
   })
 
   it('Meet: no evidence once the tab is closed, or for another browser process', () => {

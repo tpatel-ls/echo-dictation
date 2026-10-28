@@ -63,6 +63,26 @@ export function readPcmFile(path: string): Int16Array {
   }
 }
 
+/** Read one final-transcription batch without retaining the whole meeting in memory. */
+export function readPcmRange(path: string, from: number, to: number): Int16Array {
+  if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to < from) {
+    throw new Error('Invalid PCM sample range')
+  }
+  const fd = openSync(path, 'r')
+  try {
+    const bytes = Buffer.alloc((to - from) * 2)
+    let got = 0
+    while (got < bytes.length) {
+      const n = readSync(fd, bytes, got, bytes.length - got, from * 2 + got)
+      if (!n) throw new Error('Meeting audio was truncated during processing')
+      got += n
+    }
+    return pcm16FromBytes(bytes)
+  } finally {
+    closeSync(fd)
+  }
+}
+
 /** Whole samples in a PCM file, without reading it; 0 when missing. */
 export function pcmSampleCount(path: string): number {
   return Math.floor((fileSize(path) ?? 0) / 2)

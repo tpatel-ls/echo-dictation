@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assessTranscript, chooseTranscript } from '@shared/transcript-quality'
+import { assessTranscript, chooseTranscript, collapseRepetitionLoops } from '@shared/transcript-quality'
 
 describe('assessTranscript', () => {
   it('keeps deterministic forbidden letters rejected and marks other wrong-language output non-clean', () => {
@@ -55,6 +55,24 @@ describe('assessTranscript', () => {
     expect(assessTranscript("I'd be happy to help.", { language: 'en' }).grade).toBe('reject')
   })
 
+  it('rejects Whisper looping one phrase for the rest of a long dictation', () => {
+    const loop = ' We will also have a new application with Vetta.'.repeat(12)
+    const text = `It will live on the HRIS domain but it would be in connection with Vetta for candidates.${loop}`
+
+    expect(assessTranscript(text, { language: 'en' })).toMatchObject({
+      grade: 'reject',
+      reasons: expect.arrayContaining(['repetition-loop'])
+    })
+  })
+
+  it('keeps short natural repetition clean', () => {
+    expect(assessTranscript('Thank you. Thank you. Thank you so much.', { language: 'en' }).grade).toBe('clean')
+    expect(assessTranscript('Test it, test it, and then ship it to the team.', { language: 'en' }).grade).toBe('clean')
+    expect(
+      assessTranscript('Go to the docs, go to the docs, go to the docs first.', { language: 'en' }).grade
+    ).toBe('clean')
+  })
+
   it('does not reject genuine dictation with accented names or plain here-is phrasing', () => {
     expect(assessTranscript('Here is the plan: deploy after lunch.', { language: 'en' }).grade).toBe('clean')
     expect(assessTranscript('Jose met Zoe in Montreal.', { language: 'en' }).grade).toBe('clean')
@@ -105,5 +123,20 @@ describe('chooseTranscript', () => {
       { source: 'remote-primary', text: 'Oddváey, Foss, sýttir á.', elapsedMs: 100 },
       { source: 'native', text: 'José met Zoë in Montréal.', elapsedMs: 200 }
     ], { language: 'en' })?.source).toBe('native')
+  })
+})
+
+describe('collapseRepetitionLoops', () => {
+  it('keeps the words before a loop and one copy of the looped phrase', () => {
+    const loop = ' We will also have a new application with Vetta.'.repeat(12)
+
+    expect(collapseRepetitionLoops(`It would be in connection with Vetta for candidates.${loop} Then we ship.`)).toBe(
+      'It would be in connection with Vetta for candidates. We will also have a new application with Vetta. Then we ship.'
+    )
+  })
+
+  it('leaves text without a loop untouched', () => {
+    const text = 'Go to the docs, go to the docs, go to the docs first.'
+    expect(collapseRepetitionLoops(text)).toBe(text)
   })
 })

@@ -2,6 +2,7 @@ import type { AccuracyMode, Settings } from '@shared/types'
 import {
   assessTranscript,
   chooseTranscript,
+  collapseRepetitionLoops,
   type TranscriptCandidate
 } from '@shared/transcript-quality'
 import { applyDictionary } from '@shared/dictionary'
@@ -233,7 +234,7 @@ async function finalizeCrossCheck(
 
   const main = candidates.find((candidate) => candidate.source === 'remote-primary')
   if (main && assessTranscript(main.text, options).grade === 'clean') return { winner: main, candidates }
-  const winner = chooseTranscript(clean.length ? clean : candidates, options)
+  const winner = chooseTranscript(clean.length ? clean : candidates, options) ?? salvageLoop(candidates, options)
   if (winner) return { winner, candidates }
   if (!candidates.length && errors.length) throw errors[0]
   throw new LowConfidenceRecognitionError()
@@ -320,10 +321,9 @@ async function finalize(
   // Fast/Balanced are availability-first: after bounded rescue, keep a usable suspicious English
   // hypothesis instead of dropping the dictation. Deterministic rejects (foreign script, decoder
   // garbage, assistant replies, or empty output) remain ineligible. Maximum stays fail-closed.
-  const winner = chooseTranscript(
-    clean.length || request.settings.accuracyMode === 'maximum' ? clean : candidates,
-    options
-  )
+  const winner =
+    chooseTranscript(clean.length || request.settings.accuracyMode === 'maximum' ? clean : candidates, options) ??
+    (request.settings.accuracyMode === 'maximum' ? null : salvageLoop(candidates, options))
   if (winner) return { winner, candidates }
   if (!candidates.length && errors.length) throw errors[0]
   throw new LowConfidenceRecognitionError()
@@ -348,6 +348,20 @@ function borrowMainPunctuation(candidates: TranscriptCandidate[]): void {
     )
     .sort((a, b) => punctuationScore(b.text) - punctuationScore(a.text))[0]
   if (donor) main.text = borrowPunctuation(main.text, donor.text)
+}
+
+/**
+ * Every model failed and one of them looped a phrase over the rest of the recording. Its words
+ * before and after the loop are still real; paste those rather than nothing at all.
+ */
+function salvageLoop(
+  candidates: TranscriptCandidate[],
+  options: { language: 'en'; glossary: string[] }
+): TranscriptCandidate | null {
+  const salvaged = candidates
+    .filter((candidate) => assessTranscript(candidate.text, options).reasons.includes('repetition-loop'))
+    .map((candidate) => ({ ...candidate, text: collapseRepetitionLoops(candidate.text) }))
+  return chooseTranscript(salvaged, options)
 }
 
 function sentenceMarks(text: string): number {

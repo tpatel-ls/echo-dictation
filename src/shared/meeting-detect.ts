@@ -316,14 +316,23 @@ export function continuationEvidence(c: MeetingCandidate, probe: ProbeResult | n
 
   if (c.viaBrowser) {
     const tabs = probe.tabs.filter((t) => t.appPid === c.appPid)
-    const meetingTabs = tabs.filter((t) => showsMeeting(c.app, t.name))
+    const matches = (text: string): boolean => {
+      if (!showsMeeting(c.app, text)) return false
+      return c.app !== 'google-meet' || !c.title || parseMeetTitle(text) === c.title
+    }
+    const meetingTabs = tabs.filter((t) => matches(t.name))
     const windows = probe.windows.filter((w) => w.appPid === c.appPid)
-    const evidence = slack || meetingTabs.length > 0 || (tabs.length === 0 && windows.some((w) => showsMeeting(c.app, w.title)))
+    const evidence = slack || meetingTabs.length > 0 || (tabs.length === 0 && windows.some((w) => matches(w.title)))
     // Slack has no tab evidence to tell its huddle tab from others, so its meter decides alone.
     if (slack) return { evidence, remoteAudio: loud, audioOnly: true }
     const meetingAudible = meetingTabs.some((t) => stripSuffixes(t.name).audible)
     const otherAudible = tabs.some((t) => !meetingTabs.includes(t) && stripSuffixes(t.name).audible)
-    return { evidence, remoteAudio: meetingAudible || (loud && !otherAudible) }
+    const capturing = meetingTabs.some((t) => stripSuffixes(t.name).recording || / - Camera recording$/.test(t.name))
+    // A bare title survives leaving Meet. It is not evidence of a live call, and a browser-wide
+    // meter can belong to a tab missing from this bounded scan. Require the meeting's own audio
+    // alert unless it still captures, or tab accessibility is unavailable entirely.
+    const remoteAudio = evidence && (meetingAudible || (loud && !otherAudible && (capturing || tabs.length === 0)))
+    return capturing ? { evidence, remoteAudio } : { evidence, remoteAudio, audioOnly: true }
   }
 
   const windows = probe.windows.filter((w) => exes.includes(w.exe.toLowerCase()))

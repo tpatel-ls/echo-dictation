@@ -149,6 +149,10 @@ async function main(): Promise<void> {
     resourcesPath: app.isPackaged ? process.resourcesPath : undefined
   })
   const controller = new DictationController(overlay, settings, history, dictionary, snippets, nativeSpeech)
+  overlay.on('close', (event) => {
+    if (!quitting) event.preventDefault()
+  })
+  overlay.webContents.on('render-process-gone', () => controller.onOverlayLost())
   warmPasteHelper()
 
   const opts = (): { minHoldMs: number; cancelOnOtherKey: boolean } => {

@@ -275,6 +275,10 @@ export function registerIpc(ctx: IpcContext): void {
     clipboard.writeText(report)
   })
   ipcMain.handle(IPC.SYSTEM_BUILD_INFO, buildInfo)
+  ipcMain.handle(IPC.SYSTEM_COPY_TEXT, (_event, text: unknown) => {
+    if (typeof text !== 'string') throw new TypeError('Clipboard text must be a string')
+    clipboard.writeText(text)
+  })
   ipcMain.handle(IPC.OPEN_DASHBOARD, () => {
     ctx.openDashboard()
   })

@@ -82,7 +82,8 @@ const api: EchoApi = {
     copyReport: (results) => ipcRenderer.invoke(IPC.DIAG_COPY_REPORT, results)
   },
   system: {
-    buildInfo: () => ipcRenderer.invoke(IPC.SYSTEM_BUILD_INFO)
+    buildInfo: () => ipcRenderer.invoke(IPC.SYSTEM_BUILD_INFO),
+    copyText: (text) => ipcRenderer.invoke(IPC.SYSTEM_COPY_TEXT, text)
   },
   meetings: {
     list: () => ipcRenderer.invoke(MEETINGS_IPC.LIST),

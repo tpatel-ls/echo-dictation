@@ -65,7 +65,7 @@ export async function diarize(
 
 /**
  * Decode each `[start, end]` clip of `wav` with every model in `models`. Results come back in the
- * order of `segments`; a segment the server returned nothing for gets `texts: {}`. `prompt` is a
+ * order of `segments`; missing segments or model results are retried, never silently omitted. `prompt` is a
  * comma list of keywords (names, company terms) for the models that take one (Granite, Whisper);
  * the others ignore it.
  */
@@ -78,21 +78,33 @@ export async function transcribeSegments(
   prompt?: string
 ): Promise<SegmentTranscript[]> {
   if (segments.length === 0) return []
-  const body = await post(
-    'audio/segments',
-    () => {
-      const form = wavForm(wav)
-      form.append('models', models.join(','))
-      form.append('segments', JSON.stringify(segments.map(({ id, start, end }) => ({ id, start, end }))))
-      if (prompt) form.append('prompt', prompt)
-      return form
-    },
-    conn,
-    deps,
-    SEGMENTS_TIMEOUT_MS
-  )
-  const byId = parseSegmentResults(body)
-  return segments.map(({ id }) => ({ id, texts: byId.get(id) ?? {} }))
+  const byId = new Map<string, Record<string, string>>()
+  let pending = segments
+  const delay = deps.delay ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+  for (let attempt = 0; attempt <= RETRIES; attempt++) {
+    const body = await post(
+      'audio/segments',
+      () => {
+        const form = wavForm(wav)
+        form.append('models', models.join(','))
+        form.append('segments', JSON.stringify(pending.map(({ id, start, end }) => ({ id, start, end }))))
+        if (prompt) form.append('prompt', prompt)
+        return form
+      },
+      conn,
+      deps,
+      SEGMENTS_TIMEOUT_MS
+    )
+    const received = parseSegmentResults(body)
+    for (const { id } of pending) {
+      // Keep successful earlier model results, including an explicit empty/no-speech answer.
+      byId.set(id, { ...received.get(id), ...byId.get(id) })
+    }
+    pending = segments.filter(({ id }) => models.some((model) => typeof byId.get(id)?.[model] !== 'string'))
+    if (!pending.length) return segments.map(({ id }) => ({ id, texts: byId.get(id)! }))
+    if (attempt < RETRIES) await delay(1000 * 2 ** attempt)
+  }
+  throw new SpeechRouteError(`Incomplete transcription response for ${pending.length} segment(s); retry the meeting`)
 }
 
 // ── transport ─────────────────────────────────────────────────────────────────
@@ -104,7 +116,7 @@ function wavForm(wav: ArrayBuffer): FormData {
 }
 
 /**
- * POST with retries: network errors and 5xx are retried up to twice with growing backoff; a 4xx
+ * POST with retries: network errors, 429 and 5xx are retried up to twice with growing backoff; other 4xx
  * is a real client error and a timeout would only time out again, so neither is retried.
  */
 async function post(
@@ -148,32 +160,31 @@ async function attemptPost(
     timedOut = true
     controller.abort()
   }, timeoutMs)
-  let res: Response
   try {
-    res = await fetchFn(url, {
+    const res = await fetchFn(url, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}` },
       body: form,
       signal: controller.signal
     })
+    // Reading the body is part of the request timeout, including after headers have arrived.
+    const text = await res.text()
+    if (!res.ok) {
+      const err = new SpeechRouteError(`Speech server returned ${res.status}: ${errorMessage(text)}`, res.status)
+      if (res.status >= 500 || res.status === 429) throw new Retryable(err)
+      throw err
+    }
+    try {
+      return JSON.parse(text)
+    } catch {
+      throw new SpeechRouteError('Speech server returned a non-JSON body')
+    }
   } catch (e) {
     if (timedOut) throw new SpeechRouteError(`Speech server timed out after ${Math.round(timeoutMs / 1000)} s`)
-    throw new Retryable(new SpeechRouteError(`Network error reaching the speech server: ${(e as Error).message}`))
+    if (e instanceof SpeechRouteError || e instanceof Retryable) throw e
+    throw new Retryable(new SpeechRouteError('Network error reaching the speech server'))
   } finally {
     clearTimeout(timer)
-  }
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    const err = new SpeechRouteError(`Speech server returned ${res.status}: ${errorMessage(text)}`, res.status)
-    if (res.status >= 500) throw new Retryable(err)
-    throw err
-  }
-  const text = await res.text()
-  try {
-    return JSON.parse(text)
-  } catch {
-    throw new SpeechRouteError(`Speech server returned a non-JSON body: ${text.slice(0, 200)}`)
   }
 }
 
@@ -271,6 +282,7 @@ function parseSegmentResults(body: unknown): Map<string, Record<string, string>>
       if (typeof text !== 'string') malformed(`results[${i}].texts.${model} is not a string`)
       texts[model] = text
     }
+    if (byId.has(id)) malformed('duplicate segment id')
     byId.set(id, texts)
   })
   return byId

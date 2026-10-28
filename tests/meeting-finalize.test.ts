@@ -172,6 +172,28 @@ function harness(settingsPatch: Partial<Settings> = {}, secretsPatch: Partial<Se
 }
 
 describe('finalizeMeeting', () => {
+  it('uses pause-based transcription when diarization reports no turns on audible audio', async () => {
+    const h = harness()
+    h.speech.diarize.mockResolvedValue({ ...othersDiarization, segments: [], speakers: [] })
+    const { id } = h.create()
+    await finalizeMeeting(id, h.deps)
+    expect(h.meetings.get(id)!.status).toBe('ready')
+    expect(h.speech.transcribeSegments).toHaveBeenCalled()
+    expect(h.meetings.segments(id).some(s => s.text === TEXTS.o0)).toBe(true)
+  })
+
+  it('keeps audio and the live transcript when the speech server returns incomplete results', async () => {
+    const h = harness({ meetingRetainAudioDays: 0 })
+    h.speech.transcribeSegments.mockRejectedValue(new SpeechRouteError('Incomplete transcription response'))
+    const { id, audioDir } = h.create()
+    await finalizeMeeting(id, h.deps)
+    expect(h.meetings.get(id)!.status).toBe('failed')
+    expect(h.meetings.get(id)!.error).toMatch(/incomplete/i)
+    expect(h.meetings.segments(id)[0].text).toBe('live text')
+    expect(existsSync(audioDir)).toBe(true)
+    expect(h.notes.draft).not.toHaveBeenCalled()
+  })
+
   it('diarizes, transcribes, names, drafts notes and writes the .md', async () => {
     const h = harness({}, { typesafeApiKey: 'ts' })
     const { id, uuid, audioDir } = h.create()

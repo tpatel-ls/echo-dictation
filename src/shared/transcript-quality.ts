@@ -214,6 +214,63 @@ function hasDecoderGarbage(text: string): boolean {
   return Math.max(...counts.values()) >= Math.ceil(tokenList.length / 2) + 1
 }
 
+/**
+ * Whisper can lock onto one phrase and repeat it for the rest of a long recording, discarding
+ * everything said after it. Real speech rarely repeats a multiword phrase four times in a row.
+ */
+const LOOP_MIN_REPEATS = 4
+const LOOP_MIN_WORDS = 20
+const LOOP_MAX_PHRASE_WORDS = 30
+
+interface RepetitionLoop {
+  start: number
+  phraseWords: number
+  repeats: number
+}
+
+function findRepetitionLoop(tokens: string[], from: number): RepetitionLoop | null {
+  for (let start = from; start < tokens.length; start++) {
+    const maxPhrase = Math.min(LOOP_MAX_PHRASE_WORDS, Math.floor((tokens.length - start) / LOOP_MIN_REPEATS))
+    for (let phraseWords = 2; phraseWords <= maxPhrase; phraseWords++) {
+      let repeats = 1
+      while (repeatsPhrase(tokens, start, phraseWords, repeats)) repeats++
+      if (repeats >= LOOP_MIN_REPEATS && repeats * phraseWords >= LOOP_MIN_WORDS) {
+        return { start, phraseWords, repeats }
+      }
+    }
+  }
+  return null
+}
+
+function repeatsPhrase(tokens: string[], start: number, phraseWords: number, copy: number): boolean {
+  const offset = start + copy * phraseWords
+  if (offset + phraseWords > tokens.length) return false
+  for (let i = 0; i < phraseWords; i++) {
+    if (tokens[start + i] !== tokens[offset + i]) return false
+  }
+  return true
+}
+
+function hasRepetitionLoop(text: string): boolean {
+  return findRepetitionLoop(words(text).map((token) => token.toLowerCase()), 0) !== null
+}
+
+/** Keeps one copy of each looped phrase, so the words before and after a loop survive. */
+export function collapseRepetitionLoops(text: string): string {
+  const matches = [...text.matchAll(/[\p{L}\p{N}']+/gu)]
+  const tokens = matches.map((match) => match[0].toLowerCase())
+  let out = ''
+  let copiedFrom = 0
+  let loop = findRepetitionLoop(tokens, 0)
+  while (loop) {
+    const resume = loop.start + loop.phraseWords * loop.repeats
+    out += text.slice(copiedFrom, matches[loop.start + loop.phraseWords]?.index ?? text.length)
+    copiedFrom = matches[resume]?.index ?? text.length
+    loop = findRepetitionLoop(tokens, resume)
+  }
+  return copiedFrom === 0 ? text : (out + text.slice(copiedFrom)).trim()
+}
+
 function hasBrokenQuestionPattern(text: string): boolean {
   if (!text.trim().endsWith('?')) return false
   const tokenList = words(text).map((token) => token.toLowerCase())
@@ -263,6 +320,7 @@ export function assessTranscript(text: string, options: QualityOptions): Transcr
   if (/[ðþÐÞ]/u.test(glossaryStripped)) rejectReasons.push('forbidden-script')
   if (hasAssistantReply(trimmed)) rejectReasons.push('assistant-reply')
   if (hasDecoderGarbage(glossaryStripped)) rejectReasons.push('decoder-garbage')
+  if (hasRepetitionLoop(trimmed)) rejectReasons.push('repetition-loop')
 
   if (!rejectReasons.length) {
     if (hasExtendedLatinSuspicion(glossaryStripped)) suspiciousReasons.push('extended-latin')

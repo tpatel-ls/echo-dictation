@@ -47,7 +47,7 @@ export interface MeetingContinuation {
   remoteAudio: boolean
   /**
    * The evidence is assumed, not seen: the app shows no meeting window or tab to check (Slack
-   * huddles). Only the far end actually being heard keeps such a call going, and it ends
+   * huddles), or only a browser title remains after capture stops. Only the far end being heard keeps such a call going, and it ends
    * `endAfterMs` after the last sound rather than after the 60 s continuation window.
    */
   audioOnly?: boolean
