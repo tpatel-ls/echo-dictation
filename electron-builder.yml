@@ -7,7 +7,13 @@ directories:
   output: dist
   buildResources: build
 files:
-  - out/**/*
+  # Include only runtime bundles. Build-root probes and retained audio must never ship.
+  # Native helpers are copied once via extraResources below.
+  - out/main/**/*
+  - out/preload/**/*
+  - out/renderer/**/*
+  - '!**/*.{wav,pcm,mp3,flac,sqlite,db}'
+  - '!**/{secrets.local.json,secrets.bin,settings.json,sync-state.json}'
   - package.json
 asarUnpack:
   - '**/node_modules/sql.js/**'
