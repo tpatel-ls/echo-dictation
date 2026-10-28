@@ -15,7 +15,7 @@ export const PREVIEW_WINDOW: PreviewWindow = { minMs: 600, maxMs: 20_000 }
 /** Pause between one preview response and the next request. */
 export const PREVIEW_INTERVAL_MS = 350
 
-/** Greedy recognizers served on the GB10 (NVIDIA Parakeet, Canary-Qwen) return the same text for every
+/** Greedy recognizers served on the GPU speech server (NVIDIA Parakeet, Canary-Qwen) return the same text for every
  *  re-decode of the same audio, so temperature samples add nothing. */
 export function isDeterministicModel(model: string): boolean {
   return /parakeet|canary/i.test(model)

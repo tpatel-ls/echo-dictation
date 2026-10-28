@@ -1,6 +1,6 @@
 {
   "name": "echo",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Accuracy-first dictation for macOS, Windows x64, and Android with history, learning, and sync.",
   "author": "Tanay",
   "license": "MIT",
@@ -36,7 +36,11 @@
     "ensure:mac-signing": "node scripts/ensure-local-codesign-identity.mjs",
     "pack:mac": "npm run ensure:mac-signing && npm run build && electron-builder --mac --dir",
     "dist:mac": "npm run ensure:mac-signing && npm run build && electron-builder --mac",
-    "sync-server": "tsx src/server/index.ts"
+    "sync-server": "tsx src/server/index.ts",
+    "setup:local": "node scripts/local-speech.mjs setup && npm run build:native",
+    "speech:start": "node scripts/local-speech.mjs start",
+    "speech:check": "node scripts/local-speech.mjs check",
+    "predev": "npm run build:native"
   },
   "dependencies": {
     "sql.js": "^1.12.0"

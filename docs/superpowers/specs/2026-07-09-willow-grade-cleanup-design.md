@@ -9,7 +9,7 @@ to macOS (this machine), Windows (cross-built artifact), and Android (Echo IME A
 
 ## Context (verified)
 
-- Whisper server: self-hosted "GB10 Whisper" on the tailnet, model `whisper-1 → large-v3-turbo`.
+- Whisper server: self-hosted "GPU speech server Whisper" on the tailnet, model `whisper-1 → large-v3-turbo`.
   Accepts `file, model, response_format, language, temperature, prompt`. Raw STT quality is
   already strong; the gap is post-processing.
 - Live Mac settings had `cleanupMode: "off"` — no cleanup ever ran. Default in code was `off` too.

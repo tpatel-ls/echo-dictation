@@ -23,6 +23,15 @@ import type {
 
 const ALL_ON: MeetingAppToggles = { 'google-meet': true, teams: true, slack: true, zoom: true, webex: true }
 
+it('does not treat a lingering Meet title and stale browser mic session as a live call', () => {
+  const p = probe({
+    windows: [win('chrome.exe', 100, 'Meet - abc-defg-hij - Google Chrome')],
+    tabs: [tab('chrome.exe', 100, 'Meet - abc-defg-hij')],
+    render: [render('chrome.exe', 100, 101)]
+  })
+  expect(detectMeetings([mic('chrome.exe', 100)], p, ALL_ON)).toEqual([])
+})
+
 function mic(exe: string, appPid: number, extra: Partial<MicSession> = {}): MicSession {
   return {
     pid: appPid + 1,

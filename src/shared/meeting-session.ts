@@ -199,6 +199,10 @@ export class MeetingSession {
       if (p) {
         p.candidate = c
         p.absentSince = null
+        if (p.lastRemoteAt !== null && now - p.lastRemoteAt > this.config.remoteConfirmMaxGapMs) {
+          p.heardRemote = false
+          p.lastRemoteAt = null
+        }
         if (c.remoteAudio) {
           const gap = p.lastRemoteAt === null ? null : now - p.lastRemoteAt
           if (gap !== null && gap >= this.config.remoteConfirmMinGapMs && gap <= this.config.remoteConfirmMaxGapMs) {
@@ -223,7 +227,7 @@ export class MeetingSession {
         (p) =>
           p.absentSince === null &&
           ((p.heardRemote && now - p.firstSeen >= this.config.confirmAfterMs) ||
-            now - p.firstSeen >= this.config.aloneConfirmAfterMs)
+            (p.candidate.app !== 'slack' && now - p.firstSeen >= this.config.aloneConfirmAfterMs))
       )
       if (ready) {
         this.pending.delete(ready.candidate.key)

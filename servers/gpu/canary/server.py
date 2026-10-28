@@ -3,7 +3,7 @@ Canary-Qwen 2.5B speech recognizer for Echo, served in-process with NVIDIA NeMo 
 
   Echo -> auth shim (Bearer key, routes `model=canary*`) -> THIS server (127.0.0.1:8003)
 
-Same OpenAI-compatible POST /v1/audio/transcriptions contract as the other GB10 routes. Canary-Qwen
+Same OpenAI-compatible POST /v1/audio/transcriptions contract as the other GPU speech server routes. Canary-Qwen
 pairs a FastConformer encoder with a Qwen3 LLM decoder, which gives it a much stronger language
 prior than Parakeet ("mic testing", names, numbers) at a higher per-request cost. Echo uses it as
 an independent cross-check next to Parakeet and Whisper.
@@ -83,7 +83,7 @@ started = time.perf_counter()
 _warm()
 log.info("loaded %s and warmed in %.1fs", MODEL_ID, time.perf_counter() - started)
 
-app = FastAPI(title="GB10 Canary-Qwen", docs_url=None, redoc_url=None)
+app = FastAPI(title="GPU speech server Canary-Qwen", docs_url=None, redoc_url=None)
 
 
 @app.get("/health")

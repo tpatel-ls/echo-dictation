@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Meeting notes — the shared contracts between the Windows meeting helper, the main-process
-// pipeline, the GB10 speech routes, the stores, and the dashboard. Design:
+// pipeline, the GPU speech server speech routes, the stores, and the dashboard. Design:
 // docs/superpowers/specs/2026-09-22-meeting-notes-design.md
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -199,7 +199,7 @@ export type MeetingSessionAction =
   | { type: 'update'; candidate: MeetingCandidate }
   | { type: 'stop'; reason: MeetingStopReason }
 
-// ── GB10 speech routes ────────────────────────────────────────────────────────
+// ── GPU speech server speech routes ────────────────────────────────────────────────────────
 
 /** Exclusive (non-overlapping) diarization turn, in seconds from the start of the uploaded audio. */
 export interface DiarizedTurn {
@@ -505,10 +505,10 @@ export const DEFAULT_MEETING_SETTINGS: MeetingSettings = {
   meetingUserName: '',
   meetingOutputDir: '',
   meetingRetainAudioDays: 30,
-  meetingLiveModel: 'parakeet-tdt-0.6b-v2',
-  meetingFinalModel: 'canary-qwen-2.5b',
-  meetingCheckModel: 'parakeet-tdt-0.6b-v2',
-  meetingVocabModel: 'granite-speech-4.1-2b',
+  meetingLiveModel: 'whisper-1',
+  meetingFinalModel: 'whisper-1',
+  meetingCheckModel: '',
+  meetingVocabModel: '',
   meetingNotes: true,
   meetingVerifyNotes: true,
   meetingNotifications: false,

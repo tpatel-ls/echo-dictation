@@ -1,3 +1,4 @@
+import { meetingTitle } from '@shared/meeting-title'
 import { dialog, ipcMain, shell } from 'electron'
 import { existsSync, mkdirSync } from 'node:fs'
 import { meetingFileName, renderMarkdown, renderText } from '@shared/meeting-export'
@@ -40,7 +41,7 @@ export function toSummary(m: MeetingRecord): MeetingSummary {
     started_at: m.started_at,
     ended_at: m.ended_at,
     app: m.app,
-    title: m.title,
+    title: meetingTitle(m.app, m.title, m.notes),
     status: m.status,
     progress: m.progress,
     speakers: [...new Set(speakers)]

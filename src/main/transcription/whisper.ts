@@ -41,7 +41,9 @@ export async function transcribe(
   opts: WhisperOpts = {}
 ): Promise<string> {
   const retries = opts.retries ?? 2
-  const timeoutMs = opts.timeoutMs ?? 20_000
+  // CPU inference can take longer than a remote GPU, especially for a paragraph.
+  const local = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(settings.whisperBaseUrl)
+  const timeoutMs = opts.timeoutMs ?? (local ? 120_000 : 20_000)
   const delay = opts.delay ?? ((ms) => new Promise((r) => setTimeout(r, ms)))
   const temperature = opts.temperature ?? 0
   const url = joinUrl(settings.whisperBaseUrl, 'audio/transcriptions')
@@ -91,25 +93,25 @@ async function attemptTranscribe(
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
-  let res: Response
   try {
-    res = await deps.fetch(url, {
+    const res = await deps.fetch(url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
       body: form,
       signal: controller.signal
     })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new TranscriptionError(`Whisper returned ${res.status}: ${body.slice(0, 200)}`, res.status)
+    }
+    const data = (await res.json()) as { text?: unknown } | null
+    if (!data || typeof data.text !== 'string') throw new TranscriptionError('Speech server response is missing a text string')
+    return data.text.trim()
   } catch (e) {
+    if (e instanceof TranscriptionError) throw e
     throw new TranscriptionError(`Network error reaching Whisper: ${(e as Error).message}`)
   } finally {
     clearTimeout(timer)
   }
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new TranscriptionError(`Whisper returned ${res.status}: ${body.slice(0, 200)}`, res.status)
-  }
-
-  const data = (await res.json()) as { text?: string }
-  return (data.text ?? '').trim()
 }

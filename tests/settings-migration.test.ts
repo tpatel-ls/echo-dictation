@@ -6,21 +6,21 @@ import { defaultSettingsFor, normalizeSettings } from '../src/main/store/setting
 describe('normalizeSettings', () => {
   it('defaults to the fast, polished English experience', () => {
     expect(DEFAULT_SETTINGS).toMatchObject({
-      cleanupMode: 'auto',
+      cleanupMode: 'off',
       accuracyMode: 'balanced',
       claudeModel: 'claude-sonnet-5',
       micMode: 'warm'
     })
   })
 
-  it('enables the live preview by default and keeps an explicit opt-out', () => {
-    expect(DEFAULT_SETTINGS.livePreview).toBe(true)
+  it('keeps live preview optional for CPU servers and preserves saved choices', () => {
+    expect(DEFAULT_SETTINGS.livePreview).toBe(false)
     expect(normalizeSettings({ livePreview: false }).livePreview).toBe(false)
-    expect(normalizeSettings({ livePreview: 'no' }).livePreview).toBe(true)
+    expect(normalizeSettings({ livePreview: 'no' }).livePreview).toBe(false)
   })
 
-  it('decodes the live preview with Parakeet unless another preview model is saved', () => {
-    expect(normalizeSettings({}).previewModel).toBe('parakeet-tdt-0.6b-v2')
+  it('uses the local model alias unless another preview model is saved', () => {
+    expect(normalizeSettings({}).previewModel).toBe('whisper-1')
     expect(normalizeSettings({ previewModel: 'parakeet-tdt-0.6b-v3' }).previewModel).toBe('parakeet-tdt-0.6b-v3')
   })
 
@@ -150,13 +150,13 @@ describe('meeting settings', () => {
     expect(normalizeSettings({ meetingNotifications: 'yes' }).meetingNotifications).toBe(false)
   })
 
-  it('borrows listed terms from Granite by default; an empty vocabulary model turns it off', () => {
-    expect(normalizeSettings({}).meetingVocabModel).toBe('granite-speech-4.1-2b')
-    expect(DEFAULT_SETTINGS.meetingVocabModel).toBe('granite-speech-4.1-2b')
+  it('keeps the optional vocabulary model off until configured', () => {
+    expect(normalizeSettings({}).meetingVocabModel).toBe('')
+    expect(DEFAULT_SETTINGS.meetingVocabModel).toBe('')
     expect(normalizeSettings({ meetingVocabModel: '' }).meetingVocabModel).toBe('')
     expect(normalizeSettings({ meetingVocabModel: '  ' }).meetingVocabModel).toBe('')
     expect(normalizeSettings({ meetingVocabModel: ' granite-speech-4.1-8b ' }).meetingVocabModel).toBe('granite-speech-4.1-8b')
-    expect(normalizeSettings({ meetingVocabModel: 3 }).meetingVocabModel).toBe('granite-speech-4.1-2b')
+    expect(normalizeSettings({ meetingVocabModel: 3 }).meetingVocabModel).toBe('')
   })
 
   it('keeps string and boolean meeting fields and falls back on bad types', () => {
@@ -181,9 +181,9 @@ describe('meeting settings', () => {
     })).toMatchObject({
       meetingUserName: '',
       meetingOutputDir: '',
-      meetingLiveModel: 'parakeet-tdt-0.6b-v2',
-      meetingFinalModel: 'canary-qwen-2.5b',
-      meetingCheckModel: 'parakeet-tdt-0.6b-v2',
+      meetingLiveModel: 'whisper-1',
+      meetingFinalModel: 'whisper-1',
+      meetingCheckModel: '',
       meetingNotes: true,
       meetingVerifyNotes: true
     })

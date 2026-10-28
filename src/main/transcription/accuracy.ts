@@ -145,7 +145,7 @@ export async function recognizeAccurately(
   }
 
   // Long recordings are certain to need the balanced accuracy ensemble. Starting all three
-  // independent decodes at release removes an entire serial GB10 round trip.
+  // independent decodes at release removes an entire serial GPU speech server round trip.
   if ((wav.durationMs ?? 0) >= PARALLEL_ENSEMBLE_MIN_AUDIO_MS) {
     const settled = await Promise.allSettled([
       decodePrimary(wav, request, primary, deps),

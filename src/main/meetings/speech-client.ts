@@ -2,7 +2,7 @@ import type { DiarizationResult, DiarizedSpeaker, DiarizedTurn, SegmentTranscrip
 import { joinUrl } from '../transcription/whisper'
 
 /**
- * Client for the GB10 meeting routes behind the Bearer shim (gb10/shim.py):
+ * Client for the GPU speech server meeting routes behind the Bearer shim (servers/gpu/shim.py):
  * `POST /audio/diarizations` (pyannote speaker turns + per-speaker voice embeddings) and
  * `POST /audio/segments` (decode many clips of one WAV with several models in one request).
  * Every response field is validated before it reaches the pipeline, so a half-deployed or
@@ -163,7 +163,7 @@ async function attemptPost(
   try {
     const res = await fetchFn(url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
       body: form,
       signal: controller.signal
     })

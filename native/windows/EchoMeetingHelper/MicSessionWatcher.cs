@@ -14,6 +14,7 @@ sealed class MicSessionWatcher
 {
     const int DebounceMs = 120;
     const int SafetyRescanMs = 60_000;
+    const int ActiveRescanMs = 2000;
     const string MicConsentKey = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone";
 
     readonly uint echoPid;
@@ -24,6 +25,7 @@ sealed class MicSessionWatcher
     IMMDeviceEnumerator? enumerator;
     EndpointNotifications? endpointNotifications;
     string? lastSnapshot;
+    bool hasCapture;
 
     public MicSessionWatcher(uint echoPid)
     {
@@ -67,7 +69,9 @@ sealed class MicSessionWatcher
                 Output.Log($"mic-sessions: scan failed ({error.GetType().Name} 0x{error.HResult:X8})");
             }
             first = false;
-            dirty.WaitOne(SafetyRescanMs);
+            // Some apps/drivers miss the inactive notification at hang-up. Reconcile
+            // quickly while any app captures so a stale mic snapshot cannot record a minute extra.
+            dirty.WaitOne(hasCapture ? ActiveRescanMs : SafetyRescanMs);
             // Coalesce bursts (a call start fires created + state-changed + registry writes).
             Thread.Sleep(DebounceMs);
             dirty.Reset();
@@ -147,6 +151,7 @@ sealed class MicSessionWatcher
 
         // Stable order, so an unchanged set never re-emits.
         var result = found.OrderBy(entry => entry.key, StringComparer.Ordinal).Select(entry => entry.line).ToList();
+        hasCapture = result.Count > 0;
         string snapshot = JsonSerializer.Serialize(new { type = "mic-sessions", sessions = result });
         if (!force && snapshot == lastSnapshot) return;
         lastSnapshot = snapshot;

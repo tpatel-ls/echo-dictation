@@ -1,0 +1,6 @@
+faster-whisper==1.2.1
+# Newer PyAV releases removed an argument used by faster-whisper 1.2.1.
+av==15.1.0
+fastapi==0.119.1
+uvicorn==0.38.0
+python-multipart==0.0.20

@@ -425,7 +425,7 @@ function Empty(): JSX.Element {
       <p className="text-sm text-text">No meetings yet</p>
       <p className="text-xs text-muted max-w-md leading-relaxed">
         Echo transcribes Google Meet, Microsoft Teams, Slack huddles and Zoom automatically, only while a call
-        is on. Audio stays on this PC and your GB10, and a small pill at the top of the screen shows whenever
+        is on. Audio stays on this PC and your GPU speech server, and a small pill at the top of the screen shows whenever
         Echo is recording.
       </p>
     </div>

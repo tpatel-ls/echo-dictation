@@ -32,6 +32,10 @@ function setup(opts: { url?: string; body?: string; status?: number } = {}) {
 }
 
 describe('CalendarSource', () => {
+  it('resolves a Meet code to its matching calendar event title', async () => {
+    const { source } = setup()
+    expect(await source.title({ app: 'google-meet', title: 'abc-defg-hij', startedAt: NOW })).toBe('Invitation to Design Review')
+  })
   it('does nothing without a calendar address', async () => {
     const { source, fetch } = setup({ url: '' })
     expect(await source.events()).toBeNull()

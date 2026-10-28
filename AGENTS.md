@@ -8,6 +8,11 @@
 
 ## Commands
 
+- Read `docs/HANDOFF.md` first when setting up a fork. `npm ci` then `npm run setup:local`
+  installs the local model and native helpers; run `npm run speech:start` beside `npm run dev`.
+- Keep GPU services optional. Fresh settings must work with the single `whisper-1` local alias.
+- Packaged builds must never include `secrets.local.json`, user data, model caches or recordings.
+
 - `npm test` — unit suite (Vitest, `tests/*.test.ts`)
 - `npm run typecheck` — both tsconfig projects (node + web)
 - `npm run build` — bundle main/preload/renderers to `out/`

@@ -38,7 +38,7 @@ expect(assessTranscript('Einn snop og þá minn ekki röggli og feitsið gís.',
   .not.toBe('clean')
 expect(assessTranscript('Oddváey, Foss, sýttir á.', { language: 'en' }).grade).not.toBe('clean')
 expect(assessTranscript('How do I force figure out?', { language: 'en' }).grade).toBe('suspicious')
-expect(assessTranscript('Deploy PostgreSQL on GB10.', { language: 'en', glossary: ['GB10'] }).grade)
+expect(assessTranscript('Deploy PostgreSQL on GPU speech server.', { language: 'en', glossary: ['GPU speech server'] }).grade)
   .toBe('clean')
 expect(chooseTranscript([
   { source: 'remote-primary', text: 'Einn snop og þá minn ekki röggli.', elapsedMs: 400 },
@@ -437,7 +437,7 @@ git commit -m "feat: make desktop helpers cross-platform"
 
 ```kotlin
 assertEquals(Grade.REJECT, assessTranscript("Einn snop og þá minn ekki röggli.").grade)
-assertEquals(Grade.CLEAN, assessTranscript("Deploy PostgreSQL on GB10.", listOf("GB10")).grade)
+assertEquals(Grade.CLEAN, assessTranscript("Deploy PostgreSQL on GPU speech server.", listOf("GPU speech server")).grade)
 assertEquals("0.8", recordedRequest.body.readField("temperature"))
 ```
 

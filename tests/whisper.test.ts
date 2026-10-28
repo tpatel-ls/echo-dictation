@@ -13,6 +13,26 @@ describe('joinUrl', () => {
 })
 
 describe('transcribe', () => {
+  it('supports a local server without an API key', async () => {
+    const fetchMock = vi.fn(async (_url, init) => {
+      expect(init.headers).toEqual({})
+      return new Response(JSON.stringify({ text: 'Local dictation works.' }))
+    })
+    expect(await transcribe(new ArrayBuffer(8), settings, '', deps(fetchMock))).toBe('Local dictation works.')
+  })
+
+  it('keeps the timeout active while reading the response body', async () => {
+    const fetchMock = vi.fn(async (_url, init) => ({
+      ok: true,
+      json: () => new Promise((_resolve, reject) => init.signal.addEventListener('abort', () => reject(new Error('aborted'))))
+    }))
+    await expect(transcribe(new ArrayBuffer(8), settings, '', deps(fetchMock), { retries: 0, timeoutMs: 15 })).rejects.toThrow()
+  })
+
+  it('rejects malformed success responses instead of silently returning no words', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ message: 'not a transcription' })))
+    await expect(transcribe(new ArrayBuffer(8), settings, '', deps(fetchMock), { retries: 0 })).rejects.toThrow(/text/)
+  })
   it('posts multipart form and returns trimmed text', async () => {
     const fetchMock = vi.fn(async (url: unknown, init: any) => {
       expect(url).toBe('https://w.example/v1/audio/transcriptions')

@@ -63,7 +63,7 @@ started = time.perf_counter()
 _warm()
 log.info("loaded %s (%s) and warmed in %.1fs", MODEL_ID, PRECISION, time.perf_counter() - started)
 
-app = FastAPI(title="GB10 Parakeet", docs_url=None, redoc_url=None)
+app = FastAPI(title="GPU speech server Parakeet", docs_url=None, redoc_url=None)
 
 
 @app.get("/health")

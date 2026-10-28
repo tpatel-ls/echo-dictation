@@ -442,6 +442,10 @@ export class MeetingController {
     this.ticking = true
     let exes: string[] = []
     try {
+      if (this.active && !this.deps.helper.available) {
+        this.deps.log('recording interrupted: native helper unavailable; saving captured audio')
+        await this.run(() => this.apply(this.session.stopByUser(this.now(), false)))
+      }
       const apps = this.deps.settings().meetingApps
       exes = probeExesFor(this.sessions, apps)
       // Never probe (read window titles or tabs) unless an enabled meeting app holds the mic, or a
@@ -775,6 +779,8 @@ export class MeetingController {
         await this.deps.finalize(id)
       } catch (e) {
         this.deps.log(`final pass crashed: meeting ${id} (${describeError(e)})`)
+        this.deps.meetings.update(id, { status: 'failed', progress: null, error: 'Processing was interrupted. Audio was kept; use Reprocess to retry.' })
+        this.updated(id)
       } finally {
         this.finalRunning = null
       }

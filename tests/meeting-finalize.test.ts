@@ -105,6 +105,10 @@ function harness(settingsPatch: Partial<Settings> = {}, secretsPatch: Partial<Se
   const outDir = path.join(root, 'out')
   const settings: Settings = {
     ...DEFAULT_SETTINGS,
+    meetingLiveModel: 'parakeet-tdt-0.6b-v2',
+    meetingFinalModel: 'canary-qwen-2.5b',
+    meetingCheckModel: 'parakeet-tdt-0.6b-v2',
+    meetingVocabModel: 'granite-speech-4.1-2b',
     whisperBaseUrl: 'https://speech.example/v1',
     claudeBaseUrl: 'https://proxy.example',
     meetingOutputDir: outDir,
@@ -172,6 +176,30 @@ function harness(settingsPatch: Partial<Settings> = {}, secretsPatch: Partial<Se
 }
 
 describe('finalizeMeeting', () => {
+  it('keeps the previous transcript and audio when a successful response contains no usable words', async () => {
+    const h = harness({ meetingRetainAudioDays: 0 })
+    h.speech.transcribeSegments.mockImplementation(async (_wav, segments, models) =>
+      segments.map(s => ({ id: s.id, texts: Object.fromEntries(models.map(m => [m, ''])) })))
+    const { id, audioDir } = h.create()
+    await finalizeMeeting(id, h.deps)
+    expect(h.meetings.get(id)!.status).toBe('failed')
+    expect(h.meetings.get(id)!.error).toMatch(/no usable transcript/i)
+    expect(h.meetings.segments(id)[0].text).toBe('live text')
+    expect(existsSync(audioDir)).toBe(true)
+    expect(h.notes.draft).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the audible channel when diarizer turns all miss the speech', async () => {
+    const h = harness()
+    const mic = Buffer.concat([Buffer.alloc(5 * RATE * 2), speechPcm(5)])
+    h.speech.diarize.mockResolvedValue(micDiarization) // reports only the silent first half
+    const { id } = h.create({ mic, others: Buffer.alloc(10 * RATE * 2) })
+    await finalizeMeeting(id, h.deps)
+    expect(h.speech.transcribeSegments).toHaveBeenCalled()
+    expect(h.meetings.get(id)!.status).toBe('ready')
+    expect(h.meetings.segments(id).some(s => s.text === TEXTS.m0)).toBe(true)
+  })
+
   it('uses pause-based transcription when diarization reports no turns on audible audio', async () => {
     const h = harness()
     h.speech.diarize.mockResolvedValue({ ...othersDiarization, segments: [], speakers: [] })
@@ -233,7 +261,7 @@ describe('finalizeMeeting', () => {
     expect(rec.notes?.verifiedBy).toBe('jev-1')
 
     // The .md in the output folder, and the voices next to (not inside) the audio directory.
-    expect(rec.output_path).toBe(path.join(h.outDir, '2026-09-22 1405 Google Meet - abc-defg-hij.md'))
+    expect(rec.output_path).toBe(path.join(h.outDir, '2026-09-22 1405 Google Meet - The team planned the Friday launch.md'))
     const md = readFileSync(rec.output_path!, 'utf8')
     expect(md).toContain('## Decisions')
     expect(md).toContain(`**[00:00:00] Speaker 1:** ${TEXTS.o0}`)
@@ -358,10 +386,10 @@ describe('finalizeMeeting', () => {
     const second = h.create()
     await finalizeMeeting(first.id, h.deps)
     await finalizeMeeting(second.id, h.deps)
-    expect(path.basename(h.meetings.get(second.id)!.output_path!)).toBe('2026-09-22 1405 Google Meet - abc-defg-hij (2).md')
+    expect(path.basename(h.meetings.get(second.id)!.output_path!)).toBe('2026-09-22 1405 Google Meet - The team planned the Friday launch (2).md')
     // A reprocess rewrites its own file rather than making a third.
     await finalizeMeeting(first.id, h.deps)
-    expect(path.basename(h.meetings.get(first.id)!.output_path!)).toBe('2026-09-22 1405 Google Meet - abc-defg-hij.md')
+    expect(path.basename(h.meetings.get(first.id)!.output_path!)).toBe('2026-09-22 1405 Google Meet - The team planned the Friday launch.md')
   })
 
   it('never transcribes what was said while the mic was paused (nor the second before)', async () => {

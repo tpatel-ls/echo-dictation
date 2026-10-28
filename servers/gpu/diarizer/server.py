@@ -40,7 +40,7 @@ log = logging.getLogger("diarizer")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 if not os.path.isfile(os.path.join(MODEL_DIR, "config.yaml")):
-    raise SystemExit(f"no pipeline at {MODEL_DIR}: download {MODEL_ID} there first (see docs/gb10-asr-upgrade.md)")
+    raise SystemExit(f"no pipeline at {MODEL_DIR}: download {MODEL_ID} there first (see docs/advanced-speech-servers.md)")
 
 pipeline = Pipeline.from_pretrained(MODEL_DIR)
 pipeline.to(torch.device("cuda"))
@@ -95,7 +95,7 @@ started = time.perf_counter()
 _warm()
 log.info("loaded %s (batch %d) and warmed in %.1fs", MODEL_ID, BATCH, time.perf_counter() - started)
 
-app = FastAPI(title="GB10 Diarizer", docs_url=None, redoc_url=None)
+app = FastAPI(title="GPU speech server Diarizer", docs_url=None, redoc_url=None)
 
 
 @app.get("/health")

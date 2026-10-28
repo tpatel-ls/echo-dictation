@@ -1,5 +1,5 @@
 """
-OpenAI-compatible auth shim in front of the GB10 speech recognizers.
+OpenAI-compatible auth shim in front of the GPU speech server speech recognizers.
 
   Internet -> Tailscale Funnel (HTTPS) -> THIS shim (127.0.0.1:8080, Bearer auth)
      model=parakeet*  -> Parakeet TDT server   (127.0.0.1:8002, see parakeet/server.py)
@@ -59,7 +59,7 @@ if not API_KEY:
     raise SystemExit(f"empty key in {KEY_PATH}")
 EXPECTED_AUTH = f"Bearer {API_KEY}"
 
-app = FastAPI(title="GB10 Speech", docs_url=None, redoc_url=None)
+app = FastAPI(title="GPU speech server Speech", docs_url=None, redoc_url=None)
 # One pooled client: keep-alive to the loopback backends instead of a new connection per request.
 client = httpx.AsyncClient(timeout=600.0)
 

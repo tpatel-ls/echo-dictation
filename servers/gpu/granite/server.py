@@ -3,18 +3,18 @@ Granite Speech 4.1 2B speech recognizer for Echo, served in-process with Hugging
 
   Echo -> auth shim (Bearer key, routes `model=granite*`) -> THIS server (127.0.0.1:8005)
 
-Same OpenAI-compatible POST /v1/audio/transcriptions contract as the other GB10 routes. Granite
+Same OpenAI-compatible POST /v1/audio/transcriptions contract as the other GPU speech server routes. Granite
 pairs a CTC conformer encoder with a Granite 4.0 LLM decoder (Apache-2.0, AMI-Cleaned WER 7.06) and
 takes a keyword list in its prompt, which biases it toward a meeting's names and company terms
 (a product name, a colleague's name). Echo uses it as the meeting vocabulary model, borrowing only
 its one-for-one spelling of listed terms; it is not the default final model, because the list also
-makes it insert listed names nobody said (docs/gb10-asr-upgrade.md).
+makes it insert listed names nobody said (docs/advanced-speech-servers.md).
 
 `prompt` is a comma list of keywords for the model's keyword biasing. The model card's keyword
 prompt ("transcribe the speech to text. Keywords: ...") returns lowercase text with no punctuation,
 and appending the keywords to the punctuation prompt drops most punctuation and once invented a
 name. Listing the keywords first, then asking for punctuation and capitalization, kept both on
-Echo's real meetings (see docs/gb10-asr-upgrade.md); Echo still borrows sentence breaks from
+Echo's real meetings (see docs/advanced-speech-servers.md); Echo still borrows sentence breaks from
 Parakeet where Granite leaves them out. Decoding is greedy (`temperature` is accepted and ignored), so the
 same clip always gives the same text. Audio longer than 40 s is split at the quietest point near
 each boundary. Binds to loopback and has no auth of its own; the log carries durations, timings and
@@ -111,7 +111,7 @@ started = time.perf_counter()
 _warm()
 log.info("loaded %s and warmed in %.1fs", MODEL_ID, time.perf_counter() - started)
 
-app = FastAPI(title="GB10 Granite Speech", docs_url=None, redoc_url=None)
+app = FastAPI(title="GPU speech server Granite Speech", docs_url=None, redoc_url=None)
 
 
 @app.get("/health")

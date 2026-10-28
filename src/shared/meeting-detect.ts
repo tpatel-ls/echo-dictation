@@ -185,6 +185,9 @@ function browserEvidence(tabs: HelperBrowserTab[], windows: HelperWindow[]): Evi
   // A tab that holds the mic but names no meeting (voice notes, ChatGPT) settles it: not a meeting.
   // Only without such a tab (no tab data, Firefox, a non-English suffix) do window titles count.
   if (recordingTabs.length > 0) return found
+  // A known meeting tab without a capture alert is a lobby/left-call page. A stale
+  // process-wide mic snapshot or another tab's mic must not resurrect it via the window title.
+  if (tabs.some(t => parseMeetTitle(t.name) !== null)) return found
   for (const w of windows) {
     const meet = parseMeetTitle(w.title)
     if (meet) {

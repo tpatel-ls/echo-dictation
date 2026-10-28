@@ -56,6 +56,21 @@ describe('MeetingSession defaults', () => {
 })
 
 describe('MeetingSession: starting', () => {
+  it('never starts a silent Slack mic session on the alone timer', () => {
+    const s = new MeetingSession()
+    expect(run(s, 0, 180_000, [cand('slack:400')])).toEqual([])
+    expect(s.startNow(180_001)).toEqual([{ type: 'start', candidate: cand('slack:400') }])
+  })
+
+  it('does not start another call using remote audio heard minutes ago', () => {
+    const s = startedSession()
+    s.observe(4000, [cand(MEET), cand('slack:400', { remoteAudio: true })])
+    s.observe(5500, [cand(MEET), cand('slack:400', { remoteAudio: true })])
+    s.observe(180_000, [cand(MEET), cand('slack:400')])
+    s.stopByUser(180_001, false)
+    expect(s.observe(180_002, [cand('slack:400')])).toEqual([])
+  })
+
   it('goes idle -> pending when a candidate appears', () => {
     const s = new MeetingSession()
     expect(s.state).toBe('idle')

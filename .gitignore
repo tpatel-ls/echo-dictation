@@ -9,6 +9,20 @@ native/windows/**/obj/
 secrets.local.json
 # personal setup notes (may contain endpoints/keys) — never commit
 *.local.md
+.venv-speech/
+.models/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+sync-data/
+*.sqlite
+*.sqlite-*
+*.pcm
+*.wav
+*.local.json
+.claude/
 
 # design scratch
 .playwright-mcp/

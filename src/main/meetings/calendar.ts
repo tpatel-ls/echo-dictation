@@ -35,6 +35,15 @@ export class CalendarSource {
 
   constructor(private readonly deps: CalendarDeps) {}
 
+  async title(meeting: { app: MeetingAppId; title: string | null; startedAt: number }): Promise<string | null> {
+    try {
+      const events = await this.events()
+      return events ? matchMeetingEvent(events, meeting)?.summary.trim() || null : null
+    } catch {
+      return null
+    }
+  }
+
   /** The calendar's events, or null when no calendar is set up. Throws CalendarError on failure. */
   async events(opts: { refresh?: boolean } = {}): Promise<IcsEvent[] | null> {
     const url = this.deps.url().trim()

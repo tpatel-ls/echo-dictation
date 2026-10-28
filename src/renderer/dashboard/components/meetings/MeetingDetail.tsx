@@ -21,6 +21,7 @@ import {
   type Person
 } from '@shared/meeting-types'
 import { api } from '../../lib/api'
+import { meetingTitle } from '@shared/meeting-title'
 import {
   errorText,
   formatClock,
@@ -68,7 +69,7 @@ export function MeetingDetail({
   }, [meeting.speakers, segments])
 
   const working = meeting.status === 'recording' || meeting.status === 'processing'
-  const title = meeting.title?.trim() || 'Untitled'
+  const title = meetingTitle(meeting.app, meeting.title, meeting.notes)?.trim() || 'Untitled'
   const start = new Date(meeting.started_at)
   const length = formatMeetingLength(meeting.started_at, meeting.ended_at)
 
@@ -217,6 +218,12 @@ export function MeetingDetail({
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+        {tab === 'transcript' && meeting.status === 'failed' && (
+          <div role="alert" className="mb-4 rounded-lg border border-bad/30 bg-bad/5 p-3 text-sm">
+            {meeting.error || 'Transcription failed. Check the speech server and use Reprocess to retry.'}
+            {segments.length > 0 && <p className="mt-2 text-muted">The previously saved transcript is shown below.</p>}
+          </div>
+        )}
         {tab === 'notes' ? (
           <NotesView meeting={meeting} onCite={cite} onReprocess={() => void reprocess()} reprocessing={busy === 'reprocess'} />
         ) : (

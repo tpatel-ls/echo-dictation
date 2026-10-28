@@ -7,6 +7,7 @@ import { DEFAULT_NAMING, nameSpeakers, numberUnknown, type SpeakerEvidence } fro
 import { mergeSpeakers } from '@shared/meeting-diarization'
 import { meetingKeywordPrompt, meetingKeywords } from '@shared/meeting-keywords'
 import { correctNames } from '@shared/name-correction'
+import { meetingTitle } from '@shared/meeting-title'
 import { transplantVocabulary } from '@shared/vocab-transplant'
 import {
   batchSegments,
@@ -45,7 +46,7 @@ import { readMicPauses, readPcmFile, readPcmRange, silenceMicPauses } from './pc
 import { diarize, SpeechRouteError, transcribeSegments, type SpeechConn } from './speech-client'
 import { typesafeClient, verifyNotes } from './typesafe'
 
-// The final pass after a meeting ends: diarize both channels on the GB10, decode speaker-homogeneous
+// The final pass after a meeting ends: diarize both channels on the GPU speech server, decode speaker-homogeneous
 // segments with the most accurate model (cross-checked by a second), name the speakers, draft and
 // verify notes, and write the .md. Every step reports progress on the meeting row. Losing the
 // diarizer degrades to one speaker per channel; losing notes or verification still ships the
@@ -98,6 +99,7 @@ export interface FinalizeDeps {
   notes?: FinalizeNotes
   /** The user's calendar: who else attended (null: no calendar, or no matching event). */
   calendar?: {
+    title?(meeting: { app: MeetingRecord['app']; title: string | null; startedAt: number }): Promise<string | null>
     participants(
       meeting: { app: MeetingRecord['app']; title: string | null; startedAt: number },
       self: { name: string; email: string }
@@ -286,6 +288,7 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
       if (found?.length) rec = update({ participants: found })
     }
     const participants = rec.participants
+    const calendarTitle = await deps.calendar?.title?.({ app: rec.app, title: rec.title, startedAt: rec.started_at })
 
     // 2. Separating speakers
     step('Separating speakers')
@@ -366,6 +369,13 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
         return speechSeconds(clip) >= MIN_CLIP_SPEECH_S
       })
       if (plan.segments.length < before) deps.log(`final pass: skipped ${before - plan.segments.length} ${plan.channel} clip(s) with no speech`)
+      if (plan.segments.length === 0 && speechSeconds(plan.samples) >= MIN_CHANNEL_SPEECH_S) {
+        // A diarizer can return turns entirely outside the actual speech. Do not erase a
+        // recorded channel just because those turns were filtered out.
+        plan.segments = pauseSegments(plan.samples, plan.channel === 'mic' ? SELF_SPEAKER_KEY : OTHERS_SPEAKER_KEY,
+          plan.channel === 'mic' ? 'm' : 'o')
+        deps.log(`final pass: using pause-based clips for audible ${plan.channel}`)
+      }
     }
     // Whole-channel samples are needed only for speaker separation and clip planning. Subsequent
     // requests read bounded batches from disk, including reapplying the microphone pause mask.
@@ -443,6 +453,13 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
 
     // 6 (before naming, so only speakers who still say something are named). Bleed out, merge.
     const finalUtterances = mergeUtterances(dropMicBleed(utterances), undefined, MAX_UTTERANCE_MS)
+    if (finalUtterances.length === 0) {
+      // Keep both live/final text from an earlier pass and retained audio for retry. A
+      // successful HTTP response is not a successful transcript.
+      throw new Error(othersSpoke || micSpoke
+        ? 'No usable transcript was returned. Audio and any previous transcript were kept; check the speech model and reprocess.'
+        : 'No speech was detected in the recording. Audio and any previous transcript were kept; check the capture devices.')
+    }
 
     // 5. Naming speakers
     step('Naming speakers')
@@ -496,6 +513,8 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
     // 7. Notes
     const notes = await writeNotes(rec, finalUtterances, speakers, settings, secrets, notesApi, step, deps.log)
     if (notes) rec = update({ notes })
+    const title = meetingTitle(rec.app, rec.title, notes, calendarTitle)
+    if (title !== rec.title) rec = update({ title })
 
     // 8. Saving
     step('Saving')

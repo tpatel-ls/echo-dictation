@@ -23,7 +23,7 @@ export async function runDiagnostic(
   try {
     switch (name) {
       case 'whisper': {
-        if (!sec.whisperApiKey) return result(name, false, 'No Whisper API key set.', t0)
+        if (!s.whisperBaseUrl) return result(name, false, 'No speech server URL set. Run local setup or configure your own server in Settings.', t0)
         const wav = floatToWav(new Float32Array(Math.round(16000 * 0.3)), 16000)
         const text = await transcribe(wav, s, sec.whisperApiKey)
         return result(name, true, `Reachable. Empty-audio response: "${text.slice(0, 32)}".`, t0)

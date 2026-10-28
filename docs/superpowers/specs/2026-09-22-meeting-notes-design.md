@@ -23,7 +23,7 @@ trust, without ever recording outside a meeting.
    top-centre pill window from T5 was replaced by the overlay capsule; see "Meeting states in the
    overlay".)*
    Process loopback has no Windows privacy indicator, so Echo's own indicator is the only cue.
-3. **Local first.** Audio stays in `userData/meetings/<uuid>/` and on the user's GB10. Speaker
+3. **Local first.** Audio stays in `userData/meetings/<uuid>/` and on the user's GPU speech server. Speaker
    voiceprints never leave the PC. Transcript excerpts reach Claude (notes) and, only when a
    TypeSafe key is configured, TypeSafe JEV (verification).
 4. **Accuracy over speed.** A live transcript appears during the call; a slower final pass
@@ -37,7 +37,7 @@ trust, without ever recording outside a meeting.
 ## Architecture
 
 ```
-EchoMeetingHelper.exe (C#, net10.0-windows, NAudio 3.1)          GB10 (behind the Bearer shim)
+EchoMeetingHelper.exe (C#, net10.0-windows, NAudio 3.1)          GPU speech server (behind the Bearer shim)
   capture-session watcher ─ mic-sessions ─┐                        /v1/audio/transcriptions (existing)
   probe: windows, browser tabs, render ───┤                        /v1/audio/segments   (NEW, batch)
   record: mic.pcm + others.pcm ───────────┤                        /v1/audio/diarizations (NEW,
@@ -260,9 +260,9 @@ directory, so audio retention does not delete them.
 - Renaming a speaker in the UI relabels that meeting's transcript and, with "remember", enrols
   the voice. "Forget" deletes every exemplar.
 
-## GB10 routes (`gb10/`)
+## GPU speech server routes (`servers/gpu/`)
 
-- `gb10/diarizer/server.py` on `127.0.0.1:8004` in its own venv (`~/diar`), pyannote.audio 4.x
+- `servers/gpu/diarizer/server.py` on `127.0.0.1:8004` in its own venv (`~/diar`), pyannote.audio 4.x
   `speaker-diarization-community-1` loaded offline from a local copy, telemetry off
   (`PYANNOTE_METRICS_ENABLED=0`), stateless, logs timings only.
 - Shim `POST /v1/audio/diarizations` (multipart `file`, optional `num_speakers`,
@@ -323,7 +323,7 @@ laws vary and participants should be told.
 | Ticket | Scope | Depends on |
 | --- | --- | --- |
 | T1 | Windows meeting helper (C#) + TS helper client + build wiring | contracts |
-| T2 | GB10 diarizer + shim routes + deploy + TS speech client | contracts |
+| T2 | GPU speech server diarizer + shim routes + deploy + TS speech client | contracts |
 | T3 | Pure logic: detect, session machine, audio chunking, segments, text choice, bleed, naming, transcript, export | contracts |
 | T4 | Stores (meetings, voiceprints) + Claude notes + JEV verifier | contracts |
 | T5 | Dashboard, meeting pill, settings/secrets, preload, types | contracts |

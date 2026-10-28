@@ -8,6 +8,8 @@
 
 ## Commands
 
+- For local model setup and agent handoff, follow `docs/HANDOFF.md` and `AGENTS.md`.
+
 - `npm test` — unit suite (Vitest, `tests/*.test.ts`)
 - `npm run typecheck` — both tsconfig projects (node + web)
 - `npm run build` — bundle main/preload/renderers to `out/`

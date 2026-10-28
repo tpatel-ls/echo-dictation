@@ -2,7 +2,7 @@
 // Speaker naming. A name is shown only when it is certain: the user's own (the mic channel), a
 // remembered voice that matches clearly, or a meeting-window hint when exactly one remote person
 // spoke. Anything else is "Speaker N", with a likely name offered as a one-click suggestion.
-// Spec: "Speaker names"; thresholds from the GB10 research notes (§5.3).
+// Spec: "Speaker names"; thresholds from the GPU speech server research notes (§5.3).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { MeetingAppId, MeetingChannel, MeetingSpeaker, SpeakerKey } from './meeting-types'

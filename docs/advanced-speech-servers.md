@@ -1,4 +1,10 @@
-# GB10 speech-model upgrade
+# Optional GPU speech services
+
+For the portable CPU setup use [the agent handoff](HANDOFF.md). These optional examples target
+a Linux NVIDIA GPU host and are not prerequisites for Echo. Adapt the CUDA instructions to
+your own hardware and supply your own host, credentials and model choices.
+
+# GPU speech server speech-model upgrade
 
 Echo accepts any OpenAI-compatible `POST /v1/audio/transcriptions` service. The client sends a
 16 kHz mono WAV, `language=en`, `temperature=0`, and an optional vocabulary prompt. Changing the
@@ -7,7 +13,7 @@ model.
 
 ## Current route: Parakeet TDT 0.6B v2
 
-The GB10 serves NVIDIA Parakeet TDT 0.6B v2 next to the Whisper large-v3-turbo route. Both sit
+The GPU speech server serves NVIDIA Parakeet TDT 0.6B v2 next to the Whisper large-v3-turbo route. Both sit
 behind the same authenticated shim, so the switch is a model-name change in Echo:
 
 | Echo model field | Route |
@@ -17,7 +23,7 @@ behind the same authenticated shim, so the switch is a model-name change in Echo
 
 Why Parakeet:
 
-- It is non-autoregressive, so decode time barely grows with utterance length. On the GB10, a
+- It is non-autoregressive, so decode time barely grows with utterance length. On the GPU speech server, a
   3-second sentence decodes in about 40 ms and a 21-second paragraph in about 75 ms, against
   about 180 ms and 325 ms through the Whisper route.
 - The Open ASR leaderboard reports 6.05 average English WER for Parakeet TDT 0.6B v2 against
@@ -49,7 +55,7 @@ mode can decode several models at once and vote, configured by **Cross-check mod
 - Candidates are compared on written forms (`seven P R s` equals `7 PRs`). Two agreeing models win,
   keeping the better-punctuated text.
 - Canary-Qwen 2.5B votes only on recordings under 6 seconds. Its LLM decoder takes about 300 ms on a
-  short phrase but about 1.8 s on a 21-second paragraph on the GB10.
+  short phrase but about 1.8 s on a 21-second paragraph on the GPU speech server.
 - Three short hypotheses with no majority go to the adjudicator. Longer recordings with no
   majority keep the main model rather than waiting on an LLM.
 - A cross-check model gets one attempt with a 4-second limit, so a failing route never blocks a paste.
@@ -59,7 +65,7 @@ Each dictation appends per-stage timings (recognition, cleanup, paste; never tex
 
 ## Server layout
 
-Files in [`gb10/`](../gb10):
+Files in [`servers/gpu/`](../servers/gpu):
 
 - `parakeet/server.py`: FastAPI + NeMo recognizer on `127.0.0.1:8002`, loopback only, no auth.
 - `parakeet/parakeet-server.service`: systemd **user** unit (no sudo needed).
@@ -71,7 +77,7 @@ Files in [`gb10/`](../gb10):
   `model=granite*` to their servers, everything else to whisper.cpp, and skips ffmpeg when the upload is already 16 kHz mono
   PCM16 WAV.
 
-Install on the GB10 (DGX OS, CUDA 13, aarch64):
+Install on the GPU speech server (DGX OS, CUDA 13, aarch64):
 
 ```bash
 mkdir -p ~/asr && cd ~/asr
@@ -100,7 +106,7 @@ Meeting notes add two routes to the same shim, behind the same Bearer key. Dicta
 | `POST /v1/audio/diarizations` | Forwards to the diarizer on `127.0.0.1:8004` (non-WAV uploads are transcoded first). Multipart `file`, optional `num_speakers`, `min_speakers`, `max_speakers`, `embeddings` (default true). Returns `{duration, model, embedding_model, embedding_dim, segments:[{start,end,speaker}], speakers:[{id, speech_seconds, turns, embedding}]}`. `segments` is the exclusive (non-overlapping) diarization, sorted. Embeddings are unit-length 256-d WeSpeaker centroids, `null` under 3 s of speech. Returns 502 while the diarizer is down. |
 | `POST /v1/audio/segments` | Multipart `file` (16 kHz mono WAV, at most 600 s), `models` (comma list of 1-3 names), `segments` (JSON `[{id,start,end}]` in seconds, at most 400, each longer than 0 and at most 40 s, inside the file), optional `prompt` (at most 4000 characters: a comma list of keywords, passed to every clip's decode; Granite and whisper.cpp use it, Parakeet and Canary ignore it). Each clip is decoded through the same model routing as `/v1/audio/transcriptions`. Each model decodes its clips one at a time, so dictation interleaves on the GPU locks, and the models run concurrently. Returns `{results:[{id, texts:{<model>: text}}]}` in request order. A clip that fails for a model is left out of that model's `texts`. Invalid requests get a 400 with the usual error shape. |
 
-Files in [`gb10/diarizer/`](../gb10/diarizer):
+Files in [`servers/gpu/diarizer/`](../servers/gpu/diarizer):
 
 - `server.py`: FastAPI + pyannote.audio 4 running `pyannote/speaker-diarization-community-1`
   (CC-BY-4.0) from a local copy, loopback only, no auth. Stateless: it logs durations and timings,
@@ -109,7 +115,7 @@ Files in [`gb10/diarizer/`](../gb10/diarizer):
 - `diarizer-server.service`: systemd **user** unit with `HF_HUB_OFFLINE=1` and
   `PYANNOTE_METRICS_ENABLED=0` (pyannote telemetry is on by default).
 
-Install on the GB10. The diarizer gets its own venv, because NeMo and pyannote pin overlapping
+Install on the GPU speech server. The diarizer gets its own venv, because NeMo and pyannote pin overlapping
 `lightning` ranges:
 
 ```bash
@@ -197,11 +203,11 @@ colleagues' names):
   three product-name mentions, and "Cloud" for Claude, and inserted nothing. The other two
   product-name mentions Granite also misheard; a possessive name it heard right is not on the
   keyword list, so it is not taken.
-- The three models run concurrently, but Canary and Granite share the GB10's GPU: one 5-minute
+- The three models run concurrently, but Canary and Granite share the GPU speech server's GPU: one 5-minute
   batch took 14 s with Canary alone, 14 s with Granite alone and 29 s with both. The final pass
   runs after the call, so this costs waiting time, not accuracy.
 
-Files in [`gb10/granite/`](../gb10/granite):
+Files in [`servers/gpu/granite/`](../servers/gpu/granite):
 
 - `server.py`: FastAPI + transformers, the same `/v1/audio/transcriptions` contract as the other
   routes. `prompt` is a comma list of keywords. Loopback only, no auth, one GPU lock, greedy
@@ -217,7 +223,7 @@ server lists the keywords first and then asks for punctuation and capitalization
 leaves out some sentence breaks, so Echo takes the missing ones (and sentence capitals) from
 Parakeet's text of the same clip, never its words.
 
-Install on the GB10. Granite gets its own venv, so the NeMo venv (`~/asr`) is never touched:
+Install on the GPU speech server. Granite gets its own venv, so the NeMo venv (`~/asr`) is never touched:
 
 ```bash
 mkdir -p ~/granite && cd ~/granite

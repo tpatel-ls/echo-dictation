@@ -186,6 +186,16 @@ async function startMeet(h: ReturnType<typeof setup>): Promise<number> {
 }
 
 describe('MeetingController', () => {
+  it('ends a phantom recording immediately when its native helper has crashed', async () => {
+    const h = setup()
+    const id = await startMeet(h)
+    h.helper.available = false
+    h.helper.sessions([])
+    await vi.advanceTimersByTimeAsync(1)
+    expect(h.controller.recording).toBe(false)
+    expect(h.meetings.get(id)!.status).toBe('processing')
+    expect(h.finalized).toContain(id)
+  })
   it('starts the helper only on Windows with meetings on', () => {
     const off = setup({ meetingMode: 'off' })
     off.controller.start()
