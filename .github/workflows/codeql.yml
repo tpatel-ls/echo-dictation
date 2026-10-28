@@ -36,6 +36,8 @@ jobs:
           cache: gradle
       - uses: android-actions/setup-android@v3
         if: matrix.language == 'java-kotlin'
+        with:
+          packages: platform-tools
       - name: Install Android SDK 34
         if: matrix.language == 'java-kotlin'
         run: sdkmanager "platforms;android-34" "build-tools;34.0.0"

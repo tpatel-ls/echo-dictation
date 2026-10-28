@@ -24,6 +24,6 @@
   mirroring existing style (vitest, mocked `fetch`, in-memory sql.js).
 - `secrets.local.json` is gitignored and must never be committed; public-facing
   files must not contain personal endpoints (tailnet hostnames) or key material.
-- The branch `private-history` is local-only — never push it.
+- Original private history is archived outside this repository; never restore or push it.
 - `ECHO_USER_DATA` env var redirects userData + single-instance lock for isolated
   automated runs (see memory: echo-e2e-verification-recipe).
