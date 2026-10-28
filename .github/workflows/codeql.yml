@@ -34,7 +34,7 @@ jobs:
           distribution: temurin
           java-version: 17
           cache: gradle
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
         if: matrix.language == 'java-kotlin'
       - name: Install Android SDK 34
         if: matrix.language == 'java-kotlin'
