@@ -230,7 +230,7 @@ function MeetingRow({
         </span>
       </div>
       <div className={`text-sm truncate mt-0.5 ${selected ? 'text-accent font-medium' : 'text-text'}`} title={m.title ?? undefined}>
-        {m.title?.trim() || 'Untitled'}
+        {m.title?.trim() || MEETING_APP_LABELS[m.app]}
       </div>
       {shown.length > 0 && (
         <div className="text-xs text-muted truncate mt-0.5">

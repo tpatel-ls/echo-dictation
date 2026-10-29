@@ -72,7 +72,7 @@ export function MeetingDetail({
 
   const working = meeting.status === 'recording' || meeting.status === 'processing'
   const transcriptState = transcriptNotice(meeting)
-  const title = meetingTitle(meeting.app, meeting.title, meeting.notes)?.trim() || 'Untitled'
+  const title = meetingTitle(meeting.app, meeting.title, meeting.notes)?.trim() || MEETING_APP_LABELS[meeting.app]
   const start = new Date(meeting.started_at)
   const length = formatMeetingLength(meeting.started_at, meeting.ended_at)
 

@@ -5,6 +5,11 @@ import type { MeetingNotes } from '@shared/meeting-types'
 const notes: MeetingNotes = { summary: ['Discussed the hiring plan for next quarter.'], decisions: [], actionItems: [], openQuestions: [], model: 'test', verifiedBy: null }
 
 describe('meeting titles', () => {
+  it('uses a generated topic for an untitled Slack huddle without overriding an explicit title', () => {
+    expect(meetingTitle('slack', null, { ...notes, title: 'Release Planning' })).toBe('Release Planning')
+    expect(meetingTitle('slack', null, null)).toBeNull()
+    expect(meetingTitle('slack', 'Design review', { ...notes, title: 'Release Planning' })).toBe('Design review')
+  })
   it('prefers a concise topic and upgrades the legacy summary title without changing a custom title', () => {
     const titled = { ...notes, title: 'Quarterly Hiring Plan' }
     expect(meetingTitle('google-meet', 'abc-defg-hij', titled)).toBe('Quarterly Hiring Plan')

@@ -99,7 +99,9 @@ tab selected in a browser window for the best metadata coverage; opening Meet's 
 exposes more of the roster. Background tabs, collapsed controls, browser accessibility and UI
 language can limit what is available. Echo keeps names it has seen throughout the call. A
 partial roster is displayed as attendees, but is never used to assign every voice to one person.
-Slack direct-message names also come from its window title. Calendar matching remains optional.
+Slack's open DM or channel can differ from the active huddle, so it is not used as a caller name
+or meeting title. Slack speaker names come from remembered voices, confirmed participants or
+conversation evidence. AI notes can supply a topic title after processing. Calendar matching remains optional.
 Set your meeting display name to your full Google Meet name to avoid listing yourself twice.
 
 The local server labels the channels **you / others**. Separating individual remote speakers,

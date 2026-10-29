@@ -337,7 +337,7 @@ describe('MeetingController', () => {
     expect(h.helper.retargets).toEqual([{ id: 'uuid-1', otherPids: [301] }])
   })
 
-  it('accumulates name hints, most frequent first', async () => {
+  it('keeps the same Slack recording without naming it after DMs opened during the call', async () => {
     const h = setup()
     h.controller.start()
     const slack: MicSession = { ...CHROME, exe: 'slack.exe', appPid: 50, pid: 50 }
@@ -349,10 +349,15 @@ describe('MeetingController', () => {
     h.helper.probeResult = slackProbe('Blake Whitmore (DM) - Acme - Slack')
     h.helper.sessions([slack])
     await vi.advanceTimersByTimeAsync(9000)
+    const id = h.meetings.byStatus(['recording'])[0].id
     h.helper.probeResult = slackProbe('Priya Raman (DM) - Acme - Slack')
     await vi.advanceTimersByTimeAsync(2100)
     const row = h.meetings.byStatus(['recording'])[0]
-    expect(row.name_hints).toEqual(['Blake Whitmore', 'Priya Raman'])
+    expect(row.id).toBe(id)
+    expect(row.title).toBeNull()
+    expect(row.name_hints).toEqual([])
+    expect(row.speakers.find(s => s.key === 'others')).toMatchObject({ label: 'Others', source: 'unknown' })
+    expect(h.helper.startRequests).toHaveLength(1)
   })
 
   it('stops soon after the meeting is gone, hides the pill, and queues the final pass', async () => {

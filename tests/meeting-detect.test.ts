@@ -282,12 +282,13 @@ describe('detectMeetings: browsers', () => {
     const cases: Array<[string, string, string | null]> = [
       ['Meeting with Blake Whitmore | Microsoft Teams - Camera and microphone recording', 'teams', 'Meeting with Blake Whitmore'],
       ['Calendar | Calendar | Microsoft Teams - Microphone recording', 'teams', null],
-      ['Blake Whitmore (DM) - Acme - Slack - Microphone recording', 'slack', 'Blake Whitmore'],
+      ['Blake Whitmore (DM) - Acme - Slack - Microphone recording', 'slack', null],
       ['Zoom Meeting - Microphone recording', 'zoom', null]
     ]
     for (const [name, app, title] of cases) {
       const [c] = detectMeetings([chromeMic], probe({ tabs: [tab('chrome.exe', 100, name)] }), ALL_ON)
       expect(c).toMatchObject({ key: `${app}:100`, app, viaBrowser: true, title })
+      if (app === 'slack') expect(c.nameHints).toEqual([])
     }
   })
 
@@ -378,18 +379,18 @@ describe('detectMeetings: Teams desktop', () => {
 })
 
 describe('detectMeetings: Slack, Zoom, Webex', () => {
-  it('takes the Slack DM partner as title and name hint', () => {
+  it('does not use the open Slack DM as the huddle title or participant', () => {
     const p = probe({ windows: [win('slack.exe', 400, '! Blake Whitmore (DM) - Acme - 1 new item - Slack')] })
     expect(detectMeetings([mic('slack.exe', 400)], p, ALL_ON)[0]).toMatchObject({
       key: 'slack:400',
-      title: 'Blake Whitmore',
-      nameHints: ['Blake Whitmore']
+      title: null,
+      nameHints: []
     })
   })
 
-  it('titles a Slack channel huddle without a hint', () => {
+  it('does not use a browsed Slack channel as the huddle title', () => {
     const p = probe({ windows: [win('slack.exe', 400, '#eng - Acme - Slack')] })
-    expect(detectMeetings([mic('slack.exe', 400)], p, ALL_ON)[0]).toMatchObject({ title: '#eng', nameHints: [] })
+    expect(detectMeetings([mic('slack.exe', 400)], p, ALL_ON)[0]).toMatchObject({ title: null, nameHints: [] })
   })
 
   it('needs a Zoom Meeting window', () => {

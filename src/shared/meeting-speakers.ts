@@ -91,8 +91,7 @@ export function nameSpeakers(
   speakers: SpeakerEvidence[],
   people: VoiceprintCandidate[],
   nameHints: string[],
-  // Part of the contract for source-aware matching (Meet vs Slack codecs); not used by the rules yet.
-  _sourceApp: MeetingAppId,
+  sourceApp: MeetingAppId,
   opts: NamingOptions
 ): MeetingSpeaker[] {
   const ordered = speakers
@@ -151,7 +150,7 @@ export function nameSpeakers(
   }
 
   // The window-title hint names the one substantial remote voice, unless voiceprints disagree.
-  const hint = singleHint(nameHints)
+  const hint = sourceApp === 'slack' ? null : singleHint(nameHints)
   const remote = ordered
     .map((s, si) => ({ s, si }))
     .filter(({ s }) => s.channel === 'others' && s.key !== SELF_SPEAKER_KEY && s.seconds >= opts.minHintSeconds)
@@ -198,8 +197,8 @@ export function renameSpeaker(
 }
 
 /** Labels for the live transcript: the user, and the undiarized remote channel. */
-export function liveSpeakers(userName: string, nameHints: string[]): MeetingSpeaker[] {
-  const hint = singleHint(nameHints)
+export function liveSpeakers(userName: string, nameHints: string[], sourceApp?: MeetingAppId): MeetingSpeaker[] {
+  const hint = sourceApp === 'slack' ? null : singleHint(nameHints)
   const blank = { personId: null, suggestion: null, score: null, seconds: 0 }
   return [
     { key: SELF_SPEAKER_KEY, label: selfLabel(userName), source: 'self', ...blank },

@@ -149,6 +149,12 @@ describe('nameSpeakers: voiceprints', () => {
 })
 
 describe('nameSpeakers: window-title hints', () => {
+  it('ignores old Slack browsing hints for live and final labels while retaining voice matches', () => {
+    expect(liveSpeakers('Alex', ['Blake'], 'slack')[1]).toMatchObject({ label: 'Others', source: 'unknown' })
+    expect(nameSpeakers([others(0, 60)], [], ['Blake'], 'slack', OPTS)[0]).toMatchObject({ label: 'Speaker 1', source: 'unknown' })
+    expect(nameSpeakers([others(0, 60)], [person(1, 'Alice', [[0, 0.9]])], ['Blake'], 'slack', OPTS)[0])
+      .toMatchObject({ label: 'Alice', source: 'voiceprint' })
+  })
   it('names the single remote speaker after the single hint', () => {
     const out = nameSpeakers([ME, others(0, 60)], [], ['Blake Whitmore'], 'teams', OPTS)
     expect(out[1]).toEqual({
@@ -163,7 +169,7 @@ describe('nameSpeakers: window-title hints', () => {
   })
 
   it('counts hints case-insensitively and ignores brief remote voices', () => {
-    const out = byKey(nameSpeakers([others(0, 60), others(1, 4)], [], ['Blake', 'blake '], 'slack', OPTS))
+    const out = byKey(nameSpeakers([others(0, 60), others(1, 4)], [], ['Blake', 'blake '], 'teams', OPTS))
     expect(out['others:SPEAKER_00']).toMatchObject({ label: 'Blake', source: 'hint' })
     expect(out['others:SPEAKER_01']).toMatchObject({ label: 'Speaker 1', source: 'unknown' })
   })

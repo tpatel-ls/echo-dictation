@@ -187,6 +187,24 @@ describe('finalizeMeeting', () => {
     expect(h.meetings.segments(id)[0].text).toBe('Thanks, see you.')
   })
 
+  it.each([false, true])('removes legacy Slack browsing names before reprocessing, including failures (%s)', async fail => {
+    const h = harness()
+    const { id } = h.create()
+    h.meetings.update(id, { app: 'slack', title: '* Blake', source_title: 'Blake', name_hints: ['Blake', '* Blake'],
+      speakers: [{ key: 'others', label: 'Blake', source: 'hint', personId: null, suggestion: null, score: null, seconds: 30 }] })
+    h.meetings.appendSegment(id, { start_ms: 0, end_ms: 1000, channel: 'others', speaker_key: 'others', text: 'Saved draft.', pass: 'live' })
+    if (fail) h.speech.transcribeSegments.mockRejectedValue(new Error('Unavailable'))
+    await finalizeMeeting(id, h.deps)
+    const row = h.meetings.get(id)!
+    expect(row.name_hints).toEqual([])
+    expect(row.title).toBeNull()
+    expect(row.source_title).toBeNull()
+    expect(row.speakers.every(s => s.label !== 'Blake')).toBe(true)
+    expect(h.speech.transcribeSegments.mock.calls.every(c => !c[4]?.includes('Blake'))).toBe(true)
+    expect(h.voiceprints.people()).toEqual([])
+    if (fail) expect(h.meetings.segments(id).map(s => s.text)).toContain('Saved draft.')
+  })
+
   it('reports a genuine failure when neither final nor saved transcript has usable words', async () => {
     const h = harness({ meetingRetainAudioDays: 0 })
     const { id, audioDir } = h.create()

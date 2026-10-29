@@ -640,7 +640,7 @@ export class MeetingController {
       audio_dir: dir,
       name_hints: hints
     })
-    this.deps.meetings.update(row.id, { speakers: liveSpeakers(this.userName(), hints) })
+    this.deps.meetings.update(row.id, { speakers: liveSpeakers(this.userName(), hints, candidate.app) })
     this.saveParticipants(row.id, candidate.participants)
     const label = MEETING_APP_LABELS[candidate.app]
 
@@ -761,7 +761,7 @@ export class MeetingController {
     const speakers = row.status === 'recording' && names.length === 1
       ? liveSpeakers(this.userName(), [names[0].name]).map(s => s.key === 'others' && names[0].source === 'meet' ? { ...s, source: 'meet' as const } : s)
       : row.status === 'recording' && row.speakers.some(s => s.source === 'meet')
-        ? liveSpeakers(this.userName(), row.name_hints) : row.speakers
+        ? liveSpeakers(this.userName(), row.name_hints, row.app) : row.speakers
     this.deps.meetings.update(id, { participants, speakers })
     this.updated(id)
   }
@@ -776,7 +776,7 @@ export class MeetingController {
     for (const h of new Set(seen.nameHints)) a.hintCounts.set(h, (a.hintCounts.get(h) ?? 0) + 1)
     const after = ordered(a.hintCounts)
     if (after.join('\n') === before.join('\n')) return
-    this.deps.meetings.update(a.id, { name_hints: after, speakers: liveSpeakers(this.userName(), after) })
+    this.deps.meetings.update(a.id, { name_hints: after, speakers: liveSpeakers(this.userName(), after, seen.app) })
     this.updated(a.id)
   }
 

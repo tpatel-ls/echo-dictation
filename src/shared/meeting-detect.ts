@@ -184,8 +184,8 @@ function browserEvidence(tabs: HelperBrowserTab[], windows: HelperWindow[]): Evi
       const teams = parseTeamsTitle(t.name)
       add({ app: 'teams', title: teams?.title ?? null, nameHints: teams?.nameHint ? [teams.nameHint] : [] })
     } else if (isSlackTitle(t.name)) {
-      const slack = parseSlackTitle(t.name)
-      add({ app: 'slack', title: slack?.title ?? null, nameHints: slack?.nameHint ? [slack.nameHint] : [] })
+      // Slack's tab names the conversation being browsed, which can differ from the huddle.
+      add({ app: 'slack', title: null, nameHints: [] })
     } else if (/\bZoom\b/i.test(t.name)) {
       add({ app: 'zoom', title: null, nameHints: [] })
     }
@@ -209,12 +209,14 @@ function browserEvidence(tabs: HelperBrowserTab[], windows: HelperWindow[]): Evi
 }
 
 function nativeEvidence(app: MeetingAppId, appPid: number, exe: string, probe: ProbeResult | null): Evidence | null {
-  if (app === 'teams' || app === 'slack') {
+  // A Slack mic session identifies the app, not the caller. Its main window can show an
+  // unrelated DM/channel throughout a huddle; never promote that title to participant data.
+  if (app === 'slack') return { app, title: null, nameHints: [] }
+  if (app === 'teams') {
     // The mic alone means a call: neither app captures outside calls, huddles and clips.
     if (!probe) return { app, title: null, nameHints: [] }
-    const parse = app === 'teams' ? parseTeamsTitle : parseSlackTitle
     for (const w of ownedBy(probe.windows, appPid, exe)) {
-      const parsed = parse(w.title)
+      const parsed = parseTeamsTitle(w.title)
       if (parsed) return { app, title: parsed.title, nameHints: parsed.nameHint ? [parsed.nameHint] : [] }
     }
     return { app, title: null, nameHints: [] }

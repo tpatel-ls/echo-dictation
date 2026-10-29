@@ -263,6 +263,19 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
   try {
     let rec = deps.meetings.get(meetingId)
     if (!rec) return
+    // Old versions mistook Slack's browsed DM/channel for the huddle participant. Clear that
+    // evidence before ASR prompting, naming and the failure fallback can reuse it.
+    if (rec.app === 'slack') {
+      const normalized = (name: string): string => name.replace(/^[!*]\s*/, '').trim().toLowerCase()
+      const hints = new Set(rec.name_hints.map(normalized))
+      const fromHint = (title: string | null | undefined): boolean => !!title && hints.has(normalized(title))
+      const speakers = numberUnknown(rec.speakers.map(s => s.source === 'hint'
+        ? { ...s, source: 'unknown' as const, personId: null, suggestion: null, score: null } : s))
+        .map(s => s.key === OTHERS_SPEAKER_KEY && s.source === 'unknown' ? { ...s, label: 'Others' } : s)
+      rec = update({ name_hints: [], speakers,
+        title: fromHint(rec.title) ? null : rec.title,
+        source_title: fromHint(rec.source_title) ? null : rec.source_title })
+    }
     rec = update({ status: 'processing', error: null, progress: 'Preparing audio' })
     const settings = deps.settings()
     const secrets = deps.secrets()
@@ -541,7 +554,7 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
     if (!row) return
     if (usable) {
       if (!row.speakers.length) {
-        const labels = liveSpeakers(deps.settings().meetingUserName.trim() || deps.osUserName(), row.name_hints)
+        const labels = liveSpeakers(deps.settings().meetingUserName.trim() || deps.osUserName(), row.name_hints, row.app)
         row = deps.meetings.update(meetingId, { speakers: labels })!
       }
       try {

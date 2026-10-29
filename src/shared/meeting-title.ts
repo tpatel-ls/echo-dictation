@@ -7,7 +7,8 @@ export function meetingTitle(
   const summary = notes?.summary.find(s => typeof s === 'string' && s.trim())?.trim()
   const legacy = summary?.replace(/\s+/g, ' ').replace(/[.!]+$/, '')
   const oldTitle = legacy && (legacy.length <= 90 ? legacy : legacy.slice(0, 87).replace(/\s+\S*$/, '') + '…')
-  if (app !== 'google-meet' || (title && title !== oldTitle && !/^(?:Meet\s*[-–]\s*)?[a-z]{3}-[a-z]{4}-[a-z]{3}$/i.test(title.trim()))) return title
+  if (app !== 'google-meet') return title || calendarTitle?.trim() || conciseMeetingTitle(notes?.title) || null
+  if (title && title !== oldTitle && !/^(?:Meet\s*[-–]\s*)?[a-z]{3}-[a-z]{4}-[a-z]{3}$/i.test(title.trim())) return title
   const source = calendarTitle?.trim() || conciseMeetingTitle(notes?.title) ||
     (summary && summary.length <= 80 && !/\bSpeaker\s+\d+\b/i.test(summary) ? summary : null)
   if (!source) return title
