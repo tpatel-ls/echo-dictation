@@ -155,14 +155,14 @@ describe('nameSpeakers: window-title hints', () => {
     expect(nameSpeakers([others(0, 60)], [person(1, 'Alice', [[0, 0.9]])], ['Blake'], 'slack', OPTS)[0])
       .toMatchObject({ label: 'Alice', source: 'voiceprint' })
   })
-  it('names the single remote speaker after the single hint', () => {
+  it('offers a window title as a suggestion without declaring an identity', () => {
     const out = nameSpeakers([ME, others(0, 60)], [], ['Blake Whitmore'], 'teams', OPTS)
     expect(out[1]).toEqual({
       key: 'others:SPEAKER_00',
-      label: 'Blake Whitmore',
-      source: 'hint',
+      label: 'Speaker 1',
+      source: 'unknown',
       personId: null,
-      suggestion: null,
+      suggestion: 'Blake Whitmore',
       score: null,
       seconds: 60
     })
@@ -170,8 +170,8 @@ describe('nameSpeakers: window-title hints', () => {
 
   it('counts hints case-insensitively and ignores brief remote voices', () => {
     const out = byKey(nameSpeakers([others(0, 60), others(1, 4)], [], ['Blake', 'blake '], 'teams', OPTS))
-    expect(out['others:SPEAKER_00']).toMatchObject({ label: 'Blake', source: 'hint' })
-    expect(out['others:SPEAKER_01']).toMatchObject({ label: 'Speaker 1', source: 'unknown' })
+    expect(out['others:SPEAKER_00']).toMatchObject({ label: 'Speaker 1', source: 'unknown', suggestion: 'Blake' })
+    expect(out['others:SPEAKER_01']).toMatchObject({ label: 'Speaker 2', source: 'unknown' })
   })
 
   it('does not apply with two hints, two substantial remote speakers, or no hint', () => {
@@ -203,7 +203,7 @@ describe('nameSpeakers: window-title hints', () => {
 
   it('uses the hint but keeps a voiceprint suggestion for someone else', () => {
     const [s] = nameSpeakers([others(0, 60)], [person(1, 'Alice', [[0, 0.6]])], ['Blake'], 'teams', OPTS)
-    expect(s).toMatchObject({ label: 'Blake', source: 'hint', suggestion: 'Alice', score: expect.closeTo(0.6, 5) })
+    expect(s).toMatchObject({ label: 'Speaker 1', source: 'unknown', suggestion: 'Alice', score: expect.closeTo(0.6, 5) })
   })
 })
 
@@ -276,10 +276,14 @@ describe('renameSpeaker', () => {
 })
 
 describe('liveSpeakers', () => {
-  it('shows me and the single hinted remote party', () => {
+  it('preserves the local-user identity when the self label is changed', () => {
+    expect(renameSpeaker(liveSpeakers('Alex', []), 'me', 'Alex Rivera', null)[0])
+      .toMatchObject({ key: 'me', label: 'Alex Rivera', source: 'self' })
+  })
+  it('keeps the live remote channel unnamed despite a window title', () => {
     expect(liveSpeakers('Tanay', ['Blake', 'BLAKE'])).toEqual([
       { key: 'me', label: 'Tanay', source: 'self', personId: null, suggestion: null, score: null, seconds: 0 },
-      { key: 'others', label: 'Blake', source: 'hint', personId: null, suggestion: null, score: null, seconds: 0 }
+      { key: 'others', label: 'Others', source: 'unknown', personId: null, suggestion: 'Blake', score: null, seconds: 0 }
     ])
   })
 

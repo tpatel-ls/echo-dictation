@@ -3,13 +3,14 @@ import { join } from 'node:path'
 import { applyDictionary } from '@shared/dictionary'
 import { int16ToWav, isSilentChunk, planLiveCut, speechSeconds } from '@shared/meeting-audio'
 import { renderMarkdown, meetingFileName } from '@shared/meeting-export'
-import { DEFAULT_NAMING, nameSpeakers, numberUnknown, type SpeakerEvidence } from '@shared/meeting-speakers'
+import { DEFAULT_NAMING, nameSpeakers, type SpeakerEvidence } from '@shared/meeting-speakers'
 import { mergeSpeakers } from '@shared/meeting-diarization'
 import { meetingKeywordPrompt, meetingKeywords } from '@shared/meeting-keywords'
 import { correctNames } from '@shared/name-correction'
 import { meetingTitle } from '@shared/meeting-title'
 import { authoritativeParticipants, withoutSelfParticipant } from '@shared/meet-controls'
 import { liveSpeakers } from '@shared/meeting-speakers'
+import { applyParticipantNames, applyConversationSuggestions, restoreConfirmedNames, retireUnverifiedNames } from '@shared/meeting-identity'
 import { transplantVocabulary } from '@shared/vocab-transplant'
 import {
   batchSegments,
@@ -59,8 +60,6 @@ export const AUDIO_DELETED_ERROR = 'Audio was already deleted'
 
 /** Speech a channel needs before it is worth diarizing (and transcribing at all). */
 const MIN_CHANNEL_SPEECH_S = 0.15
-/** Voiceprint auto-matches at least this strong are enrolled as another exemplar. */
-const AUTO_ENROL_SCORE = 0.75
 /** The shim accepts at most 400 segments per request; stay well under it. */
 const MAX_SEGMENTS_PER_REQUEST = 200
 /** Same-speaker turns join into utterances of at most this long. */
@@ -263,15 +262,18 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
   try {
     let rec = deps.meetings.get(meetingId)
     if (!rec) return
+    const verifiedSpeakers = retireUnverifiedNames(rec.speakers, rec.participants)
+    if (verifiedSpeakers.some((s, i) => s.source !== rec!.speakers[i].source)) {
+      rec = update({ speakers: verifiedSpeakers, notes: null })
+    }
     // Old versions mistook Slack's browsed DM/channel for the huddle participant. Clear that
     // evidence before ASR prompting, naming and the failure fallback can reuse it.
     if (rec.app === 'slack') {
       const normalized = (name: string): string => name.replace(/^[!*]\s*/, '').trim().toLowerCase()
       const hints = new Set(rec.name_hints.map(normalized))
       const fromHint = (title: string | null | undefined): boolean => !!title && hints.has(normalized(title))
-      const speakers = numberUnknown(rec.speakers.map(s => s.source === 'hint'
-        ? { ...s, source: 'unknown' as const, personId: null, suggestion: null, score: null } : s))
-        .map(s => s.key === OTHERS_SPEAKER_KEY && s.source === 'unknown' ? { ...s, label: 'Others' } : s)
+      const speakers = rec.speakers.map(s => s.source === 'unknown' && s.suggestion && hints.has(normalized(s.suggestion))
+        ? { ...s, suggestion: null } : s)
       rec = update({ name_hints: [], speakers,
         title: fromHint(rec.title) ? null : rec.title,
         source_title: fromHint(rec.source_title) ? null : rec.source_title })
@@ -330,7 +332,7 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
     const othersRaw = othersSpoke ? await tryDiarize(others, 8, 'others') : null
     const micRaw = micSpoke ? await tryDiarize(mic, 4, 'mic') : null
     // Over-split speakers merge: a backchannel-only cluster into the voice it belongs to, and
-    // everyone on the others channel into one when the calendar says one other person attended.
+    // everyone on the others channel into one only with verified sole-remote attendance.
     const merged = (raw: DiarizationResult | null, channel: MeetingChannel, expected?: number): DiarizationResult | null => {
       if (!raw) return null
       const { result, merges } = mergeSpeakers(raw, { expectedSpeakers: expected })
@@ -500,7 +502,16 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
     const people = embeddingModel ? deps.voiceprints.candidates(embeddingModel) : []
     // Everyone Echo knows by voice can be misheard, in this meeting or not ("Daren Kudira").
     const remembered = deps.voiceprints.people().map((p) => p.name)
-    let speakers = withCalendar(nameSpeakers(evidence, people, rec.name_hints, rec.app, { userName, ...DEFAULT_NAMING }), authoritative)
+    let speakers = nameSpeakers(evidence, people, rec.name_hints, rec.app, { userName, ...DEFAULT_NAMING })
+    const priorVoices = readSpeakersFile(deps.meetingsDir, rec.uuid)
+    if (embeddingModel && priorVoices?.embeddingModel === embeddingModel) {
+      const saved = rec.speakers.flatMap(speaker => {
+        const voice = priorVoices.speakers.find(v => v.key === speaker.key)
+        return speaker.source === 'user' && voice?.embedding ? [{ speaker, embedding: voice.embedding }] : []
+      })
+      speakers = restoreConfirmedNames(speakers, evidence, saved, rec.app)
+    }
+    speakers = applyParticipantNames(speakers, participants)
 
     // Names from the conversation for speakers still unnamed ("Hey Darin", "I'm Tanay").
     fixNames(finalUtterances, speakers, [...participants.map((p) => p.name), ...remembered], userName, deps.log)
@@ -514,18 +525,19 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
         { claudeBaseUrl: settings.claudeBaseUrl, claudeModel: settings.claudeModel, fallbackModel: settings.fallbackModel },
         secrets.claudeApiKey
       )
-      speakers = withConversationNames(speakers, proposals, participants)
+      speakers = applyConversationSuggestions(speakers, proposals, participants)
       if (proposals.length) deps.log(`final pass: ${proposals.length} speaker name(s) found in the conversation`)
       fixNames(finalUtterances, speakers, [...participants.map((p) => p.name), ...remembered], userName, deps.log)
     }
     persistVoices(deps.meetingsDir, rec.uuid, embeddingModel, evidence)
-    if (embeddingModel) autoEnrol(deps, speakers, evidence, embeddingModel, rec.app)
 
     deps.meetings.replaceWithFinal(
       meetingId,
       finalUtterances.map((u) => ({ start_ms: u.start, end_ms: u.end, channel: u.channel, speaker_key: u.speakerKey, text: u.text }))
     )
-    rec = update({ speakers })
+    // Old notes may attribute words to labels from the previous pass. Regenerate them from
+    // the new transcript; a notes-service failure must not revive obsolete attribution.
+    rec = update({ speakers, notes: null })
 
     // 7. Notes
     const notes = await writeNotes(rec, finalUtterances, speakers, settings, secrets, notesApi, step, deps.log)
@@ -599,81 +611,10 @@ function persistVoices(meetingsDir: string, uuid: string, embeddingModel: string
   writeFileSync(speakersFilePath(meetingsDir, uuid), JSON.stringify(file), 'utf8')
 }
 
-/** A clear voiceprint match adds this meeting's voice as another exemplar of that person. */
-function autoEnrol(
-  deps: FinalizeDeps,
-  speakers: MeetingSpeaker[],
-  evidence: SpeakerEvidence[],
-  model: string,
-  app: string
-): void {
-  for (const s of speakers) {
-    if (s.source !== 'voiceprint' || s.personId === null || (s.score ?? 0) < AUTO_ENROL_SCORE) continue
-    const voice = evidence.find((e) => e.key === s.key)
-    if (!voice?.embedding) continue
-    try {
-      deps.voiceprints.addExemplar(s.personId, { embedding: voice.embedding, model, seconds: voice.seconds, sourceApp: app })
-    } catch (e) {
-      deps.log(`final pass: auto-enrol skipped (${describeError(e)})`)
-    }
-  }
-}
-
 /** Utterances numbered u1, u2, … in transcript order, with speaker labels, as notes cite them. */
 function numbered(utterances: MeetingUtterance[], speakers: MeetingSpeaker[]): NotesUtterance[] {
   const labels = new Map(speakers.map((s) => [s.key, s.label]))
   return utterances.map((u, i) => ({ uid: `u${i + 1}`, speaker: labels.get(u.speakerKey) ?? u.speakerKey, startMs: u.start, text: u.text }))
-}
-
-function sameName(a: string, b: string): boolean {
-  const x = a.trim().toLowerCase()
-  const y = b.trim().toLowerCase()
-  return x === y || x.split(/\s+/)[0] === y.split(/\s+/)[0]
-}
-
-/**
- * The calendar's authority: with exactly one other attendee and one remote voice, that voice is
- * them. With several attendees, a voiceprint suggestion that names one of them is accepted.
- */
-function withCalendar(speakers: MeetingSpeaker[], participants: MeetingParticipant[]): MeetingSpeaker[] {
-  if (participants.length === 0) return speakers
-  const remote = speakers.filter((s) => s.key.startsWith('others'))
-  return numberUnknown(
-    speakers.map((s): MeetingSpeaker => {
-      if (s.source !== 'unknown' && s.source !== 'hint') return s
-      if (participants.length === 1 && remote.length === 1 && s === remote[0]) {
-        return { ...s, label: participants[0].name, source: participants[0].source ?? 'calendar', suggestion: null }
-      }
-      const attendee = s.suggestion ? participants.find((p) => sameName(p.name, s.suggestion!)) : undefined
-      if (attendee && s.source === 'unknown') return { ...s, label: s.suggestion!, source: 'voiceprint', suggestion: null }
-      return s
-    })
-  )
-}
-
-/**
- * Apply names found in the conversation: one matching a calendar attendee names the speaker
- * ("from calendar"); anything else is only a suggestion. Named speakers are never touched.
- */
-function withConversationNames(
-  speakers: MeetingSpeaker[],
-  proposals: SpeakerNameProposal[],
-  participants: MeetingParticipant[]
-): MeetingSpeaker[] {
-  if (proposals.length === 0) return speakers
-  const taken = new Set(speakers.filter((s) => s.source !== 'unknown').map((s) => s.label.toLowerCase()))
-  return numberUnknown(
-    speakers.map((s): MeetingSpeaker => {
-      const p = s.source === 'unknown' ? proposals.find((x) => x.speaker === s.label) : undefined
-      if (!p) return s
-      const attendee = participants.find((a) => sameName(a.name, p.name))
-      if (attendee && !taken.has(attendee.name.toLowerCase())) {
-        taken.add(attendee.name.toLowerCase())
-        return { ...s, label: attendee.name, source: attendee.source ?? 'calendar', suggestion: null }
-      }
-      return { ...s, suggestion: p.name }
-    })
-  )
 }
 
 /**

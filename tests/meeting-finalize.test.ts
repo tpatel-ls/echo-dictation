@@ -191,6 +191,7 @@ describe('finalizeMeeting', () => {
     const h = harness()
     const { id } = h.create()
     h.meetings.update(id, { app: 'slack', title: '* Blake', source_title: 'Blake', name_hints: ['Blake', '* Blake'],
+      notes: { ...notesFixture, summary: ['Blake explained the plan.'] },
       speakers: [{ key: 'others', label: 'Blake', source: 'hint', personId: null, suggestion: null, score: null, seconds: 30 }] })
     h.meetings.appendSegment(id, { start_ms: 0, end_ms: 1000, channel: 'others', speaker_key: 'others', text: 'Saved draft.', pass: 'live' })
     if (fail) h.speech.transcribeSegments.mockRejectedValue(new Error('Unavailable'))
@@ -200,9 +201,13 @@ describe('finalizeMeeting', () => {
     expect(row.title).toBeNull()
     expect(row.source_title).toBeNull()
     expect(row.speakers.every(s => s.label !== 'Blake')).toBe(true)
+    expect(row.speakers.every(s => s.suggestion !== 'Blake')).toBe(true)
     expect(h.speech.transcribeSegments.mock.calls.every(c => !c[4]?.includes('Blake'))).toBe(true)
     expect(h.voiceprints.people()).toEqual([])
-    if (fail) expect(h.meetings.segments(id).map(s => s.text)).toContain('Saved draft.')
+    if (fail) {
+      expect(h.meetings.segments(id).map(s => s.text)).toContain('Saved draft.')
+      expect(row.notes).toBeNull()
+    }
   })
 
   it('reports a genuine failure when neither final nor saved transcript has usable words', async () => {
@@ -423,7 +428,7 @@ describe('finalizeMeeting', () => {
     expect(h.meetings.get(id)!.error).toBe(AUDIO_DELETED_ERROR)
   })
 
-  it('names a remembered voice and enrols this meeting as another exemplar', async () => {
+  it('names a remembered voice without training on its own prediction', async () => {
     const h = harness()
     const blake = h.voiceprints.ensurePerson('Blake Whitmore')
     h.voiceprints.addExemplar(blake.id, { embedding: [0.99, 0.05, 0, 0], model: 'wespeaker-r34', seconds: 20, sourceApp: 'slack' })
@@ -436,7 +441,7 @@ describe('finalizeMeeting', () => {
       personId: blake.id
     })
     expect(rec.speakers.find((s) => s.key === 'others:SPEAKER_01')?.label).toBe('Speaker 1')
-    expect(h.voiceprints.people()[0].exemplars).toBe(2)
+    expect(h.voiceprints.people()[0].exemplars).toBe(1)
   })
 
   it('appends (2) instead of overwriting another meeting\'s .md', async () => {
@@ -605,7 +610,42 @@ describe('finalizeMeeting', () => {
   })
 
   describe('names', () => {
-    it('merges the remote voices and names them from the calendar when one other person attended', async () => {
+    it('does not revive old attributed notes when the new notes service fails', async () => {
+      const h = harness()
+      const { id } = h.create()
+      h.meetings.update(id, { notes: { ...notesFixture, summary: ['Alex Rivera agreed.'] } })
+      h.notes.draft.mockRejectedValue(new Error('Unavailable'))
+      await finalizeMeeting(id, h.deps)
+      expect(h.meetings.get(id)).toMatchObject({ status: 'ready', notes: null })
+      expect(h.meetings.segments(id).length).toBeGreaterThan(0)
+    })
+    it('preserves an explicit correction across changed diarizer keys without globally remembering the voice', async () => {
+      const h = harness()
+      const { id, uuid } = h.create()
+      h.meetings.update(id, { speakers: [{ key: 'others:OLD', label: 'Alex Rivera', source: 'user',
+        personId: null, suggestion: null, score: null, seconds: 30 }] })
+      writeFileSync(speakersFilePath(h.meetingsDir, uuid), JSON.stringify({ embeddingModel: 'wespeaker-r34',
+        speakers: [{ key: 'others:OLD', seconds: 30, embedding: [1, 0, 0, 0] }] }))
+      await finalizeMeeting(id, h.deps)
+      expect(h.meetings.get(id)!.speakers.find(s => s.key === 'others:SPEAKER_00'))
+        .toMatchObject({ label: 'Alex Rivera', source: 'user', personId: null })
+      expect(h.voiceprints.people()).toEqual([])
+      expect(h.notes.draft.mock.calls[0][1].some(u => u.speaker === 'Alex Rivera')).toBe(true)
+    })
+
+    it('does not upgrade a weak voice match because that name appears in a complete roster', async () => {
+      const h = harness()
+      const { id } = h.create()
+      const person = h.voiceprints.ensurePerson('Alex Rivera')
+      h.voiceprints.addExemplar(person.id, { embedding: [0.6, 0, 0, 0.8], model: 'wespeaker-r34', seconds: 30, sourceApp: 'google-meet' })
+      h.meetings.update(id, { participants: ['Alex Rivera', 'Casey Morgan'].map(name => ({ name, email: null, source: 'meet', rosterComplete: true })) })
+      await finalizeMeeting(id, h.deps)
+      expect(h.meetings.get(id)!.speakers.find(s => s.key === 'others:SPEAKER_00'))
+        .toMatchObject({ source: 'unknown', label: 'Speaker 1', suggestion: 'Alex Rivera' })
+      expect(h.notes.draft.mock.calls[0][1].every(u => u.speaker !== 'Alex Rivera')).toBe(true)
+    })
+
+    it('does not merge or name actual voices using an unverified calendar invitation', async () => {
       const h = harness()
       h.calendar.participants.mockResolvedValue([{ name: 'Darin Kadiro', email: 'darin@example.org' }])
       const { id } = h.create()
@@ -614,11 +654,12 @@ describe('finalizeMeeting', () => {
       expect(rec.participants).toEqual([{ name: 'Darin Kadiro', email: 'darin@example.org' }])
       expect(rec.speakers.map((s) => [s.key, s.label, s.source])).toEqual([
         ['me', 'Tanay', 'self'],
-        ['others:SPEAKER_00', 'Darin Kadiro', 'calendar']
+        ['others:SPEAKER_00', 'Speaker 1', 'unknown'],
+        ['others:SPEAKER_01', 'Speaker 2', 'unknown']
       ])
-      expect(new Set(h.meetings.segments(id).map((s) => s.speaker_key))).toEqual(new Set(['me', 'others:SPEAKER_00']))
-      expect(h.logs.some((l) => l.includes('merged a others speaker (single-attendee'))).toBe(true)
-      expect(h.speakerNames).not.toHaveBeenCalled() // nobody is left unnamed
+      expect(new Set(h.meetings.segments(id).map((s) => s.speaker_key))).toEqual(new Set(['me', 'others:SPEAKER_00', 'others:SPEAKER_01']))
+      expect(h.logs.some((l) => l.includes('merged a others speaker (single-attendee'))).toBe(false)
+      expect(h.notes.draft.mock.calls[0][1].every(u => u.speaker !== 'Darin Kadiro')).toBe(true)
     })
 
     it('corrects misheard participant names in the transcript', async () => {
@@ -653,7 +694,7 @@ describe('finalizeMeeting', () => {
       expect(h.logs).toContain('final pass: corrected 2 misheard name(s)')
     })
 
-    it('uses a name from the conversation: a calendar attendee names the speaker, anything else is a suggestion', async () => {
+    it('keeps conversation names as suggestions even when they match invited attendees', async () => {
       const h = harness()
       h.calendar.participants.mockResolvedValue([
         { name: 'Darin Kadiro', email: null },
@@ -670,8 +711,8 @@ describe('finalizeMeeting', () => {
       expect(candidates).toEqual(['Darin Kadiro', 'Blake Whitmore'])
       expect(h.meetings.get(id)!.speakers.map((s) => [s.key, s.label, s.source, s.suggestion])).toEqual([
         ['me', 'Tanay', 'self', null],
-        ['others:SPEAKER_00', 'Darin Kadiro', 'calendar', null],
-        ['others:SPEAKER_01', 'Speaker 1', 'unknown', 'Priya']
+        ['others:SPEAKER_00', 'Speaker 1', 'unknown', 'Darin Kadiro'],
+        ['others:SPEAKER_01', 'Speaker 2', 'unknown', 'Priya']
       ])
     })
 

@@ -663,7 +663,7 @@ describe('MeetingController', () => {
         { key: 'others:B', label: 'Speaker 2', source: 'unknown', personId: null, suggestion: null, score: null, seconds: 4 }
       ],
       notes: {
-        summary: [],
+        summary: ['Speaker 1 asked Speaker 2 to send the deck.'],
         decisions: [],
         actionItems: [{ text: 'Send the deck', owner: 'Speaker 2', due: null, cites: ['u1'], verification: 'unverified' }],
         openQuestions: [],
@@ -685,12 +685,24 @@ describe('MeetingController', () => {
     const detail = h.controller.renameSpeaker(row.id, 'others:A', 'Blake Whitmore', true)!
     expect(detail.speakers.map((s) => s.label)).toEqual(['Tanay', 'Blake Whitmore', 'Speaker 1'])
     expect(detail.notes!.actionItems[0].owner).toBe('Speaker 1') // same speaker, renumbered
+    expect(detail.notes!.summary).toEqual(['Blake Whitmore asked Speaker 1 to send the deck.'])
     expect(h.voiceprints.people()).toMatchObject([{ name: 'Blake Whitmore', exemplars: 1, seconds: 25 }])
     expect(h.voiceprints.candidates('wespeaker')).toHaveLength(1)
 
     // Under 10 s of voice: renamed, but not remembered.
     h.controller.renameSpeaker(row.id, 'others:B', 'Priya', true)
     expect(h.voiceprints.people().map((p) => p.name)).toEqual(['Blake Whitmore'])
+  })
+
+  it('rejects a stale speaker key before enrolling any stored voice sample', () => {
+    const h = setup({ meetingMode: 'off' })
+    const row = h.meetings.create({ uuid: 'stale-key', started_at: 1, app: 'slack', title: null, audio_dir: null, name_hints: [] })
+    h.meetings.update(row.id, { status: 'ready', speakers: [] })
+    mkdirSync(h.meetingsDir, { recursive: true })
+    writeFileSync(speakersFilePath(h.meetingsDir, row.uuid), JSON.stringify({ embeddingModel: 'model',
+      speakers: [{ key: 'others:old', seconds: 30, embedding: [1, 0] }] }))
+    expect(() => h.controller.renameSpeaker(row.id, 'others:old', 'Alex Rivera', true)).toThrow('no longer exists')
+    expect(h.voiceprints.people()).toEqual([])
   })
 
   it('rewrites the saved .md when a speaker is renamed', () => {

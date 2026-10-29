@@ -4,7 +4,9 @@ import { dirname, isAbsolute, join, relative } from 'node:path'
 import { candidateExes, continuationEvidence, detectMeetings, detectPlaybackMeetings, idleProbeExesFor, probeExesFor, unconfirmedMeetings } from '@shared/meeting-detect'
 import { MeetingSession, type MeetingSessionConfig } from '@shared/meeting-session'
 import { liveSpeakers, renameSpeaker } from '@shared/meeting-speakers'
-import { authoritativeParticipants, mergeParticipants, withoutSelfParticipant } from '@shared/meet-controls'
+import { applyParticipantNames } from '@shared/meeting-identity'
+import { relabelMeetingNotes } from '@shared/meeting-note-labels'
+import { mergeParticipants, withoutSelfParticipant } from '@shared/meet-controls'
 import {
   MEETING_APP_LABELS,
   MEETING_SAMPLE_RATE,
@@ -365,6 +367,7 @@ export class MeetingController {
     if (rec.status === 'recording' || rec.status === 'processing') {
       throw new Error('Wait for speaker separation to finish before naming a speaker.')
     }
+    if (!rec.speakers.some(s => s.key === key)) throw new Error('This speaker no longer exists. Refresh the meeting and try again.')
     if (key === 'others' && withoutSelfParticipant(rec.participants, this.userName()).length > 1) {
       throw new Error('These lines combine multiple remote speakers. Use Reprocess to separate them before naming a voice.')
     }
@@ -388,7 +391,7 @@ export class MeetingController {
       }
     }
     const speakers = renameSpeaker(rec.speakers, key, label, personId)
-    const notes = rec.notes ? relabelOwners(rec.notes, rec.speakers, speakers) : null
+    const notes = relabelMeetingNotes(rec.notes, rec.speakers, speakers)
     let updated = this.deps.meetings.update(id, { speakers, notes })!
     if (updated.output_path && updated.status === 'ready') {
       try {
@@ -757,11 +760,10 @@ export class MeetingController {
     const row = this.deps.meetings.get(id)
     if (!row || !observed?.length) return
     const participants = withoutSelfParticipant(mergeParticipants(row.participants, observed), this.userName())
-    const names = authoritativeParticipants(participants)
-    const speakers = row.status === 'recording' && names.length === 1
-      ? liveSpeakers(this.userName(), [names[0].name]).map(s => s.key === 'others' && names[0].source === 'meet' ? { ...s, source: 'meet' as const } : s)
-      : row.status === 'recording' && row.speakers.some(s => s.source === 'meet')
-        ? liveSpeakers(this.userName(), row.name_hints, row.app) : row.speakers
+    const speakers = row.status === 'recording'
+      ? applyParticipantNames(liveSpeakers(this.userName(), row.name_hints, row.app), participants)
+        .map(s => s.key === 'others' && s.source === 'unknown' ? { ...s, label: 'Others' } : s)
+      : row.speakers
     this.deps.meetings.update(id, { participants, speakers })
     this.updated(id)
   }
@@ -958,23 +960,4 @@ export class MeetingController {
 
 function ordered(counts: Map<string, number>): string[] {
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([h]) => h)
-}
-
-/** Action-item owners are speaker labels; keep them pointing at the same speaker after a relabel. */
-function relabelOwners(
-  notes: NonNullable<MeetingDetail['notes']>,
-  before: MeetingSpeaker[],
-  after: MeetingSpeaker[]
-): NonNullable<MeetingDetail['notes']> {
-  const next = new Map(after.map((s) => [s.key, s.label]))
-  const map = new Map<string, string>()
-  for (const s of before) {
-    const label = next.get(s.key)
-    if (label !== undefined && label !== s.label) map.set(s.label, label)
-  }
-  if (map.size === 0) return notes
-  return {
-    ...notes,
-    actionItems: notes.actionItems.map((i) => (i.owner && map.has(i.owner) ? { ...i, owner: map.get(i.owner)! } : i))
-  }
 }

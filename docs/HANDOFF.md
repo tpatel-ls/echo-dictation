@@ -100,8 +100,8 @@ exposes more of the roster. Background tabs, collapsed controls, browser accessi
 language can limit what is available. Echo keeps names it has seen throughout the call. A
 partial roster is displayed as attendees, but is never used to assign every voice to one person.
 Slack's open DM or channel can differ from the active huddle, so it is not used as a caller name
-or meeting title. Slack speaker names come from remembered voices, confirmed participants or
-conversation evidence. AI notes can supply a topic title after processing. Calendar matching remains optional.
+or meeting title. Slack speaker names come from remembered voices or user confirmation. AI notes
+can supply a topic title after processing. Calendar matching remains optional.
 Set your meeting display name to your full Google Meet name to avoid listing yourself twice.
 
 The local server labels the channels **you / others**. Separating individual remote speakers,
@@ -116,6 +116,16 @@ Leave **Remember this voice** checked to use a usable voice sample for future ma
 reports when no usable sample is available. Confirm identities from the conversation or audio,
 not by eliminating names from a partial roster. Grouped remote audio cannot be assigned to one
 person when several remote attendees are known; configure diarization and use **Reprocess**.
+
+Calendar invitations, window titles and names proposed from the conversation are suggestions,
+not confirmed speaker identities. A complete in-call Meet roster can identify a single remote
+person; multiple attendees cannot promote a weak voice match to a confirmed name. Echo adds
+new remembered voice samples only when you confirm **Remember this voice**, avoiding a chain
+of automatic matches training on earlier predictions. Existing remembered samples stay local.
+Reprocess restores explicit corrections when the saved and new voice embeddings clearly match
+using the same model, even if the diarizer changes speaker IDs. It regenerates notes and clears
+old notes if generation fails, so obsolete attributions do not reappear. Renaming a speaker also
+updates their generated note references and marks changed note claims as unverified.
 
 If final processing fails, existing transcript text stays available with a **Review** warning.
 If no text was recovered, the meeting shows a failure with the reason. Both cases retain audio

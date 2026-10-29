@@ -4,7 +4,7 @@ import { extractObject, postMessages, transcriptLine } from './notes'
 // Names from what was said: people introduce themselves ("I'm Tanay") and address each other
 // ("Hey Darin"). One small Claude call proposes a name for each unnamed speaker, citing the
 // utterances that show it; code keeps a proposal only when a cited utterance really contains the
-// name. The result is a suggestion (or a calendar name when it matches an attendee); it never
+// name. The result remains a suggestion even when it matches an attendee; it never
 // replaces a name the user, a voiceprint or the calendar already gave.
 
 export interface SpeakerNameProposal {

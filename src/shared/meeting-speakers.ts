@@ -1,7 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Speaker naming. A name is shown only when it is certain: the user's own (the mic channel), a
-// remembered voice that matches clearly, or a meeting-window hint when exactly one remote person
-// spoke. Anything else is "Speaker N", with a likely name offered as a one-click suggestion.
+// Speaker naming. A remembered voice needs a clear match. Window titles provide suggestions,
+// never identities. User confirmations and verified in-call attendance are handled separately.
 // Spec: "Speaker names"; thresholds from the GPU speech server research notes (§5.3).
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -33,7 +32,7 @@ export interface NamingOptions {
   margin: number
   /** Speech a speaker needs before a voiceprint may name them. */
   minMatchSeconds: number
-  /** Speech the single remote speaker needs before a window-title hint may name them. */
+  /** Speech the single remote speaker needs before a window-title hint may be suggested. */
   minHintSeconds: number
 }
 
@@ -149,7 +148,7 @@ export function nameSpeakers(
     if (pair.score >= opts.suggest) suggestionFor.set(pair.speaker, pair)
   }
 
-  // The window-title hint names the one substantial remote voice, unless voiceprints disagree.
+  // A window-title hint is only a suggestion for one substantial remote voice.
   const hint = sourceApp === 'slack' ? null : singleHint(nameHints)
   const remote = ordered
     .map((s, si) => ({ s, si }))
@@ -169,7 +168,7 @@ export function nameSpeakers(
     }
     const suggested = suggestionFor.get(si)
     const suggestion = suggested ? { suggestion: people[suggested.person].name, score: suggested.score } : {}
-    if (si === hinted) return { ...base, ...suggestion, label: hint!, source: 'hint' }
+    if (si === hinted) return { ...base, suggestion: hint!, ...suggestion, label: '', source: 'unknown' }
     return { ...base, ...suggestion, label: '', source: 'unknown' }
   })
   return numberUnknown(named)
@@ -187,7 +186,7 @@ export function renameSpeaker(
 ): MeetingSpeaker[] {
   if (!speakers.some((s) => s.key === key)) return speakers.map((s) => ({ ...s }))
   const renamed = speakers.map((s): MeetingSpeaker => {
-    if (s.key === key) return { ...s, label: name, source: 'user', personId, suggestion: null }
+    if (s.key === key) return { ...s, label: name, source: key === SELF_SPEAKER_KEY ? 'self' : 'user', personId, suggestion: null }
     if (s.source !== 'user' && s.source !== 'self' && s.source !== 'unknown' && sameName(s.label, name)) {
       return { ...s, source: 'unknown', personId: null }
     }
@@ -202,6 +201,6 @@ export function liveSpeakers(userName: string, nameHints: string[], sourceApp?: 
   const blank = { personId: null, suggestion: null, score: null, seconds: 0 }
   return [
     { key: SELF_SPEAKER_KEY, label: selfLabel(userName), source: 'self', ...blank },
-    { key: OTHERS_SPEAKER_KEY, label: hint ?? 'Others', source: hint ? 'hint' : 'unknown', ...blank }
+    { key: OTHERS_SPEAKER_KEY, label: 'Others', source: 'unknown', ...blank, suggestion: hint }
   ]
 }

@@ -41,7 +41,7 @@ export function mergeParticipants(previous: MeetingParticipant[], observed: Meet
 }
 
 export function authoritativeParticipants(people: MeetingParticipant[]): MeetingParticipant[] {
-  return people.every(p => p.source !== 'meet' || p.rosterComplete === true) ? people : []
+  return people.every(p => p.source === 'user' || (p.source === 'meet' && p.rosterComplete === true)) ? people : []
 }
 
 /** Match the configured local display name; a shared first name does not identify the local user. */

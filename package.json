@@ -1,6 +1,6 @@
 {
   "name": "echo",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Accuracy-first dictation for macOS, Windows x64, and Android with history, learning, and sync.",
   "author": "Tanay",
   "license": "MIT",

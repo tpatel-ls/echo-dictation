@@ -292,9 +292,9 @@ export interface MeetingUtterance {
 export type SpeakerNameSource =
   | 'self' // the local user
   | 'voiceprint' // matched a remembered voice above the accept threshold
-  | 'hint' // single remote speaker + a name in the meeting window title
+  | 'hint' // legacy window-title assignment; new title hints are suggestions only
   | 'user' // the user named or confirmed this speaker
-  | 'calendar' // the only other attendee of the matching calendar event, or named in the conversation as one
+  | 'calendar' // legacy calendar assignment; new invitations are not proof of attendance
   | 'meet' // a complete Google Meet roster identifies the only remote participant
   | 'unknown' // shown as "Speaker N"
 
