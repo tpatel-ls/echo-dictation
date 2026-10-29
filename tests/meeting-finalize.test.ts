@@ -208,13 +208,13 @@ describe('finalizeMeeting', () => {
     expect(remote.every(s => s.source === 'unknown')).toBe(true)
   })
 
-  it('names a single remote voice from a complete Meet roster', async () => {
+  it.each(['meet', 'user'] as const)('names a single remote voice using its %s provenance', async source => {
     const h = harness()
     const { id } = h.create()
-    h.meetings.update(id, { participants: [{ name: 'Alex Rivera', email: null, source: 'meet', rosterComplete: true }] })
+    h.meetings.update(id, { participants: [{ name: 'Alex Rivera', email: null, source, rosterComplete: true }] })
     await finalizeMeeting(id, h.deps)
     expect(h.meetings.get(id)!.speakers.filter(s => s.key.startsWith('others:')))
-      .toEqual([expect.objectContaining({ label: 'Alex Rivera', source: 'meet' })])
+      .toEqual([expect.objectContaining({ label: 'Alex Rivera', source })])
   })
   it('keeps the previous transcript and audio when a successful response contains no usable words', async () => {
     const h = harness({ meetingRetainAudioDays: 0 })

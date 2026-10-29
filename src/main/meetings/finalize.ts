@@ -628,7 +628,7 @@ function withCalendar(speakers: MeetingSpeaker[], participants: MeetingParticipa
     speakers.map((s): MeetingSpeaker => {
       if (s.source !== 'unknown' && s.source !== 'hint') return s
       if (participants.length === 1 && remote.length === 1 && s === remote[0]) {
-        return { ...s, label: participants[0].name, source: participants[0].source === 'meet' ? 'meet' : 'calendar', suggestion: null }
+        return { ...s, label: participants[0].name, source: participants[0].source ?? 'calendar', suggestion: null }
       }
       const attendee = s.suggestion ? participants.find((p) => sameName(p.name, s.suggestion!)) : undefined
       if (attendee && s.source === 'unknown') return { ...s, label: s.suggestion!, source: 'voiceprint', suggestion: null }
@@ -655,7 +655,7 @@ function withConversationNames(
       const attendee = participants.find((a) => sameName(a.name, p.name))
       if (attendee && !taken.has(attendee.name.toLowerCase())) {
         taken.add(attendee.name.toLowerCase())
-        return { ...s, label: attendee.name, source: 'calendar', suggestion: null }
+        return { ...s, label: attendee.name, source: attendee.source ?? 'calendar', suggestion: null }
       }
       return { ...s, suggestion: p.name }
     })
