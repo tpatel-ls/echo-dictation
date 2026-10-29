@@ -18,9 +18,9 @@ import { defaultSettingsFor, normalizeSettings } from './settings-migration'
  * Plain settings live as JSON in userData. API keys are stored separately in a local
  * JSON file for this personal Mac build. Avoid Electron safeStorage here: when Echo
  * starts hidden from launchd, Keychain can show an invisible prompt and block the
- * hotkey listener before it starts. A gitignored `secrets.local.json` (project root in
- * dev, bundled resources when packaged) seeds keys on first run and fills any endpoint
- * URLs the user hasn't set — one file makes a fresh install fully working.
+ * hotkey listener before it starts. A gitignored `secrets.local.json` in a source checkout
+ * seeds development settings. Installed builds use only the current user's saved settings;
+ * legacy seed files left by older installers must never populate another user's profile.
  */
 export class SettingsStore {
   private readonly settingsPath: string
@@ -100,10 +100,8 @@ export class SettingsStore {
   }
 
   private loadSeed(): SeedFile {
-    // dev: project root; packaged: bundled into resources via electron-builder.
-    const resourcesPath = (process as unknown as { resourcesPath?: string }).resourcesPath
+    if (app.isPackaged) return {}
     const candidates = [join(app.getAppPath(), 'secrets.local.json')]
-    if (resourcesPath) candidates.push(join(resourcesPath, 'secrets.local.json'))
     for (const p of candidates) {
       try {
         if (existsSync(p)) {

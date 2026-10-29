@@ -176,13 +176,53 @@ function harness(settingsPatch: Partial<Settings> = {}, secretsPatch: Partial<Se
 }
 
 describe('finalizeMeeting', () => {
+  it('transcribes a short closing phrase rather than dropping the whole channel below one second', async () => {
+    const h = harness()
+    h.speech.diarize.mockResolvedValue({ ...othersDiarization, segments: [], speakers: [] })
+    h.speech.transcribeSegments.mockImplementation(async (_wav, segments, models) =>
+      segments.map(s => ({ id: s.id, texts: Object.fromEntries(models.map(m => [m, 'Thanks, see you.'])) })))
+    const { id } = h.create({ mic: Buffer.alloc(RATE * 2), others: speechPcm(0.8) })
+    await finalizeMeeting(id, h.deps)
+    expect(h.meetings.get(id)!.error).toBeNull()
+    expect(h.meetings.segments(id)[0].text).toBe('Thanks, see you.')
+  })
+
+  it('reports a genuine failure when neither final nor saved transcript has usable words', async () => {
+    const h = harness({ meetingRetainAudioDays: 0 })
+    const { id, audioDir } = h.create()
+    h.meetings.replaceWithFinal(id, [])
+    h.speech.transcribeSegments.mockResolvedValue([])
+    await finalizeMeeting(id, h.deps)
+    expect(h.meetings.get(id)!.status).toBe('failed')
+    expect(h.meetings.get(id)!.error).toMatch(/no usable transcript/i)
+    expect(existsSync(audioDir)).toBe(true)
+  })
+
+  it('does not collapse voices to a participant visible in a partial Meet roster', async () => {
+    const h = harness()
+    const { id } = h.create()
+    h.meetings.update(id, { participants: [{ name: 'Alex Rivera', email: null, source: 'meet', rosterComplete: false }] })
+    await finalizeMeeting(id, h.deps)
+    const remote = h.meetings.get(id)!.speakers.filter(s => s.key.startsWith('others:'))
+    expect(remote).toHaveLength(2)
+    expect(remote.every(s => s.source === 'unknown')).toBe(true)
+  })
+
+  it('names a single remote voice from a complete Meet roster', async () => {
+    const h = harness()
+    const { id } = h.create()
+    h.meetings.update(id, { participants: [{ name: 'Alex Rivera', email: null, source: 'meet', rosterComplete: true }] })
+    await finalizeMeeting(id, h.deps)
+    expect(h.meetings.get(id)!.speakers.filter(s => s.key.startsWith('others:')))
+      .toEqual([expect.objectContaining({ label: 'Alex Rivera', source: 'meet' })])
+  })
   it('keeps the previous transcript and audio when a successful response contains no usable words', async () => {
     const h = harness({ meetingRetainAudioDays: 0 })
     h.speech.transcribeSegments.mockImplementation(async (_wav, segments, models) =>
       segments.map(s => ({ id: s.id, texts: Object.fromEntries(models.map(m => [m, ''])) })))
     const { id, audioDir } = h.create()
     await finalizeMeeting(id, h.deps)
-    expect(h.meetings.get(id)!.status).toBe('failed')
+    expect(h.meetings.get(id)!.status).toBe('ready')
     expect(h.meetings.get(id)!.error).toMatch(/no usable transcript/i)
     expect(h.meetings.segments(id)[0].text).toBe('live text')
     expect(existsSync(audioDir)).toBe(true)
@@ -215,7 +255,7 @@ describe('finalizeMeeting', () => {
     h.speech.transcribeSegments.mockRejectedValue(new SpeechRouteError('Incomplete transcription response'))
     const { id, audioDir } = h.create()
     await finalizeMeeting(id, h.deps)
-    expect(h.meetings.get(id)!.status).toBe('failed')
+    expect(h.meetings.get(id)!.status).toBe('ready')
     expect(h.meetings.get(id)!.error).toMatch(/incomplete/i)
     expect(h.meetings.segments(id)[0].text).toBe('live text')
     expect(existsSync(audioDir)).toBe(true)
@@ -291,17 +331,17 @@ describe('finalizeMeeting', () => {
     expect(h.logs.some((l) => l.includes('diarizer unavailable'))).toBe(true)
   })
 
-  it('fails the meeting on an auth error from the diarizer instead of falling back', async () => {
+  it('keeps a saved transcript available with an actionable auth error', async () => {
     const h = harness()
     h.speech.diarize.mockRejectedValue(new SpeechRouteError('Speech server returned 401: bad key', 401))
     const { id } = h.create()
     await finalizeMeeting(id, h.deps)
     const rec = h.meetings.get(id)!
-    expect(rec.status).toBe('failed')
+    expect(rec.status).toBe('ready')
     expect(rec.error).toContain('401')
     // The live transcript survives a failed pass.
     expect(h.meetings.segments(id).map((s) => s.pass)).toEqual(['live'])
-    expect(h.notified[0].title).toBe("Couldn't finish meeting notes")
+    expect(h.notified[0].title).toBe('Transcript saved; final processing needs attention')
   })
 
   it('ships the transcript without notes when drafting fails', async () => {
@@ -350,6 +390,7 @@ describe('finalizeMeeting', () => {
   it('fails with the interrupted reason when no audio was saved', async () => {
     const h = harness()
     const { id } = h.create({ mic: Buffer.alloc(0), others: Buffer.alloc(0) })
+    h.meetings.replaceWithFinal(id, [])
     await finalizeMeeting(id, h.deps)
     const rec = h.meetings.get(id)!
     expect(rec.status).toBe('failed')
@@ -395,12 +436,17 @@ describe('finalizeMeeting', () => {
   it('never transcribes what was said while the mic was paused (nor the second before)', async () => {
     const h = harness()
     const { id, audioDir } = h.create()
-    // Paused from 1.5 s to the end: with the 1 s margin only 0.5 s of mic speech remains, too
-    // little to transcribe at all.
+    // Paused from 1.5 s: the first half-second is valid, even if the diarizer mistakenly
+    // returns turns in the muted portion. Every uploaded sample after 0.5 s must be zero.
     writeFileSync(path.join(audioDir, 'mic-pauses.json'), JSON.stringify([{ from: 24_000, to: null }]))
     await finalizeMeeting(id, h.deps)
-    expect(h.speech.diarize.mock.calls.map((c) => c[1])).toEqual([{ maxSpeakers: 8 }])
-    expect(h.meetings.segments(id).some((s) => s.channel === 'mic')).toBe(false)
+    const micWav = new Int16Array(h.speech.diarize.mock.calls.find(c => c[1].maxSpeakers === 4)![0].slice(44))
+    expect(micWav.slice(0, RATE / 2).some(s => s !== 0)).toBe(true)
+    expect(micWav.slice(RATE / 2).every(s => s === 0)).toBe(true)
+    for (const [wav, segments] of h.speech.transcribeSegments.mock.calls) {
+      if (!segments.some(s => s.id.startsWith('m'))) continue
+      expect(new Int16Array(wav.slice(44)).slice(RATE / 2).every(s => s === 0)).toBe(true)
+    }
   })
 
   it('stops quietly when the meeting is deleted mid-pass', async () => {

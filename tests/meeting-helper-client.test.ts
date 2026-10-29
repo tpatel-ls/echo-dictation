@@ -252,8 +252,8 @@ describe('MeetingHelperClient', () => {
       expect(client.available).toBe(true)
     })
 
-    it('uses a 5 s timeout by default', async () => {
-      const { client, ready } = setup()
+    it('terminates the recorder if Stop is not acknowledged within 5 s', async () => {
+      const { client, ready, current } = setup()
       client.start()
       ready()
       const outcome = client.stopRecording('r1').catch((error: Error) => error)
@@ -265,6 +265,19 @@ describe('MeetingHelperClient', () => {
       expect(settled).toBe(false)
       vi.advanceTimersByTime(1)
       expect(((await outcome) as Error).message).toMatch(/did not answer/)
+      expect(current().killed).toBe(true)
+      expect(client.available).toBe(false)
+    })
+
+    it('terminates a potentially started recorder when its start acknowledgement is lost', async () => {
+      const { client, ready, current } = setup()
+      client.start()
+      ready()
+      const outcome = client.startRecording({ id: 'r1', dir: 'test', otherPids: [10], micEndpointId: null }).catch(e => e)
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(await outcome).toBeInstanceOf(Error)
+      expect(current().killed).toBe(true)
+      expect(client.available).toBe(false)
     })
 
     it('rejects requests while the helper is not ready', async () => {

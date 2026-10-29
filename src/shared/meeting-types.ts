@@ -58,6 +58,19 @@ export interface ProbeResult {
   windows: HelperWindow[]
   tabs: HelperBrowserTab[]
   render: RenderSession[]
+  /** Bounded accessibility scan of Meet documents, when available. Never general page text. */
+  meetCalls?: HelperMeetCall[]
+}
+
+export interface HelperMeetCall {
+  appPid: number
+  exe: string
+  title: string
+  state: 'joined' | 'left' | 'unknown'
+  participants: string[]
+  /** Explicit total from Meet's people control, including the local user; null if unavailable. */
+  participantCount: number | null
+  micMuted: boolean | null
 }
 
 export interface RecordStartRequest {
@@ -195,6 +208,12 @@ export interface MeetingCandidate {
   requiresConfirmation?: boolean
   /** Playback-only joins cannot use the alone-in-call timeout. */
   requiresRemoteAudio?: boolean
+  /** Meet identity independent of its eventual generated display title. */
+  callId?: string
+  /** Positive joined control, stronger than a stale microphone or playback alert. */
+  joined?: boolean
+  participants?: MeetingParticipant[]
+  micMuted?: boolean
 }
 
 export type MeetingStopReason = 'ended' | 'user' | 'discard' | 'max-duration' | 'disabled'
@@ -276,6 +295,7 @@ export type SpeakerNameSource =
   | 'hint' // single remote speaker + a name in the meeting window title
   | 'user' // the user named or confirmed this speaker
   | 'calendar' // the only other attendee of the matching calendar event, or named in the conversation as one
+  | 'meet' // a complete Google Meet roster identifies the only remote participant
   | 'unknown' // shown as "Speaker N"
 
 export interface MeetingSpeaker {
@@ -307,6 +327,8 @@ export interface NoteItem {
 }
 
 export interface MeetingNotes {
+  /** Concise topic title, separate from the summary prose. */
+  title?: string
   summary: string[]
   decisions: NoteItem[]
   actionItems: NoteItem[]
@@ -328,6 +350,8 @@ export interface MeetingRecord {
   ended_at: number | null
   app: MeetingAppId
   title: string | null
+  /** Original app title/code retained for calendar matching after a topic title is generated. */
+  source_title?: string | null
   status: MeetingStatus
   /** userData/meetings/<uuid>; null once the audio has been pruned. */
   audio_dir: string | null
@@ -347,6 +371,9 @@ export interface MeetingRecord {
 export interface MeetingParticipant {
   name: string
   email: string | null
+  source?: 'meet' | 'user'
+  /** False/missing for a partial UI roster: must not collapse or name all remote voices. */
+  rosterComplete?: boolean
 }
 
 export interface MeetingSegment {
@@ -373,6 +400,7 @@ export interface MeetingSummary {
   progress: string | null
   /** Display names in speaking-time order. */
   speakers: string[]
+  warning?: boolean
 }
 
 export interface MeetingDetail extends MeetingRecord {

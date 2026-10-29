@@ -186,6 +186,30 @@ async function startMeet(h: ReturnType<typeof setup>): Promise<number> {
 }
 
 describe('MeetingController', () => {
+  it('persists Meet names and follows explicit mute/leave even with a stale browser mic session', async () => {
+    const h = setup()
+    const metadata = { appPid: 100, exe: 'chrome.exe', title: 'Meet - abc-defg-hij', state: 'joined' as const,
+      participants: ['Alex Rivera'], participantCount: 2, micMuted: true }
+    h.helper.probeResult.meetCalls = [metadata]
+    const id = await startMeet(h)
+    expect(h.helper.startRequests[0].micPaused).toBe(true)
+    expect(h.meetings.get(id)!.participants[0]).toMatchObject({ name: 'Alex Rivera', source: 'meet' })
+    expect(h.meetings.get(id)!.speakers.find(s => s.key === 'others')?.label).toBe('Alex Rivera')
+    h.helper.probeResult.meetCalls = [] // background/inaccessible scan is not an unmute
+    await vi.advanceTimersByTimeAsync(2100)
+    expect(h.controller.live().micPaused).toBe(true)
+    h.helper.probeResult.meetCalls = [{ ...metadata, micMuted: false }]
+    await vi.advanceTimersByTimeAsync(2100)
+    expect(h.controller.live().micPaused).toBe(false)
+    h.helper.probeResult.meetCalls = [{ ...metadata, state: 'left' }]
+    await vi.advanceTimersByTimeAsync(6500)
+    expect(h.controller.recording).toBe(false)
+    expect(h.helper.stopRequests).toHaveLength(1)
+    h.helper.probeResult.meetCalls = [] // old microphone/audio alerts linger
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(h.meetings.list()).toHaveLength(1)
+    expect(h.helper.startRequests).toHaveLength(1)
+  })
   it('finds a muted join on a periodic rescan, starts with the mic paused, then follows unmute', async () => {
     const h = setup()
     h.helper.probeResult = meetProbe({ tab: 'Meet - abc-defg-hij - Audio playing' })

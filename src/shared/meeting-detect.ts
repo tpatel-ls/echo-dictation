@@ -16,6 +16,7 @@ import type {
   RenderSession
 } from './meeting-types'
 import type { MeetingContinuation } from './meeting-session'
+import { meetParticipants } from './meet-controls'
 
 /** A render meter peak at or above this means the far end is audible (lobbies stay at 0.000). */
 export const REMOTE_AUDIO_PEAK = 0.003
@@ -292,7 +293,25 @@ export function detectMeetings(
       })
     }
   }
-  return [...candidates.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+  return enrichMeetCandidates([...candidates.values()], probe).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+}
+
+function meetCall(c: MeetingCandidate, probe: ProbeResult | null) {
+  return probe?.meetCalls?.find(call => call.appPid === c.appPid && parseMeetTitle(call.title) === c.title)
+}
+
+function enrichMeetCandidates(candidates: MeetingCandidate[], probe: ProbeResult | null): MeetingCandidate[] {
+  return candidates.flatMap(c => {
+    if (c.app !== 'google-meet') return [c]
+    const call = meetCall(c, probe)
+    if (call?.state === 'left') return []
+    const identity = c.title && /^[a-z]{3}-[a-z]{4}-[a-z]{3}$/i.test(c.title) ? { callId: c.title.toLowerCase() } : {}
+    if (!call || call.state !== 'joined') return [{ ...c, ...identity }]
+    const ambiguous = (probe?.meetCalls ?? []).filter(other => other.appPid === c.appPid && other.state === 'joined').length > 1
+    return [{ ...c, ...identity, joined: true, participants: meetParticipants(call),
+      ...(call.micMuted !== null ? { micMuted: call.micMuted } : {}),
+      ...(ambiguous ? { requiresConfirmation: true } : { requiresConfirmation: false }) }]
+  })
 }
 
 /** Low-frequency discovery also runs without a microphone event, for muted joins. */
@@ -333,7 +352,18 @@ export function detectPlaybackMeetings(probe: ProbeResult | null, apps: MeetingA
       otherPids: uniqueSorted(probe.render.filter(r => r.appPid === render.appPid && r.active).map(r => r.pid)),
       remoteAudio: true, nameHints: evidence.nameHints, requiresRemoteAudio: true })
   }
-  return [...found.values()]
+  // A positive Leave call control proves a joined Meet even when everyone is silent,
+  // the microphone is muted, and Chromium has not emitted a capture/playback event.
+  if (apps['google-meet']) for (const call of probe.meetCalls ?? []) {
+    const title = parseMeetTitle(call.title)
+    if (call.state !== 'joined' || !title) continue
+    const render = probe.render.filter(r => r.appPid === call.appPid && r.active)
+    const key = `google-meet:${call.appPid}`
+    found.set(key, { key, app: 'google-meet', viaBrowser: true, title, appPid: call.appPid,
+      exe: call.exe, micEndpointId: null, otherPids: uniqueSorted(render.length ? render.map(r => r.pid) : [call.appPid]),
+      remoteAudio: render.some(r => r.peak >= REMOTE_AUDIO_PEAK), nameHints: [] })
+  }
+  return enrichMeetCandidates([...found.values()], probe)
 }
 
 /** Visible fallback for unknown browser labels. These candidates always require Record now. */
@@ -353,7 +383,7 @@ export function unconfirmedMeetings(sessions: MicSession[], probe: ProbeResult |
       exe: session.exe, micEndpointId: session.endpointId, otherPids: uniqueSorted(render.map(r => r.pid)),
       remoteAudio: false, nameHints: [], requiresConfirmation: true })
   }
-  return [...found.values()]
+  return enrichMeetCandidates([...found.values()], probe)
 }
 
 // ── Continuation while recording ─────────────────────────────────────────────────
@@ -385,6 +415,12 @@ export function continuationEvidence(c: MeetingCandidate, probe: ProbeResult | n
   const slack = c.app === 'slack'
   // No probe result: unknown, which the session treats with the usual end grace.
   if (!probe) return null
+  if (c.app === 'google-meet') {
+    const call = meetCall(c, probe)
+    if (call?.state === 'left') return { evidence: false, remoteAudio: false, joined: false }
+    if (call?.state === 'joined') return { evidence: true, joined: true,
+      remoteAudio: probe.render.some(r => r.appPid === c.appPid && r.peak >= REMOTE_AUDIO_PEAK) }
+  }
   const exes = candidateExes(c)
   const loud = renderOf(probe.render, c.appPid, exes).some((r) => r.peak >= REMOTE_AUDIO_PEAK)
 

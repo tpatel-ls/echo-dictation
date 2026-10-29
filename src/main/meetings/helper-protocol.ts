@@ -11,6 +11,7 @@ import type {
   RecordWarningCode,
   RenderSession
 } from '@shared/meeting-types'
+import { parseMeetControls } from '@shared/meet-controls'
 
 type Json = Record<string, unknown>
 
@@ -68,7 +69,8 @@ function parseVariant(v: Json): HelperLine | null {
         id: str(v.id),
         windows: list(v.windows, helperWindow),
         tabs: list(v.tabs, browserTab),
-        render: list(v.render, renderSession)
+        render: list(v.render, renderSession),
+        ...(v.meetDocuments === undefined ? {} : { meetCalls: list(v.meetDocuments, meetDocument) })
       }
     case 'record-started': {
       const othersMode = v.othersMode
@@ -126,6 +128,13 @@ function helperWindow(v: unknown): HelperWindow {
 function browserTab(v: unknown): HelperBrowserTab {
   const o = obj(v)
   return { appPid: int(o.appPid), exe: str(o.exe), name: str(o.name) }
+}
+
+function meetDocument(v: unknown) {
+  const o = obj(v)
+  const controls = list(o.controls, str)
+  if (controls.length > 2000 || controls.some(s => s.length > 300)) throw new Malformed()
+  return parseMeetControls(int(o.appPid), str(o.exe), str(o.title), controls)
 }
 
 function renderSession(v: unknown): RenderSession {

@@ -22,6 +22,41 @@ function cand(key: string, extra: Partial<MeetingCandidate> = {}): MeetingCandid
 const MEET = 'google-meet:100'
 const TEAMS = 'teams:300'
 
+describe('ended-call rearming', () => {
+  it('does not restart from stale capture/playback immediately after automatic stop', () => {
+    const s = startedSession()
+    s.observe(4000, [], { evidence: false, remoteAudio: false })
+    expect(s.observe(8000, [], { evidence: false, remoteAudio: false })).toEqual([{ type: 'stop', reason: 'ended' }])
+    expect(run(s, 9500, 60_000, [cand(MEET, { remoteAudio: true })], 1500)).toEqual([])
+    // A visible manual fallback is still available for a real call with inaccessible controls.
+    expect(s.current?.requiresConfirmation).toBe(true)
+    expect(s.startNow(60_001)[0]?.type).toBe('start')
+  })
+
+  it('rearms after continuous absence, or an observed leave followed by a joined control', () => {
+    const s = startedSession()
+    s.observe(4000, [], { evidence: false, remoteAudio: false })
+    s.observe(8000, [], { evidence: false, remoteAudio: false })
+    for (let t = 9000; t <= 24_000; t += 1000) s.observe(t, [])
+    expect(run(s, 25_000, 28_000, [cand(MEET, { remoteAudio: true })])).toHaveLength(1)
+
+    const rejoin = startedSession()
+    rejoin.observe(4000, [], { evidence: false, remoteAudio: false, joined: false })
+    rejoin.observe(8000, [], { evidence: false, remoteAudio: false, joined: false })
+    rejoin.observe(9000, [], () => ({ evidence: false, remoteAudio: false, joined: false }))
+    expect(run(rejoin, 10_000, 13_000, [cand(MEET, { joined: true })])).toHaveLength(1)
+  })
+
+  it('starts a different Meet in the same browser without inheriting the old suppression', () => {
+    const s = new MeetingSession()
+    run(s, 0, 3000, [cand(MEET, { callId: 'aaa-bbbb-ccc', joined: true })])
+    expect(s.state).toBe('recording')
+    const next = cand(MEET, { callId: 'ddd-eeee-fff', joined: true })
+    expect(s.observe(4000, [next])[0]).toEqual({ type: 'stop', reason: 'ended' })
+    expect(s.observe(7000, [next])[0]?.type).toBe('start')
+  })
+})
+
 /** Observe the same candidates every `step` ms over [from, to]; returns all actions with times. */
 function run(s: MeetingSession, from: number, to: number, candidates: MeetingCandidate[], step = 1000) {
   const out: Array<{ at: number; action: unknown }> = []

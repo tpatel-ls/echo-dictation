@@ -134,13 +134,22 @@ export class MeetingHelperClient implements MeetingHelper {
     const id = this.opts.requestId?.() ?? `p${++this.nextId}`
     const line = await this.request({ type: 'probe', id, exes }, 'probe-result')
     if (line.type !== 'probe-result') throw new Error('Unexpected reply')
-    return { windows: line.windows, tabs: line.tabs, render: line.render }
+    return { windows: line.windows, tabs: line.tabs, render: line.render,
+      ...(line.meetCalls ? { meetCalls: line.meetCalls } : {}) }
   }
 
   async startRecording(req: RecordStartRequest): Promise<RecordStarted> {
-    const line = await this.request({ type: 'record-start', ...req }, 'record-started')
-    if (line.type !== 'record-started') throw new Error('Unexpected reply')
-    return { id: line.id, startedAt: line.startedAt, othersMode: line.othersMode, micName: line.micName }
+    const child = this.child
+    try {
+      const line = await this.request({ type: 'record-start', ...req }, 'record-started')
+      if (line.type !== 'record-started') throw new Error('Unexpected reply')
+      return { id: line.id, startedAt: line.startedAt, othersMode: line.othersMode, micName: line.micName }
+    } catch (error) {
+      // An explicit refusal means Start did not happen. Only a lost acknowledgement
+      // leaves the recorder's state unknown.
+      if (!(error instanceof MeetingHelperError)) this.abortRecorder(child)
+      throw error
+    }
   }
 
   retarget(id: string, otherPids: number[]): void {
@@ -148,9 +157,25 @@ export class MeetingHelperClient implements MeetingHelper {
   }
 
   async stopRecording(id: string): Promise<RecordStopped> {
-    const line = await this.request({ type: 'record-stop', id }, 'record-stopped')
-    if (line.type !== 'record-stopped') throw new Error('Unexpected reply')
-    return { id: line.id, samples: line.samples }
+    const child = this.child
+    try {
+      const line = await this.request({ type: 'record-stop', id }, 'record-stopped')
+      if (line.type !== 'record-stopped') throw new Error('Unexpected reply')
+      return { id: line.id, samples: line.samples }
+    } catch (error) {
+      this.abortRecorder(child)
+      throw error
+    }
+  }
+
+  /** A lost start/stop acknowledgement must never leave an invisible recorder running. */
+  private abortRecorder(child: MeetingHelperProcess | null): void {
+    if (!child || child !== this.child) return // an exited helper or its replacement
+    this.log('recording acknowledgement failed; terminating the recorder and preserving captured files')
+    this.stop()
+    // On Windows child.kill uses TerminateProcess, closing the capture devices and files.
+    // The next detection tick restarts a clean helper; the stopped session stays suppressed.
+    try { child.kill() } catch { /* already exited */ }
   }
 
   async setMicPaused(id: string, paused: boolean): Promise<RecordMicPaused> {

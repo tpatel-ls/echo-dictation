@@ -51,7 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_meeting_segments_order ON meeting_segments(meetin
 `
 
 /** Patchable columns; JSON ones are serialised on the way in and parsed defensively on the way out. */
-const PLAIN_COLUMNS = ['started_at', 'ended_at', 'app', 'title', 'status', 'audio_dir', 'progress', 'error', 'output_path'] as const
+const PLAIN_COLUMNS = ['started_at', 'ended_at', 'app', 'title', 'source_title', 'status', 'audio_dir', 'progress', 'error', 'output_path'] as const
 const JSON_COLUMNS = ['speakers', 'notes', 'name_hints', 'participants'] as const
 
 /** Pure SQL meetings store over a sql.js Database. No filesystem, so it is testable in memory. */
@@ -64,13 +64,17 @@ export class MeetingsStore {
     // Databases from before calendar participants existed.
     const columns = this.db.exec('PRAGMA table_info(meetings)')[0]?.values.map((row) => row[1]) ?? []
     if (!columns.includes('participants')) this.db.run("ALTER TABLE meetings ADD COLUMN participants TEXT NOT NULL DEFAULT '[]'")
+    if (!columns.includes('source_title')) {
+      this.db.run('ALTER TABLE meetings ADD COLUMN source_title TEXT')
+      this.db.run('UPDATE meetings SET source_title = title')
+    }
   }
 
   create(m: NewMeeting): MeetingRecord {
     this.db.run(
-      `INSERT INTO meetings (uuid, started_at, ended_at, app, title, status, audio_dir, speakers, notes, name_hints)
-       VALUES (?,?,NULL,?,?,'recording',?,'[]',NULL,?)`,
-      [m.uuid, m.started_at, m.app, m.title, m.audio_dir, JSON.stringify(m.name_hints)]
+      `INSERT INTO meetings (uuid, started_at, ended_at, app, title, source_title, status, audio_dir, speakers, notes, name_hints)
+       VALUES (?,?,NULL,?,?,?,'recording',?,'[]',NULL,?)`,
+      [m.uuid, m.started_at, m.app, m.title, m.title, m.audio_dir, JSON.stringify(m.name_hints)]
     )
     const id = this.scalar('SELECT last_insert_rowid()', [])
     this.onChange()
@@ -169,7 +173,7 @@ export class MeetingsStore {
   audioExpired(cutoff: number): MeetingRecord[] {
     return this.meetings(
       `SELECT * FROM meetings
-       WHERE status IN ('ready', 'failed') AND ended_at IS NOT NULL AND ended_at < ? AND audio_dir IS NOT NULL
+       WHERE status = 'ready' AND error IS NULL AND ended_at IS NOT NULL AND ended_at < ? AND audio_dir IS NOT NULL
        ORDER BY ended_at, id`,
       [cutoff]
     )
@@ -227,6 +231,7 @@ function toMeeting(o: Record<string, SqlValue>): MeetingRecord {
     ended_at: (o.ended_at as number | null) ?? null,
     app: o.app as MeetingAppId,
     title: (o.title as string | null) ?? null,
+    source_title: (o.source_title as string | null) ?? null,
     status: o.status as MeetingStatus,
     audio_dir: (o.audio_dir as string | null) ?? null,
     speakers: parseArray<MeetingSpeaker>(o.speakers, (s) => typeof s === 'object' && s !== null),

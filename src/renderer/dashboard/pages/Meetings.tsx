@@ -224,6 +224,7 @@ function MeetingRow({
 }
 
 function StatusBadge({ m }: { m: MeetingSummary }): JSX.Element | null {
+  if (m.warning) return <span className="px-1.5 py-px rounded bg-amber-500/10 text-amber-700 font-medium">Review</span>
   if (m.status === 'recording') {
     return (
       <span className="flex items-center gap-1 text-bad font-medium">

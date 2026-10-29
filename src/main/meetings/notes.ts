@@ -1,6 +1,7 @@
 import type { MeetingNotes, NoteItem } from '@shared/meeting-types'
 import { joinUrl } from '../transcription/whisper'
 import { stripEmDashes } from '../transcription/claude'
+import { conciseMeetingTitle } from '@shared/meeting-title'
 
 // Meeting notes drafted by Claude through the same Anthropic-compatible proxy dictation cleanup
 // uses. The model returns strict JSON whose items cite utterance ids; code keeps only citations
@@ -56,10 +57,11 @@ const SYSTEM_PROMPT = [
   'Each transcript line is "[<utterance id> <hh:mm:ss>] <speaker label>: <text>", for example ' +
     '"[u12 00:12:03] Blake Whitmore: I can send it tomorrow."',
   'Return only one JSON object, with no prose and no code fences, in exactly this shape:',
-  '{"summary": [string], "decisions": [{"text": string, "cites": [string]}], ' +
+  '{"title": string, "summary": [string], "decisions": [{"text": string, "cites": [string]}], ' +
     '"actionItems": [{"text": string, "owner": string or null, "due": string or null, "cites": [string]}], ' +
     '"openQuestions": [{"text": string, "cites": [string]}]}',
   'Rules:',
+  '- title: a concise topic name of 3 to 10 words, at most 80 characters. Use the main subject, not a summary sentence, meeting code, or speaker label.',
   '- summary: a few short sentences on what was discussed and concluded.',
   '- decisions: what the participants agreed on or settled.',
   '- actionItems: tasks someone took on or was asked to do. "owner" is the person responsible, ' +
@@ -116,6 +118,7 @@ export function parseNotes(raw: string, validIds: ReadonlySet<string>, model: st
     .map((s) => cleanText(s))
     .filter(Boolean)
   return {
+    ...(conciseMeetingTitle(parsed.title) ? { title: conciseMeetingTitle(parsed.title) } : {}),
     summary: dedupe(summary).slice(0, MAX_NOTE_ITEMS),
     decisions: parseItems(parsed.decisions, validIds, false),
     actionItems: parseItems(parsed.actionItems, validIds, true),
@@ -252,6 +255,7 @@ function splitWindows(utterances: NotesUtterance[]): NotesUtterance[][] {
 function mergeNotes(drafts: MeetingNotes[]): MeetingNotes {
   if (drafts.length === 1) return drafts[0]
   return {
+    ...(drafts[0]?.title ? { title: drafts[0].title } : {}),
     // The per-reply cap holds for the whole meeting too: every item is later checked (and its
     // excerpt sent) one by one.
     summary: dedupe(drafts.flatMap((d) => d.summary)).slice(0, MAX_NOTE_ITEMS),

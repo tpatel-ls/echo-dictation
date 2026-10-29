@@ -22,6 +22,7 @@ import {
 } from '@shared/meeting-types'
 import { api } from '../../lib/api'
 import { meetingTitle } from '@shared/meeting-title'
+import { participantLabels } from '@shared/meet-controls'
 import {
   errorText,
   formatClock,
@@ -56,17 +57,17 @@ export function MeetingDetail({
   const [focus, setFocus] = useState<{ id: string; nonce: number } | null>(null)
 
   useEffect(() => {
-    setTab(meeting.status === 'recording' ? 'transcript' : 'notes')
+    setTab(meeting.status === 'recording' || !meeting.notes ? 'transcript' : 'notes')
     setConfirmDelete(false)
     setFocus(null)
   }, [meeting.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const segments = useMemo(() => orderedSegments(meeting.segments), [meeting.segments])
   const participants = useMemo(() => {
-    const byTime = [...meeting.speakers].sort((a, b) => b.seconds - a.seconds).map((s) => s.label)
+    const byTime = participantLabels(meeting.speakers, meeting.participants)
     if (byTime.length) return byTime
     return [...new Set(segments.map((s) => speakerLabel(s.speaker_key, meeting.speakers)))]
-  }, [meeting.speakers, segments])
+  }, [meeting.speakers, meeting.participants, segments])
 
   const working = meeting.status === 'recording' || meeting.status === 'processing'
   const title = meetingTitle(meeting.app, meeting.title, meeting.notes)?.trim() || 'Untitled'
@@ -218,6 +219,13 @@ export function MeetingDetail({
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+        {meeting.status === 'ready' && meeting.error && (
+          <div role="alert" className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+            <p className="font-medium">Saved transcript available. Final processing needs attention.</p>
+            <p className="mt-1 text-muted">{meeting.error}</p>
+            <p className="mt-1 text-muted">The saved transcript may be incomplete. Audio is retained; use Reprocess to retry.</p>
+          </div>
+        )}
         {tab === 'transcript' && meeting.status === 'failed' && (
           <div role="alert" className="mb-4 rounded-lg border border-bad/30 bg-bad/5 p-3 text-sm">
             {meeting.error || 'Transcription failed. Check the speech server and use Reprocess to retry.'}
@@ -535,6 +543,7 @@ function TranscriptView({
                     {label}
                     {self && label !== 'You' && <span className="font-normal opacity-70"> (you)</span>}
                     {who?.source === 'calendar' && <span className="font-normal text-muted"> · from calendar</span>}
+                    {who?.source === 'meet' && <span className="font-normal text-muted"> · from Google Meet</span>}
                     {who?.source === 'unknown' && who.suggestion && <span className="font-normal text-muted"> ({who.suggestion}?)</span>}
                   </button>
                   {editing === s.id && (

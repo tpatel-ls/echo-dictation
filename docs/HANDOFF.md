@@ -88,14 +88,30 @@ ends and a transcript appears. Detection uses OS/app evidence; verify the actual
 and headset. Stop is always available in the capsule and tray.
 
 Also test joining while muted, moving the call to a background tab, and leaving the tab open
-after hanging up. Muted joins need the meeting's own playback signal or a native meeting window
-with audible playback; the mic channel begins paused. If the capsule says **Not recording —
+after hanging up. Google Meet's accessible **Leave call** control confirms a joined call even
+when silent and muted. When that control is unavailable, Echo uses the meeting's own playback
+signal or native meeting evidence; the mic channel begins paused. If the capsule says **Not recording —
 confirm call**, use **Record now** in the capsule, Meetings page or tray. A persistent detection
 error means automatic capture is unavailable; Echo retries and displays the error until recovery.
 
+Google Meet names are read from its accessible participant controls on Windows. Keep the Meet
+tab selected in a browser window for the best metadata coverage; opening Meet's People panel
+exposes more of the roster. Background tabs, collapsed controls, browser accessibility and UI
+language can limit what is available. Echo keeps names it has seen throughout the call. A
+partial roster is displayed as attendees, but is never used to assign every voice to one person.
+Slack direct-message names also come from its window title. Calendar matching remains optional.
+
 The local server labels the channels **you / others**. Separating individual remote speakers,
-remembering voices and writing AI notes need optional additional services. Empty/failed
-transcription keeps audio and earlier text and reports an error instead of silently succeeding.
+remembering voices and writing AI notes/topic titles need optional additional services. A complete
+one-to-one Meet roster can name the remote channel without diarization. Group-call voice labels
+need voice matches or user confirmation; attendee names alone do not identify each speaker.
+
+If final processing fails, existing transcript text stays available with a **Review** warning.
+If no text was recovered, the meeting shows a failure with the reason. Both cases retain audio
+for Reprocess, even with zero-day retention. Delete the meeting explicitly to remove that audio.
+Automatic endings require a fresh join or a period of absence before auto-recording again;
+**Record now** remains available if a real rejoin cannot be confirmed. A failed start/stop
+acknowledgement terminates the recorder so capture cannot silently continue.
 
 ## Model choices
 

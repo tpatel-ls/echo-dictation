@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectMeetings, detectPlaybackMeetings, unconfirmedMeetings } from '@shared/meeting-detect'
+import { continuationEvidence, detectMeetings, detectPlaybackMeetings, unconfirmedMeetings } from '@shared/meeting-detect'
 import { MeetingSession } from '@shared/meeting-session'
 import type { MeetingAppToggles, MicSession, ProbeResult } from '@shared/meeting-types'
 
@@ -11,6 +11,24 @@ function probe(name: string, peak = 0.1, extraTabs: string[] = []): ProbeResult 
 }
 
 describe('meeting detection resilience', () => {
+  it('uses a joined Meet control for a silent muted join, and a left control overrides stale alerts', () => {
+    const p = probe('Meet - abc-defg-hij - Microphone recording - Audio playing')
+    p.meetCalls = [{ appPid: 10, exe: 'chrome.exe', title: 'Meet - abc-defg-hij', state: 'joined',
+      participants: ['Alex Rivera'], participantCount: 2, micMuted: true }]
+    const candidate = detectPlaybackMeetings(p, apps)[0]
+    expect(candidate).toMatchObject({ joined: true, callId: 'abc-defg-hij', micMuted: true,
+      participants: [{ name: 'Alex Rivera', source: 'meet', rosterComplete: true }] })
+    const session = new MeetingSession()
+    session.observe(0, [candidate])
+    expect(session.observe(3000, [candidate])[0]?.type).toBe('start')
+    expect(session.observe(100_000, [], continuationEvidence(candidate, p))).toEqual([])
+    p.meetCalls[0].state = 'left'
+    expect(detectMeetings([mic], p, apps)).toEqual([])
+    expect(detectPlaybackMeetings(p, apps)).toEqual([])
+    expect(unconfirmedMeetings([mic], p, apps)).toEqual([])
+    session.observe(101_000, [], continuationEvidence(candidate, p))
+    expect(session.observe(105_000, [], continuationEvidence(candidate, p))).toEqual([{ type: 'stop', reason: 'ended' }])
+  })
   it.each([' - New browser status', ' - Memory usage - 700 MB - New status', ' - Google Chrome']) (
     'keeps capture evidence when the browser appends %s', suffix => {
       expect(detectMeetings([mic], probe(`Meet - Weekly review - Camera and microphone recording${suffix}`), apps))

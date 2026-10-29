@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows.Automation;
 
 namespace EchoMeetingHelper;
@@ -17,7 +18,8 @@ static class Prober
     };
 
     const int TabBudgetMs = 150;
-    const int TabHardCapMs = 400;
+    const int TabHardCapMs = 900;
+    const int MeetBudgetMs = 650;
     const int PeakSamples = 5;
     const int PeakIntervalMs = 25;
     const int MaxTabTreeDepth = 12;
@@ -57,7 +59,7 @@ static class Prober
         // ProcessTable caches lazily and is not thread-safe, so the render thread takes its own.
         var render = RunMta(() => RenderSessions(ProcessTable.Snapshot(), wanted));
         var windows = Windows(table, wanted);
-        var tabs = Tabs(windows, wanted);
+        var (tabs, meetDocuments) = Tabs(windows, wanted);
 
         render.Wait();
         return new
@@ -66,6 +68,7 @@ static class Prober
             id,
             windows = windows.Select(w => (object)new { w.pid, w.appPid, w.exe, w.title, w.className, w.minimized }).ToList(),
             tabs,
+            meetDocuments,
             render = render.Result
         };
     }
@@ -111,14 +114,15 @@ static class Prober
     /// FindAll per node) and never descends into Document elements, so a browser with web-content
     /// accessibility switched on is not made to serialise its pages. Bounded to ~150 ms.
     /// </summary>
-    static List<object> Tabs(List<WindowInfo> windows, HashSet<string> wanted)
+    static (List<object>, List<object>) Tabs(List<WindowInfo> windows, HashSet<string> wanted)
     {
         var targets = windows
             .Where(w => Browsers.Contains(w.exe) && wanted.Contains(w.exe) && w.title.Length > 0)
             .Where(w => w.className == "Chrome_WidgetWin_1" || w.className == "MozillaWindowClass")
             .ToList();
         var tabs = new List<object>();
-        if (targets.Count == 0) return tabs;
+        var documents = new List<object>();
+        if (targets.Count == 0) return (tabs, documents);
         // Rotate the first window so a large foreground browser cannot permanently use
         // the entire bounded scan budget and starve a call in a background window.
         int first = (int)((uint)Interlocked.Increment(ref nextWindow) % (uint)targets.Count);
@@ -126,7 +130,7 @@ static class Prober
 
         lock (ScanGate)
         {
-            if (stuckScan is { IsCompleted: false }) return tabs;
+            if (stuckScan is { IsCompleted: false }) return (tabs, documents);
             stuckScan = null;
         }
         var clock = Stopwatch.StartNew();
@@ -148,6 +152,22 @@ static class Prober
                     Output.Log($"probe: tab scan failed for a window ({error.GetType().Name} 0x{error.HResult:X8})");
                 }
             }
+            // Inspect only a selected Meet document. No tab switching, clicks, chat/caption
+            // collection or unbounded descendants queries. Hidden tabs retain the tab fallback.
+            foreach (var window in targets.Where(w => IsMeetTitle(w.title)))
+            {
+                if (clock.ElapsedMilliseconds > MeetBudgetMs) break;
+                try
+                {
+                    var controls = MeetControls(window.hwnd, clock);
+                    if (controls.Count > 0)
+                        lock (documents) documents.Add(new { window.appPid, window.exe, window.title, controls });
+                }
+                catch (Exception error)
+                {
+                    Output.Log($"probe: Meet controls unavailable ({error.GetType().Name})");
+                }
+            }
             return true;
         });
         // A hung UIA provider must not hold the probe hostage; whatever was found by then is returned.
@@ -155,7 +175,55 @@ static class Prober
         {
             lock (ScanGate) stuckScan = scan;
         }
-        lock (tabs) return tabs.ToList();
+        lock (tabs) lock (documents) return (tabs.ToList(), documents.ToList());
+    }
+
+    static bool IsMeetTitle(string title) => Regex.IsMatch(title, @"^Meet\s*[-–]\s*\S", RegexOptions.IgnoreCase);
+
+    static List<string> MeetControls(IntPtr hwnd, Stopwatch clock)
+    {
+        var labels = new HashSet<string>(StringComparer.Ordinal);
+        var request = new CacheRequest { TreeScope = TreeScope.Element };
+        request.Add(AutomationElement.NameProperty);
+        request.Add(AutomationElement.ControlTypeProperty);
+        var frontier = new List<(AutomationElement node, bool meet)> { (AutomationElement.FromHandle(hwnd), false) };
+        int visited = 0;
+        using (request.Activate())
+        {
+            for (int depth = 0; depth < 28 && frontier.Count > 0; depth++)
+            {
+                var next = new List<(AutomationElement, bool)>();
+                foreach (var (node, inMeet) in frontier)
+                {
+                    if (clock.ElapsedMilliseconds > MeetBudgetMs || visited > 2000) return labels.ToList();
+                    foreach (AutomationElement child in node.FindAll(TreeScope.Children, Condition.TrueCondition))
+                    {
+                        if (++visited > 2000 || clock.ElapsedMilliseconds > MeetBudgetMs) return labels.ToList();
+                        var type = child.Cached.ControlType;
+                        string name = child.Cached.Name ?? "";
+                        bool meet = inMeet;
+                        if (type == ControlType.Document)
+                        {
+                            if (!IsMeetTitle(name)) continue;
+                            meet = true;
+                        }
+                        if (meet && name.Length is > 0 and <= 300 &&
+                            (type == ControlType.Button || type == ControlType.MenuItem ||
+                             Regex.IsMatch(name, @"^(?:People|Participants|In (?:this )?call)\s*\(\d{1,4}\)$", RegexOptions.IgnoreCase)))
+                        {
+                            labels.Add(name);
+                            // Meet sometimes exposes the people count as a child of its button.
+                            if (Regex.IsMatch(name, @"^(?:Show everyone|People|Participants)$", RegexOptions.IgnoreCase))
+                                foreach (AutomationElement count in child.FindAll(TreeScope.Children, Condition.TrueCondition))
+                                    if (Regex.IsMatch(count.Cached.Name ?? "", @"^\d{1,4}$")) labels.Add($"{name} ({count.Cached.Name})");
+                        }
+                        if (type != ControlType.TabItem) next.Add((child, meet));
+                    }
+                }
+                frontier = next;
+            }
+        }
+        return labels.ToList();
     }
 
     static List<string> TabNames(IntPtr hwnd, Stopwatch clock)

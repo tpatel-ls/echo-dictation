@@ -45,6 +45,14 @@ const everyVariant: HelperLine[] = [
 ]
 
 describe('parseHelperLine', () => {
+  it('validates and interprets optional Meet controls while accepting older helpers', () => {
+    const doc = { appPid: 29672, exe: 'chrome.exe', title: 'Meet - abc-defg-hij',
+      controls: ['Leave call', 'More options for Alex Rivera', 'Show everyone (2)'] }
+    expect(parseHelperLine(JSON.stringify({ ...probeResult, meetDocuments: [doc] }))).toMatchObject({
+      meetCalls: [{ state: 'joined', participants: ['Alex Rivera'], participantCount: 2 }]
+    })
+    expect(parseHelperLine(JSON.stringify({ ...probeResult, meetDocuments: [{ ...doc, controls: [42] }] }))).toBeNull()
+  })
   it.each(everyVariant.map((line) => [`${line.type} ${JSON.stringify(line).slice(0, 60)}`, line]))(
     'accepts %s',
     (_name, line) => {

@@ -61,6 +61,7 @@ describe('MeetingsStore', () => {
       ended_at: null,
       app: 'google-meet',
       title: 'abc-defg-hij',
+      source_title: 'abc-defg-hij',
       status: 'recording',
       audio_dir: 'C:/echo/meetings/uuid-1',
       speakers: [],
@@ -234,7 +235,7 @@ describe('MeetingsStore', () => {
     store.update(pruned.id, { status: 'ready', ended_at: 100, audio_dir: null })
     store.update(processing.id, { status: 'processing', ended_at: 100 })
     expect(recording.ended_at).toBeNull()
-    expect(store.audioExpired(500).map((m) => m.uuid).sort()).toEqual(['failed', 'ready'])
+    expect(store.audioExpired(500).map((m) => m.uuid).sort()).toEqual(['ready'])
   })
 
   it('reopens an existing database without losing rows', () => {
@@ -273,8 +274,10 @@ describe('MeetingsStore', () => {
     db.run(`CREATE TABLE meetings (id INTEGER PRIMARY KEY AUTOINCREMENT, uuid TEXT NOT NULL UNIQUE, started_at INTEGER NOT NULL,
       ended_at INTEGER, app TEXT NOT NULL, title TEXT, status TEXT NOT NULL, audio_dir TEXT, speakers TEXT NOT NULL DEFAULT '[]',
       notes TEXT, name_hints TEXT NOT NULL DEFAULT '[]', progress TEXT, error TEXT, output_path TEXT)`)
-    db.run("INSERT INTO meetings (uuid, started_at, app, status) VALUES ('old', 1, 'teams', 'ready')")
+    db.run("INSERT INTO meetings (uuid, started_at, app, title, status) VALUES ('old', 1, 'google-meet', 'abc-defg-hij', 'ready')")
     const store = new MeetingsStore(db)
-    expect(store.list()[0]).toMatchObject({ uuid: 'old', participants: [] })
+    expect(store.list()[0]).toMatchObject({ uuid: 'old', participants: [], source_title: 'abc-defg-hij' })
+    store.update(store.list()[0].id, { title: 'Release planning' })
+    expect(store.list()[0].source_title).toBe('abc-defg-hij')
   })
 })

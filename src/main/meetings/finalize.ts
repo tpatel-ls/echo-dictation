@@ -8,6 +8,8 @@ import { mergeSpeakers } from '@shared/meeting-diarization'
 import { meetingKeywordPrompt, meetingKeywords } from '@shared/meeting-keywords'
 import { correctNames } from '@shared/name-correction'
 import { meetingTitle } from '@shared/meeting-title'
+import { authoritativeParticipants } from '@shared/meet-controls'
+import { liveSpeakers } from '@shared/meeting-speakers'
 import { transplantVocabulary } from '@shared/vocab-transplant'
 import {
   batchSegments,
@@ -56,7 +58,7 @@ export const INTERRUPTED_ERROR = 'Recording was interrupted before any audio was
 export const AUDIO_DELETED_ERROR = 'Audio was already deleted'
 
 /** Speech a channel needs before it is worth diarizing (and transcribing at all). */
-const MIN_CHANNEL_SPEECH_S = 1
+const MIN_CHANNEL_SPEECH_S = 0.15
 /** Voiceprint auto-matches at least this strong are enrolled as another exemplar. */
 const AUTO_ENROL_SCORE = 0.75
 /** The shim accepts at most 400 segments per request; stay well under it. */
@@ -282,13 +284,14 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
     // The calendar event's other attendees, when there is a calendar and the meeting matches one.
     if (rec.participants.length === 0 && deps.calendar) {
       const found = await deps.calendar.participants(
-        { app: rec.app, title: rec.title, startedAt: rec.started_at },
+        { app: rec.app, title: rec.source_title ?? rec.title, startedAt: rec.started_at },
         { name: userName, email: settings.meetingMyEmail }
       )
       if (found?.length) rec = update({ participants: found })
     }
     const participants = rec.participants
-    const calendarTitle = await deps.calendar?.title?.({ app: rec.app, title: rec.title, startedAt: rec.started_at })
+    const authoritative = authoritativeParticipants(participants)
+    const calendarTitle = await deps.calendar?.title?.({ app: rec.app, title: rec.source_title ?? rec.title, startedAt: rec.started_at })
 
     // 2. Separating speakers
     step('Separating speakers')
@@ -322,7 +325,7 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
       }
       return result
     }
-    const othersDiar = merged(othersRaw, 'others', participants.length === 1 ? 1 : undefined)
+    const othersDiar = merged(othersRaw, 'others', authoritative.length === 1 ? 1 : undefined)
     const micDiar = merged(micRaw, 'mic')
 
     const plans: ChannelPlan[] = []
@@ -483,7 +486,7 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
     const people = embeddingModel ? deps.voiceprints.candidates(embeddingModel) : []
     // Everyone Echo knows by voice can be misheard, in this meeting or not ("Daren Kudira").
     const remembered = deps.voiceprints.people().map((p) => p.name)
-    let speakers = withCalendar(nameSpeakers(evidence, people, rec.name_hints, rec.app, { userName, ...DEFAULT_NAMING }), participants)
+    let speakers = withCalendar(nameSpeakers(evidence, people, rec.name_hints, rec.app, { userName, ...DEFAULT_NAMING }), authoritative)
 
     // Names from the conversation for speakers still unnamed ("Hey Darin", "I'm Tanay").
     fixNames(finalUtterances, speakers, [...participants.map((p) => p.name), ...remembered], userName, deps.log)
@@ -530,11 +533,25 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
     if (e instanceof MeetingGone) return
     const reason =
       e instanceof Error && (e.message === INTERRUPTED_ERROR || e.message === AUDIO_DELETED_ERROR) ? e.message : failureReason(e)
-    deps.log(`final pass: meeting ${meetingId} failed (${describeError(e)})`)
-    const row = deps.meetings.update(meetingId, { status: 'failed', error: reason, progress: null })
+    const saved = deps.meetings.segments(meetingId).filter(s => s.text.trim())
+    const usable = saved.length > 0
+    deps.log(`final pass: meeting ${meetingId} ${usable ? 'using saved transcript' : 'failed'} (${describeError(e)})`)
+    let row = deps.meetings.update(meetingId, { status: usable ? 'ready' : 'failed', error: reason, progress: null })
     if (!row) return
+    if (usable) {
+      if (!row.speakers.length) {
+        const labels = liveSpeakers(deps.settings().meetingUserName.trim() || deps.osUserName(), row.name_hints)
+        row = deps.meetings.update(meetingId, { speakers: labels })!
+      }
+      try {
+        const outputPath = writeMeetingMarkdown(row, saved, outputDirFor(deps.settings(), deps.defaultOutputDir))
+        deps.meetings.update(meetingId, { output_path: outputPath })
+      } catch (exportError) {
+        deps.log(`saved transcript export failed (${describeError(exportError)})`)
+      }
+    }
     deps.updated(meetingId)
-    deps.notify({ kind: 'notes-failed', title: "Couldn't finish meeting notes", body: reason, meetingId })
+    deps.notify({ kind: 'notes-failed', title: usable ? 'Transcript saved; final processing needs attention' : "Couldn't finish meeting notes", body: reason, meetingId })
   }
 }
 
@@ -611,7 +628,7 @@ function withCalendar(speakers: MeetingSpeaker[], participants: MeetingParticipa
     speakers.map((s): MeetingSpeaker => {
       if (s.source !== 'unknown' && s.source !== 'hint') return s
       if (participants.length === 1 && remote.length === 1 && s === remote[0]) {
-        return { ...s, label: participants[0].name, source: 'calendar', suggestion: null }
+        return { ...s, label: participants[0].name, source: participants[0].source === 'meet' ? 'meet' : 'calendar', suggestion: null }
       }
       const attendee = s.suggestion ? participants.find((p) => sameName(p.name, s.suggestion!)) : undefined
       if (attendee && s.source === 'unknown') return { ...s, label: s.suggestion!, source: 'voiceprint', suggestion: null }

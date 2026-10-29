@@ -1,4 +1,5 @@
 import { meetingTitle } from '@shared/meeting-title'
+import { participantLabels } from '@shared/meet-controls'
 import { dialog, ipcMain, shell } from 'electron'
 import { existsSync, mkdirSync } from 'node:fs'
 import { meetingFileName, renderMarkdown, renderText } from '@shared/meeting-export'
@@ -35,7 +36,7 @@ export interface MeetingsIpcContext {
 
 /** A list row: display names in speaking-time order. */
 export function toSummary(m: MeetingRecord): MeetingSummary {
-  const speakers = [...m.speakers].sort((a, b) => b.seconds - a.seconds).map((s) => s.label)
+  const speakers = participantLabels(m.speakers, m.participants)
   return {
     id: m.id,
     started_at: m.started_at,
@@ -44,7 +45,8 @@ export function toSummary(m: MeetingRecord): MeetingSummary {
     title: meetingTitle(m.app, m.title, m.notes),
     status: m.status,
     progress: m.progress,
-    speakers: [...new Set(speakers)]
+    speakers,
+    ...(m.status === 'ready' && m.error ? { warning: true } : {})
   }
 }
 

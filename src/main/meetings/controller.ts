@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, relative } from 'node:path'
 import { candidateExes, continuationEvidence, detectMeetings, detectPlaybackMeetings, idleProbeExesFor, probeExesFor, unconfirmedMeetings } from '@shared/meeting-detect'
 import { MeetingSession, type MeetingSessionConfig } from '@shared/meeting-session'
 import { liveSpeakers, renameSpeaker } from '@shared/meeting-speakers'
+import { authoritativeParticipants, mergeParticipants } from '@shared/meet-controls'
 import {
   MEETING_APP_LABELS,
   MEETING_SAMPLE_RATE,
@@ -565,7 +566,7 @@ export class MeetingController {
   private async apply(actions: MeetingSessionAction[]): Promise<void> {
     for (const action of actions) {
       if (action.type === 'start') await this.startRecording(action.candidate)
-      else if (action.type === 'update') this.updateCandidate(action.candidate)
+      else if (action.type === 'update') await this.updateCandidate(action.candidate)
       else if (action.type === 'retarget') {
         if (this.active) this.deps.helper.retarget(this.active.uuid, action.otherPids)
       } else await this.stopRecording(action.reason)
@@ -583,7 +584,7 @@ export class MeetingController {
     const a = this.active
     if (!a) return
     const exes = a.candidate.viaBrowser ? [] : candidateExes(a.candidate)
-    const held = this.sessions.some((s) => s.appPid === a.candidate.appPid || exes.includes(s.exe.toLowerCase()))
+    const held = a.candidate.micMuted !== true && this.sessions.some((s) => s.appPid === a.candidate.appPid || exes.includes(s.exe.toLowerCase()))
     if (held === a.micHeld) return
     a.micHeld = held
     a.autoPaused = !held
@@ -619,7 +620,7 @@ export class MeetingController {
   }
 
   private async startRecording(candidate: MeetingCandidate): Promise<void> {
-    const micHeld = this.sessions.some(s => s.appPid === candidate.appPid ||
+    const micHeld = candidate.micMuted !== true && this.sessions.some(s => s.appPid === candidate.appPid ||
       (!candidate.viaBrowser && candidateExes(candidate).includes(s.exe.toLowerCase())))
     const uuid = this.uuid()
     const dir = join(this.deps.meetingsDir, uuid)
@@ -634,6 +635,7 @@ export class MeetingController {
       name_hints: hints
     })
     this.deps.meetings.update(row.id, { speakers: liveSpeakers(this.userName(), hints) })
+    this.saveParticipants(row.id, candidate.participants)
     const label = MEETING_APP_LABELS[candidate.app]
 
     let started
@@ -721,24 +723,42 @@ export class MeetingController {
         { refresh: true }
       )
       .then((people) => {
-        if (people?.length && this.deps.meetings.update(row.id, { participants: people })) this.updated(row.id)
+        if (people?.length) this.saveParticipants(row.id, people)
       })
+      .catch(e => this.deps.log(`calendar participants unavailable (${describeError(e)})`))
     this.updateDetected()
     this.updated(row.id)
     this.deps.ui.notify({ kind: 'started', title: `Recording started: ${label}`, body: STARTED_BODY, meetingId: row.id })
   }
 
-  private updateCandidate(candidate: MeetingCandidate): void {
+  private async updateCandidate(candidate: MeetingCandidate): Promise<void> {
     const a = this.active
     if (!a || candidate.key !== a.key) return
-    a.candidate = candidate
+    // A bounded/inaccessible page scan is not an unmute event.
+    a.candidate = { ...candidate, micMuted: candidate.micMuted ?? a.candidate.micMuted }
+    this.saveParticipants(a.id, candidate.participants)
+    await this.followAppMic()
     // Keep the last real title: a window that briefly shows no meeting name should not erase it.
     if (candidate.title && candidate.title !== a.title) {
       a.title = candidate.title
-      this.deps.meetings.update(a.id, { title: candidate.title })
+      this.deps.meetings.update(a.id, { title: candidate.title, source_title: candidate.title })
       this.emitLive()
       this.updated(a.id)
     }
+  }
+
+  private saveParticipants(id: number, observed?: MeetingParticipant[]): void {
+    const row = this.deps.meetings.get(id)
+    if (!row || !observed?.length) return
+    const others = observed.filter(p => p.name.trim().toLowerCase() !== this.userName().trim().toLowerCase())
+    const participants = mergeParticipants(row.participants, others)
+    const names = authoritativeParticipants(participants)
+    const speakers = row.status === 'recording' && names.length === 1
+      ? liveSpeakers(this.userName(), [names[0].name]).map(s => s.key === 'others' && names[0].source === 'meet' ? { ...s, source: 'meet' as const } : s)
+      : row.status === 'recording' && row.speakers.some(s => s.source === 'meet')
+        ? liveSpeakers(this.userName(), row.name_hints) : row.speakers
+    this.deps.meetings.update(id, { participants, speakers })
+    this.updated(id)
   }
 
   /** Accumulate the name hints seen while recording; stored distinct, most frequent first. */

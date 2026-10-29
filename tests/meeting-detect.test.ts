@@ -230,6 +230,7 @@ describe('detectMeetings: browsers', () => {
         app: 'google-meet',
         viaBrowser: true,
         title: 'abc-defg-hij',
+        callId: 'abc-defg-hij',
         appPid: 100,
         exe: 'chrome.exe',
         micEndpointId: '{mic-100}',

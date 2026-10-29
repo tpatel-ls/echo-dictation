@@ -45,6 +45,7 @@ export interface MeetingSessionConfig {
 export interface MeetingContinuation {
   evidence: boolean
   remoteAudio: boolean
+  joined?: boolean
   /**
    * The evidence is assumed, not seen: the app shows no meeting window or tab to check (Slack
    * huddles), or only a browser title remains after capture stops. Only the far end being heard keeps such a call going, and it ends
@@ -96,6 +97,12 @@ interface Suppressed {
   /** First observation at which the key was gone (no mic session, no fresh evidence), or null. */
   absentSince: number | null
   lastRemoteAt: number | null
+  autoEnded?: boolean
+  sawLeft?: boolean
+}
+
+function differentCall(a: MeetingCandidate, b: MeetingCandidate): boolean {
+  return Boolean(a.callId && b.callId && a.callId !== b.callId)
 }
 
 /**
@@ -168,13 +175,20 @@ export class MeetingSession {
     // mute), so unmuting never restarts a call the user stopped.
     for (const [key, s] of this.suppressed) {
       const seen = present.get(key)
+      if (seen && (differentCall(s.candidate, seen) || (s.autoEnded && s.sawLeft && seen.joined))) {
+        this.suppressed.delete(key)
+        this.pending.delete(key)
+        continue
+      }
+      const continuation = continuationOf(s.candidate, false)
+      if (continuation?.joined === false) s.sawLeft = true
       if (seen) {
         s.candidate = seen
         s.absentSince = null
         if (seen.remoteAudio) s.lastRemoteAt = now
         continue
       }
-      if (this.continues(now, s, continuationOf(s.candidate, false))) {
+      if (this.continues(now, s, continuation)) {
         s.absentSince = null
         continue
       }
@@ -193,8 +207,16 @@ export class MeetingSession {
       if (p.absentSince === null) p.absentSince = now
       if (now - p.absentSince > this.config.forgetPendingAfterMs) this.pending.delete(key)
     }
-    for (const c of candidates) {
-      if (this.suppressed.has(c.key) || this.recording?.candidate.key === c.key) continue
+    for (const original of candidates) {
+      const suppressed = this.suppressed.get(original.key)
+      if (suppressed && differentCall(suppressed.candidate, original)) this.suppressed.delete(original.key)
+      const blocked = this.suppressed.get(original.key)
+      if ((blocked && !blocked.autoEnded) || this.recording?.candidate.key === original.key) continue
+      // A real rejoin whose page is inaccessible remains manually recoverable. Stale signals
+      // can never auto-start a second recording until the old call has genuinely gone away.
+      const c = blocked ? { ...original, requiresConfirmation: true } : original
+      const previous = this.pending.get(c.key)
+      if (previous && differentCall(previous.candidate, c)) this.pending.delete(c.key)
       const p = this.pending.get(c.key)
       if (p) {
         p.candidate = c
@@ -227,7 +249,7 @@ export class MeetingSession {
         (p) =>
           p.absentSince === null &&
           !p.candidate.requiresConfirmation &&
-          ((p.heardRemote && now - p.firstSeen >= this.config.confirmAfterMs) ||
+          (((p.heardRemote || p.candidate.joined) && now - p.firstSeen >= this.config.confirmAfterMs) ||
             (!p.candidate.requiresRemoteAudio && p.candidate.app !== 'slack' && now - p.firstSeen >= this.config.aloneConfirmAfterMs))
       )
       if (ready) {
@@ -246,6 +268,7 @@ export class MeetingSession {
     const p = this.oldestPending((q) => q.absentSince === null)
     if (!p) return []
     this.pending.delete(p.candidate.key)
+    this.suppressed.delete(p.candidate.key)
     this.recording = { candidate: p.candidate, startedAt: now, absentSince: null, lastRemoteAt: p.lastRemoteAt, lastLiveAt: now }
     this.lastLive = now
     return [{ type: 'start', candidate: p.candidate }]
@@ -277,12 +300,13 @@ export class MeetingSession {
     continuation: MeetingContinuation | null
   ): MeetingSessionAction[] {
     const rec = this.recording!
+    if (seen && differentCall(rec.candidate, seen)) return [this.stop('ended', true)]
     if (seen?.remoteAudio) rec.lastRemoteAt = now
     if (now - rec.startedAt >= this.config.maxDurationMs) {
       if (seen) rec.absentSince = null
       return [this.stop('max-duration', true)]
     }
-    if (!seen && continuation?.evidence === true && continuation.remoteAudio) {
+    if (!seen && continuation?.evidence === true && (continuation.remoteAudio || continuation.joined === true)) {
       // Muted with the mic released, and the far end is heard right now: actual evidence.
       rec.lastLiveAt = now
       this.lastLive = now
@@ -291,7 +315,7 @@ export class MeetingSession {
       // Only its sound shows the call goes on: it ends once the far end has been quiet for the grace.
       if (continuation.remoteAudio) rec.lastRemoteAt = now
       rec.absentSince = null
-      return now - rec.lastLiveAt >= this.config.endAfterMs ? [this.stop('ended', false)] : []
+      return now - rec.lastLiveAt >= this.config.endAfterMs ? [this.stop('ended', true)] : []
     }
     if (!seen && this.continues(now, rec, continuation)) {
       // Muted with the mic released: the meeting is still on screen and the far end was heard recently.
@@ -302,7 +326,7 @@ export class MeetingSession {
       rec.absentSince ??= now
       // Left or closed (the probe found no meeting tab or window): end quickly. Unknown: the usual grace.
       const grace = continuation && !continuation.evidence ? this.config.endWhenGoneMs : this.config.endAfterMs
-      return now - rec.absentSince >= grace ? [this.stop('ended', false)] : []
+      return now - rec.absentSince >= grace ? [this.stop('ended', true)] : []
     }
     rec.absentSince = null
     rec.lastLiveAt = now
@@ -311,7 +335,8 @@ export class MeetingSession {
     rec.candidate = seen
     const actions: MeetingSessionAction[] = []
     if (!sameSet(prev.otherPids, seen.otherPids)) actions.push({ type: 'retarget', otherPids: seen.otherPids })
-    if (prev.title !== seen.title || !sameList(prev.nameHints, seen.nameHints)) {
+    if (prev.title !== seen.title || !sameList(prev.nameHints, seen.nameHints) ||
+        JSON.stringify(prev.participants) !== JSON.stringify(seen.participants) || prev.micMuted !== seen.micMuted) {
       actions.push({ type: 'update', candidate: seen })
     }
     return actions
@@ -326,6 +351,7 @@ export class MeetingSession {
     call: { lastRemoteAt: number | null },
     continuation: MeetingContinuation | null
   ): boolean {
+    if (continuation?.joined !== undefined) return continuation.joined
     if (continuation?.remoteAudio) call.lastRemoteAt = now
     return (
       continuation?.evidence === true &&
@@ -339,8 +365,10 @@ export class MeetingSession {
     if (suppress) {
       this.suppressed.set(rec.candidate.key, {
         candidate: rec.candidate,
-        absentSince: rec.absentSince,
-        lastRemoteAt: rec.lastRemoteAt
+        // Require a fresh absence after stopping, not the grace period that triggered stop.
+        absentSince: null,
+        lastRemoteAt: rec.lastRemoteAt,
+        autoEnded: reason === 'ended'
       })
     }
     this.recording = null
