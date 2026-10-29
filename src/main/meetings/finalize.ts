@@ -8,7 +8,7 @@ import { mergeSpeakers } from '@shared/meeting-diarization'
 import { meetingKeywordPrompt, meetingKeywords } from '@shared/meeting-keywords'
 import { correctNames } from '@shared/name-correction'
 import { meetingTitle } from '@shared/meeting-title'
-import { authoritativeParticipants } from '@shared/meet-controls'
+import { authoritativeParticipants, withoutSelfParticipant } from '@shared/meet-controls'
 import { liveSpeakers } from '@shared/meeting-speakers'
 import { transplantVocabulary } from '@shared/vocab-transplant'
 import {
@@ -289,7 +289,8 @@ export async function finalizeMeeting(meetingId: number, deps: FinalizeDeps): Pr
       )
       if (found?.length) rec = update({ participants: found })
     }
-    const participants = rec.participants
+    const participants = withoutSelfParticipant(rec.participants, userName)
+    if (participants.length !== rec.participants.length) rec = update({ participants })
     const authoritative = authoritativeParticipants(participants)
     const calendarTitle = await deps.calendar?.title?.({ app: rec.app, title: rec.source_title ?? rec.title, startedAt: rec.started_at })
 

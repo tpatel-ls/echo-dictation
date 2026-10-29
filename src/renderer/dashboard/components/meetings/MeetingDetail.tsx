@@ -22,7 +22,7 @@ import {
 } from '@shared/meeting-types'
 import { api } from '../../lib/api'
 import { meetingTitle } from '@shared/meeting-title'
-import { participantLabels } from '@shared/meet-controls'
+import { participantLabels, withoutSelfParticipant } from '@shared/meet-controls'
 import {
   errorText,
   formatClock,
@@ -32,6 +32,7 @@ import {
   speakerColors,
   speakerLabel,
   transcriptText,
+  transcriptNotice,
   utteranceIds
 } from '../../lib/meeting-view'
 import type { Notify } from '../../types'
@@ -70,6 +71,7 @@ export function MeetingDetail({
   }, [meeting.speakers, meeting.participants, segments])
 
   const working = meeting.status === 'recording' || meeting.status === 'processing'
+  const transcriptState = transcriptNotice(meeting)
   const title = meetingTitle(meeting.app, meeting.title, meeting.notes)?.trim() || 'Untitled'
   const start = new Date(meeting.started_at)
   const length = formatMeetingLength(meeting.started_at, meeting.ended_at)
@@ -219,6 +221,15 @@ export function MeetingDetail({
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+        {tab === 'transcript' && transcriptState && (
+          <div role="status" aria-live="polite" className="mb-4 rounded-lg border border-accent/20 bg-accent/5 p-3 text-sm">
+            <p className="flex items-center gap-2 font-medium">
+              {transcriptState.busy && <Loader2 className="w-4 h-4 animate-spin text-accent" />}
+              {transcriptState.heading}
+            </p>
+            <p className="mt-1 text-muted">{transcriptState.body}</p>
+          </div>
+        )}
         {meeting.status === 'ready' && meeting.error && (
           <div role="alert" className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
             <p className="font-medium">Saved transcript available. Final processing needs attention.</p>
@@ -473,6 +484,10 @@ function TranscriptView({
   const [people, setPeople] = useState<Person[]>([])
   const [highlight, setHighlight] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const remotePeople = withoutSelfParticipant(meeting.participants, meeting.speakers.find(sp => sp.source === 'self')?.label ?? '')
+  const namingPending = meeting.status === 'recording' || meeting.status === 'processing'
+  const unconfirmed = !namingPending && meeting.speakers.some(sp => sp.source === 'unknown' &&
+    sp.key !== 'others' && segments.some(s => s.speaker_key === sp.key))
 
   useEffect(() => {
     if (!focus) return
@@ -494,7 +509,9 @@ function TranscriptView({
       const updated = await api.meetings.renameSpeaker(meeting.id, key, name, remember)
       setEditing(null)
       onChanged(updated)
-      notify(remember ? `Named ${name} and remembered their voice` : `Named ${name}`)
+      const remembered = updated?.speakers.find(s => s.key === key)?.personId != null
+      notify(remember && remembered ? `Named ${name} and remembered their voice`
+        : remember ? `Named ${name}. No usable voice sample was available to remember.` : `Named ${name}`)
     } catch (e) {
       notify(`Rename failed: ${errorText(e)}`)
     }
@@ -503,18 +520,26 @@ function TranscriptView({
   if (!segments.length) {
     return (
       <p className="text-sm text-muted">
-        {meeting.status === 'recording' ? 'Listening… the first lines appear within a few seconds.' : 'No transcript for this meeting.'}
+        {meeting.status === 'recording' ? 'Listening… the first lines appear within a few seconds.'
+          : meeting.status === 'processing' ? 'The transcript is being prepared.' : 'No transcript for this meeting.'}
       </p>
     )
   }
 
   return (
     <div ref={listRef} className="max-w-3xl flex flex-col">
+      {unconfirmed && (
+        <p className="mb-3 rounded-lg bg-surface2 px-3 py-2 text-xs text-muted">
+          Some voices still need a name. Click a speaker label to confirm who it is and remember their voice for future calls.
+          {remotePeople.length > 0 && ' The captured attendee names are available in the name picker.'}
+        </p>
+      )}
       {segments.map((s, i) => {
         const key = s.speaker_key
         const self = key === SELF_SPEAKER_KEY
         const label = speakerLabel(key, meeting.speakers)
         const who = meeting.speakers.find((sp) => sp.key === key)
+        const grouped = key === 'others' && remotePeople.length > 1
         const uid = ids.get(s.id) ?? ''
         const continued = i > 0 && segments[i - 1].speaker_key === key
         return (
@@ -533,8 +558,9 @@ function TranscriptView({
                 <div className="relative">
                   <button
                     onClick={() => (editing === s.id ? setEditing(null) : openEditor(s.id))}
-                    disabled={meeting.status === 'recording'}
-                    title={meeting.status === 'recording' ? undefined : 'Rename speaker'}
+                    disabled={namingPending || grouped}
+                    title={namingPending ? 'Speaker separation and name matching finish after the call.'
+                      : grouped ? 'These lines combine remote voices. Reprocess to separate speakers.' : 'Confirm or change this speaker’s name'}
                     className={`text-xs font-semibold mb-0.5 max-w-full truncate rounded disabled:cursor-default ${
                       self ? 'px-1.5 py-px bg-accent/10 text-accent' : 'hover:underline'
                     }`}
@@ -552,6 +578,7 @@ function TranscriptView({
                       current={label}
                       speaker={meeting.speakers.find((sp) => sp.key === key)}
                       people={people}
+                      participantNames={self ? [] : remotePeople.map(p => p.name)}
                       onSave={(name, remember) => rename(key, name, remember)}
                       onClose={() => setEditing(null)}
                     />

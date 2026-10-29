@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, relative } from 'node:path'
 import { candidateExes, continuationEvidence, detectMeetings, detectPlaybackMeetings, idleProbeExesFor, probeExesFor, unconfirmedMeetings } from '@shared/meeting-detect'
 import { MeetingSession, type MeetingSessionConfig } from '@shared/meeting-session'
 import { liveSpeakers, renameSpeaker } from '@shared/meeting-speakers'
-import { authoritativeParticipants, mergeParticipants } from '@shared/meet-controls'
+import { authoritativeParticipants, mergeParticipants, withoutSelfParticipant } from '@shared/meet-controls'
 import {
   MEETING_APP_LABELS,
   MEETING_SAMPLE_RATE,
@@ -362,6 +362,12 @@ export class MeetingController {
   renameSpeaker(id: number, key: SpeakerKey, name: string, remember: boolean): MeetingDetail | null {
     const rec = this.deps.meetings.get(id)
     if (!rec) return null
+    if (rec.status === 'recording' || rec.status === 'processing') {
+      throw new Error('Wait for speaker separation to finish before naming a speaker.')
+    }
+    if (key === 'others' && withoutSelfParticipant(rec.participants, this.userName()).length > 1) {
+      throw new Error('These lines combine multiple remote speakers. Use Reprocess to separate them before naming a voice.')
+    }
     const label = name.trim()
     if (!label) throw new Error('A speaker needs a name')
     let personId: number | null = null
@@ -750,8 +756,7 @@ export class MeetingController {
   private saveParticipants(id: number, observed?: MeetingParticipant[]): void {
     const row = this.deps.meetings.get(id)
     if (!row || !observed?.length) return
-    const others = observed.filter(p => p.name.trim().toLowerCase() !== this.userName().trim().toLowerCase())
-    const participants = mergeParticipants(row.participants, others)
+    const participants = withoutSelfParticipant(mergeParticipants(row.participants, observed), this.userName())
     const names = authoritativeParticipants(participants)
     const speakers = row.status === 'recording' && names.length === 1
       ? liveSpeakers(this.userName(), [names[0].name]).map(s => s.key === 'others' && names[0].source === 'meet' ? { ...s, source: 'meet' as const } : s)

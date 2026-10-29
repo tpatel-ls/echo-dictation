@@ -50,6 +50,7 @@ export function Meetings({ notify, focus }: { notify: Notify; focus: MeetingFocu
   const [liveSegments, setLiveSegments] = useState<MeetingSegment[]>([])
   const selectedRef = useRef<number | null>(null)
   const liveIdRef = useRef<number | null>(null)
+  const detailRequestRef = useRef(0)
   selectedRef.current = selectedId
 
   const loadList = useCallback(async (): Promise<void> => {
@@ -64,9 +65,10 @@ export function Meetings({ notify, focus }: { notify: Notify; focus: MeetingFocu
   }, [notify])
 
   const loadDetail = useCallback(async (id: number): Promise<void> => {
+    const request = ++detailRequestRef.current
     try {
       const row = await api.meetings.get(id)
-      if (selectedRef.current === id) setDetail(row)
+      if (selectedRef.current === id && request === detailRequestRef.current) setDetail(row)
     } catch (e) {
       notify(`Couldn't open the meeting: ${errorText(e)}`)
     }
@@ -115,13 +117,33 @@ export function Meetings({ notify, focus }: { notify: Notify; focus: MeetingFocu
     if (selectedId !== null) void loadDetail(selectedId)
   }, [selectedId, loadDetail])
 
+  // Recover missed updates when the dashboard was suspended/backgrounded. A finished final
+  // pass must not leave an old live transcript labelled "Others" indefinitely on screen.
+  useEffect(() => {
+    const refresh = (): void => {
+      void loadList()
+      if (selectedRef.current !== null) void loadDetail(selectedRef.current)
+    }
+    window.addEventListener('focus', refresh)
+    const timer = detail?.status === 'processing' || detail?.status === 'recording'
+      ? setInterval(refresh, 3000) : null
+    return () => {
+      window.removeEventListener('focus', refresh)
+      if (timer) clearInterval(timer)
+    }
+  }, [detail?.status, loadList, loadDetail])
+
   const onChanged = (updated: Detail | null): void => {
-    if (updated) setDetail(updated)
+    if (updated && updated.id === selectedRef.current) {
+      ++detailRequestRef.current
+      setDetail(updated)
+    }
     else if (selectedId !== null) void loadDetail(selectedId)
     void loadList()
   }
 
   const onDeleted = (id: number): void => {
+    ++detailRequestRef.current
     const rows = (meetings ?? []).filter((m) => m.id !== id)
     setDetail(null)
     setMeetings(rows)

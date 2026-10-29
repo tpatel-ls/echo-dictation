@@ -44,8 +44,16 @@ export function authoritativeParticipants(people: MeetingParticipant[]): Meeting
   return people.every(p => p.source !== 'meet' || p.rosterComplete === true) ? people : []
 }
 
+/** Match the configured local display name; a shared first name does not identify the local user. */
+export function withoutSelfParticipant(people: MeetingParticipant[], userName: string): MeetingParticipant[] {
+  const self = userName.trim().replace(/\s+/g, ' ').toLocaleLowerCase()
+  if (!self) return people
+  return people.filter(p => p.name.trim().replace(/\s+/g, ' ').toLocaleLowerCase() !== self)
+}
+
 export function participantLabels(speakers: MeetingSpeaker[], participants: MeetingParticipant[]): string[] {
   const voices = [...speakers].sort((a, b) => b.seconds - a.seconds)
+  participants = withoutSelfParticipant(participants, speakers.find(s => s.source === 'self')?.label ?? '')
   const names = [...voices.filter(s => s.source !== 'unknown' || !participants.length).map(s => s.label),
     ...participants.map(p => p.name)]
   return names.filter((name, i) => names.findIndex(n => n.toLowerCase() === name.toLowerCase()) === i)

@@ -9,6 +9,7 @@ export function SpeakerPopover({
   current,
   speaker,
   people,
+  participantNames = [],
   onSave,
   onClose
 }: {
@@ -16,6 +17,7 @@ export function SpeakerPopover({
   current: string
   speaker: MeetingSpeaker | undefined
   people: Person[]
+  participantNames?: string[]
   onSave: (name: string, remember: boolean) => Promise<void>
   onClose: () => void
 }): JSX.Element {
@@ -41,6 +43,8 @@ export function SpeakerPopover({
       return n !== query && n !== suggestion?.toLowerCase() && (!query || n.includes(query))
     })
     .slice(0, 5)
+  const attendees = [...new Set(participantNames)].filter(n => n.toLowerCase() !== query &&
+    n.toLowerCase() !== suggestion?.toLowerCase() && (!query || n.toLowerCase().includes(query)))
 
   const save = async (): Promise<void> => {
     const trimmed = name.trim()
@@ -72,6 +76,19 @@ export function SpeakerPopover({
         }}
         className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm outline-none focus:border-accent/60 placeholder:text-muted"
       />
+      {attendees.length > 0 && (
+        <div className="mt-2">
+          <p className="text-[11px] text-muted mb-1">People in this meeting</p>
+          <div className="flex flex-wrap gap-1.5">
+            {attendees.map(attendee => (
+              <button key={attendee} onClick={() => setName(attendee)}
+                className="px-2 py-0.5 rounded-full bg-accent/10 text-accent text-xs hover:bg-accent/15 transition max-w-full truncate">
+                {attendee}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {(suggestion || matches.length > 0) && (
         <div className="flex flex-wrap gap-1.5 mt-2">
           {suggestion && (

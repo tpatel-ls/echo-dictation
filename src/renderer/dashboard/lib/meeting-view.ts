@@ -4,11 +4,29 @@ import {
   OTHERS_SPEAKER_KEY,
   SELF_SPEAKER_KEY,
   type MeetingSegment,
+  type MeetingDetail,
   type MeetingSpeaker,
   type MeetingSummary
 } from '@shared/meeting-types'
 
 const DAY_MS = 86_400_000
+
+export function transcriptNotice(meeting: Pick<MeetingDetail, 'status' | 'progress' | 'segments'>): {
+  heading: string; body: string; busy: boolean
+} | null {
+  if (meeting.status === 'recording') return {
+    heading: 'Live draft', busy: false,
+    body: 'Remote voices are grouped while recording. Echo tries to separate speakers and match names after the call.'
+  }
+  if (meeting.status !== 'processing') return null
+  const grouped = meeting.segments.some(s => s.pass === 'live' && s.speaker_key === OTHERS_SPEAKER_KEY)
+  return {
+    heading: meeting.progress || 'Processing transcript', busy: true,
+    body: grouped
+      ? 'Showing the live draft. Remote voices are still grouped; speaker separation and name matching are in progress.'
+      : 'Final processing is in progress. The transcript and speaker labels may change.'
+  }
+}
 
 function startOfDay(ts: number): number {
   const d = new Date(ts)

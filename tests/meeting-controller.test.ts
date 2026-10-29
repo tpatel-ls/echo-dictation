@@ -621,6 +621,32 @@ describe('MeetingController', () => {
     await expect(h.controller.reprocess(row.id)).rejects.toThrow('Audio was already deleted')
   })
 
+  it.each(['recording', 'processing'] as const)('rejects naming while a meeting is %s without changing saved names or voices', (status) => {
+    const h = setup({ meetingMode: 'off' })
+    const row = h.meetings.create({ uuid: 'pending', started_at: 1, app: 'google-meet', title: null, audio_dir: null, name_hints: [] })
+    h.meetings.update(row.id, { status })
+    const before = h.meetings.get(row.id)
+    expect(() => h.controller.renameSpeaker(row.id, 'others', 'Alex Rivera', true)).toThrow('Wait for speaker separation')
+    expect(h.meetings.get(row.id)).toEqual(before)
+    expect(h.voiceprints.people()).toEqual([])
+  })
+
+  it('does not assign one attendee to an unseparated group channel', () => {
+    const h = setup({ meetingMode: 'off', meetingUserName: 'Alex Rivera' })
+    const row = h.meetings.create({ uuid: 'group', started_at: 1, app: 'google-meet', title: null, audio_dir: null, name_hints: [] })
+    h.meetings.update(row.id, {
+      status: 'ready',
+      participants: ['Alex Rivera', 'Jordan Lee', 'Casey Morgan'].map(name => ({ name, email: null, source: 'meet', rosterComplete: false })),
+      speakers: [{ key: 'others', label: 'Others', source: 'unknown', personId: null, suggestion: null, score: null, seconds: 30 }]
+    })
+    expect(() => h.controller.renameSpeaker(row.id, 'others', 'Jordan Lee', true)).toThrow('combine multiple remote speakers')
+    expect(h.meetings.get(row.id)!.speakers[0].label).toBe('Others')
+    expect(h.voiceprints.people()).toEqual([])
+    // The local full name alone must not turn a one-to-one call into a group.
+    h.meetings.update(row.id, { participants: ['Alex Rivera', 'Jordan Lee'].map(name => ({ name, email: null })) })
+    expect(h.controller.renameSpeaker(row.id, 'others', 'Jordan Lee', false)!.speakers[0].label).toBe('Jordan Lee')
+  })
+
   it('renames a speaker, remembers the voice, and relabels note owners', () => {
     const h = setup({ meetingMode: 'off' })
     const row = h.meetings.create({ uuid: 'm1', started_at: 1, app: 'google-meet', title: null, audio_dir: null, name_hints: [] })

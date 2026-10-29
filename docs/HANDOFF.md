@@ -100,11 +100,20 @@ exposes more of the roster. Background tabs, collapsed controls, browser accessi
 language can limit what is available. Echo keeps names it has seen throughout the call. A
 partial roster is displayed as attendees, but is never used to assign every voice to one person.
 Slack direct-message names also come from its window title. Calendar matching remains optional.
+Set your meeting display name to your full Google Meet name to avoid listing yourself twice.
 
 The local server labels the channels **you / others**. Separating individual remote speakers,
 remembering voices and writing AI notes/topic titles need optional additional services. A complete
 one-to-one Meet roster can name the remote channel without diarization. Group-call voice labels
 need voice matches or user confirmation; attendee names alone do not identify each speaker.
+
+During recording, the transcript is a **Live draft** with remote voices grouped together.
+After the call, the transcript shows processing progress and refreshes when the final speaker
+pass finishes. Click a final speaker label to select a captured attendee or enter a name.
+Leave **Remember this voice** checked to use a usable voice sample for future matches; Echo
+reports when no usable sample is available. Confirm identities from the conversation or audio,
+not by eliminating names from a partial roster. Grouped remote audio cannot be assigned to one
+person when several remote attendees are known; configure diarization and use **Reprocess**.
 
 If final processing fails, existing transcript text stays available with a **Review** warning.
 If no text was recovered, the meeting shows a failure with the reason. Both cases retain audio

@@ -10,11 +10,26 @@ import {
   speakerColors,
   speakerLabel,
   transcriptText,
+  transcriptNotice,
   utteranceIds,
   visibleNames
 } from '../src/renderer/dashboard/lib/meeting-view'
 
 const NOW = new Date(2026, 8, 22, 15, 0, 0).getTime()
+
+describe('transcript processing state', () => {
+  it('explains that grouped live voices are still being separated and exposes progress', () => {
+    expect(transcriptNotice({ status: 'processing', progress: 'Transcribing (2/8)',
+      segments: [{ ...segment(0, 'others', 'Draft'), pass: 'live' }] })).toEqual({
+      heading: 'Transcribing (2/8)', busy: true,
+      body: 'Showing the live draft. Remote voices are still grouped; speaker separation and name matching are in progress.'
+    })
+  })
+  it('does not present an empty processing transcript as a finished empty meeting', () => {
+    expect(transcriptNotice({ status: 'processing', progress: null, segments: [] })?.heading).toBe('Processing transcript')
+    expect(transcriptNotice({ status: 'ready', progress: null, segments: [segment(0, 'others:SPEAKER_00', 'Final')] })).toBeNull()
+  })
+})
 
 function summary(id: number, started: Date): MeetingSummary {
   return {

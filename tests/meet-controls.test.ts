@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { authoritativeParticipants, meetParticipants, mergeParticipants, parseMeetControls } from '@shared/meet-controls'
+import { authoritativeParticipants, meetParticipants, mergeParticipants, parseMeetControls, withoutSelfParticipant, participantLabels } from '@shared/meet-controls'
 
 describe('Google Meet controls', () => {
+  it('keeps the configured local name out of the remote roster without guessing from first names', () => {
+    const people = ['Alex Rivera', 'Jordan Lee', 'Casey Morgan'].map(name => ({ name, email: null }))
+    expect(withoutSelfParticipant(people, '  ALEX  Rivera ').map(p => p.name)).toEqual(['Jordan Lee', 'Casey Morgan'])
+    expect(participantLabels([{ key: 'me', label: 'Alex Rivera', source: 'self', seconds: 1, personId: null, score: null, suggestion: null }], people))
+      .toEqual(['Alex Rivera', 'Jordan Lee', 'Casey Morgan'])
+    expect(withoutSelfParticipant(people, 'Alex')).toEqual(people)
+    expect(withoutSelfParticipant([...people, { name: 'Alex Chen', email: null }], 'Alex')).toHaveLength(4)
+  })
   it('reads joined state, mute, roster and explicit count without treating page text as names', () => {
     const call = parseMeetControls(10, 'chrome.exe', 'Meet - abc-defg-hij', [
       'Leave call (Ctrl + Alt + H)', 'Turn on microphone (ctrl + d)', 'Show everyone (2)',

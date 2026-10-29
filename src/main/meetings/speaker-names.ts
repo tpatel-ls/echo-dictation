@@ -104,7 +104,7 @@ export async function suggestSpeakerNames(
     '',
     `Unnamed speakers to identify: ${unnamed.join(', ')}`,
     candidates.length
-      ? `The calendar lists these attendees; a name must be one of them: ${candidates.join(', ')}`
+      ? `The meeting attendee list contains these names; a name must be one of them: ${candidates.join(', ')}`
       : 'There is no attendee list; use only names the transcript shows.',
     '',
     '<transcript>',
